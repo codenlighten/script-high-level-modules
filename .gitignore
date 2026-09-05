@@ -4,4 +4,4 @@ package-lock.json
 
 # Real keys. Never committed.
 .wallet.json
-.deployments.json
+.wallet.utxos.json

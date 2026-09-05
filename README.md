@@ -34,6 +34,27 @@ node examples/rsa-lock.js        # a coin an RSA authority unlocks
 node examples/oracle-lock.js     # a coin an oracle's ordinary secp256k1 key unlocks
 ```
 
+## On chain
+
+Five of these are deployed and spent on BSV mainnet. A spend the network
+accepted is the only evidence that leaves no room for the harness to have been
+wrong — it means a node ran the locking script against the unlocking script and
+agreed.
+
+| module | locking script | deploy → spend |
+| --- | ---: | --- |
+| `rsa.verify` | 981 B | [`37c0c7a7`](https://whatsonchain.com/tx/37c0c7a7109054820e9951f484bf16f9838630e1a642d976147a5282f76d6b7c) → [`4b716dae`](https://whatsonchain.com/tx/4b716dae581fee37692d7820d12e15b67c2260eb0fe68bb35468f9f883bfdacc) |
+| `ecdsa.verify` | 59,247 B | [`2e283079`](https://whatsonchain.com/tx/2e2830799509ba4f7dd4cd56f9c88d80dda5ad0b2bd23083c3725e7546b08d46) → [`3d4e284f`](https://whatsonchain.com/tx/3d4e284f9bb7e6d2b6d1b8070c90752e4ee32dacd36c9186d52b929509559467) |
+| `sha256.block` | 49,240 B | [`4cbc7f96`](https://whatsonchain.com/tx/4cbc7f96da81f7877af29a944b522cbf79731c2542e113f4a41cae39b95c205a) → [`406026bd`](https://whatsonchain.com/tx/406026bde4cf02e1c63923b87d7f5859d20eb8bee74279cfbc835a0f049b6503) |
+| `tx.locktime ▸ totp.verify` | 746 B | [`15dfa4c4`](https://whatsonchain.com/tx/15dfa4c4ea56ad73d9f48215a250a27a9662a26f044dc9583e7d4fe65ff1f6ee) → [`0d58f227`](https://whatsonchain.com/tx/0d58f2275205f67da6a140798cd5225b1de0d9eadf607bc54e125c5268b9a934) |
+| `vault` | 433 B | [`0b3055d5`](https://whatsonchain.com/tx/0b3055d52367223d1bc011afe5f8a3d866b319f3c1ed695c257ddf4e64f83e88) → [`8ffb6ecb`](https://whatsonchain.com/tx/8ffb6ecb8f251c8cdcdf683ea2da11d359d859674c48442f27f7f8a8aeb08b73) |
+
+`npm run verify:chain` re-derives each locking script from the code and compares
+it byte for byte against what is in the output — so it goes red if the modules
+drift from what was deployed. See [mainnet.md](docs/mainnet.md).
+
+Total cost of the five, at 0.05 sat/byte: about 6,600 satoshis.
+
 ## Documentation
 
 **Start at [docs/index.md](docs/index.md)** — the map. The individual documents:
@@ -47,6 +68,8 @@ node examples/oracle-lock.js     # a coin an oracle's ordinary secp256k1 key unl
 - **[witnesses.md](docs/witnesses.md)** — soundness *and* canonicity, the
   difference between them, and four worked examples of what happens when the
   second one is skipped.
+- **[mainnet.md](docs/mainnet.md)** — the deployments, and what a confirmed
+  spend does and does not prove.
 - **[optimization.md](docs/optimization.md)** — how the curve modules halved:
   deferred reduction, hoisted constants, the altstack, `OP_WITHIN`.
 - **[catalog.md](docs/catalog.md)** — every module, generated from the registry:

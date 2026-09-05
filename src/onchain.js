@@ -25,7 +25,10 @@ const { policyFlags } = require('./run')
 // the coin costs the coin.
 
 const WALLET = path.join(__dirname, '..', '.wallet.json')
-const LEDGER = path.join(__dirname, '..', '.deployments.json')
+// Public chain data: txids, sizes, and what each one claims. Tracked, so the
+// record can be checked against the chain by anyone who clones this.
+const LEDGER = path.join(__dirname, '..', 'deployments.json')
+const UTXOS = path.join(__dirname, '..', '.wallet.utxos.json')
 
 // BSV relay policy: 0.05 sat/byte is what miners have accepted for years. Fees
 // are rounded up, and a floor keeps a tiny transaction above the minimum.
@@ -51,6 +54,44 @@ function record (entry) {
 
 const feeFor = (bytes) => Math.max(MIN_FEE, Math.ceil(bytes * SAT_PER_BYTE))
 
+// ── Which outputs are actually spendable ────────────────────────────────────
+//
+// An indexer does not see a transaction the moment it is broadcast, and it does
+// not have to. Deploying several targets in a row spends change that is still in
+// the mempool, so asking WhatsOnChain what the wallet holds returns outputs that
+// were spent seconds ago — and building on those produces a double spend the
+// node correctly refuses.
+//
+// So the wallet keeps its own note of what it has spent and what it has created.
+// The indexer is one source; this file is the other; the truth is the union
+// minus what we know is gone.
+
+function utxoCache () {
+  return fs.existsSync(UTXOS) ? JSON.parse(fs.readFileSync(UTXOS, 'utf8')) : { spent: [], created: [] }
+}
+function saveUtxoCache (c) {
+  fs.writeFileSync(UTXOS, JSON.stringify(c, null, 2) + '\n', { mode: 0o600 })
+}
+const outpoint = (u) => `${u.tx_hash}:${u.tx_pos}`
+
+/** Note that a transaction consumed these and created those. */
+function noteSpend (inputs, created) {
+  const c = utxoCache()
+  for (const i of inputs) if (!c.spent.includes(i)) c.spent.push(i)
+  for (const o of created) if (!c.created.some((x) => outpoint(x) === outpoint(o))) c.created.push(o)
+  saveUtxoCache(c)
+}
+
+/** Everything the wallet can spend right now, indexer and local notes combined. */
+async function spendable (address) {
+  const c = utxoCache()
+  let indexed = []
+  try { indexed = await woc.utxos(address) } catch (e) { /* the local note stands alone */ }
+  const all = [...indexed]
+  for (const o of c.created) if (!all.some((x) => outpoint(x) === outpoint(o))) all.push(o)
+  return all.filter((u) => !c.spent.includes(outpoint(u)))
+}
+
 /** Verify a fully-formed spend the way every test in this repository does. */
 function verifyLocally (tx, lockingScript, satoshis, inputIndex = 0) {
   const interp = new bsv.Script.Interpreter()
@@ -65,9 +106,9 @@ function verifyLocally (tx, lockingScript, satoshis, inputIndex = 0) {
  * Fund an output carrying `lockingScript`. Returns the signed funding
  * transaction; does not broadcast.
  */
-async function buildDeploy (lockingScript, { satoshis = 1000 } = {}) {
+async function buildDeploy (lockingScript, { satoshis = 1000, utxos } = {}) {
   const w = loadWallet()
-  const utxos = await woc.utxos(w.address)
+  if (!utxos) utxos = await woc.utxos(w.address)
   if (!utxos.length) throw new Error(`${w.address} holds no spendable outputs`)
 
   const tx = new bsv.Transaction()
@@ -125,5 +166,6 @@ function buildUnlock ({ txid, vout, lockingScript, satoshis, unlock, shape = {},
 
 module.exports = {
   loadWallet, ledger, record, feeFor, verifyLocally, buildDeploy, buildUnlock,
-  SAT_PER_BYTE, WALLET, LEDGER, woc
+  spendable, noteSpend, utxoCache, outpoint,
+  SAT_PER_BYTE, WALLET, LEDGER, UTXOS, woc
 }

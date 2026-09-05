@@ -26,6 +26,10 @@ required, hoisting constants out of the loop, clearing temporaries with the
 altstack instead of rolls, and `OP_WITHIN`. With the before-and-after, and what
 was tried and rejected.
 
+**[mainnet.md](mainnet.md)** — the five that are deployed and spent on BSV
+mainnet, and the exact limits of what that shows: relayable and spendable today,
+which is not the same as cryptographically sound.
+
 **[catalog.md](catalog.md)** — every module, generated from the registry: what
 it takes, what it returns, and which of its inputs the *spender* supplies. That
 last column is the one to read first.
@@ -62,6 +66,8 @@ of what there is to know about lowering an algorithm into Script.
 | `src/compose.js` | `all()` — several predicates as one module |
 | `src/predicate.js` | a module with no outputs, as a deployable coin |
 | `src/index.js` | the library, and the registry the catalogue is generated from |
+| `src/onchain.js` | fund an output, spend it, verify before broadcasting |
+| `src/woc.js` | the only network this repository touches |
 | `src/num.js` | script numbers: little-endian, sign-magnitude, minimal |
 | `src/bigint.js` `src/ec.js` `src/rsa.js` | the reference mathematics |
 
@@ -77,6 +83,8 @@ npm run merkle          # the tree against the library's own block merkle tree
 npm run malleability    # RSA's s + n and ECDSA's n − s, with the rule on and off
 npm run cost            # regenerate cost.md from the code
 npm run catalog         # regenerate catalog.md from the registry
+npm run verify:chain    # every deployed txid, against the chain (needs network)
+npm run deploy          # list the deployable targets; --broadcast to send one
 ```
 
 Five examples, all spending against the real interpreter:

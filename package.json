@@ -10,6 +10,9 @@
     "malleability": "node tools/malleability-demo.js",
     "cost": "node tools/cost-report.js",
     "catalog": "node tools/catalog.js",
+    "verify:chain": "node tools/verify-chain.js",
+    "mainnet:log": "node tools/verify-chain.js --write",
+    "deploy": "node bin/deploy.js",
     "rfc6238": "node tools/rfc6238-check.js && node tools/ec-crosscheck.js && node tools/merkle-crosscheck.js"
   },
   "author": "codenlighten <greg@smartledger.technology>",
