@@ -1,0 +1,159 @@
+# Script Modules
+
+*High-level mathematics and cryptography, compiled into Bitcoin Script modules
+that are tested, priced, and reusable.*
+
+Bitcoin Script has no `OP_CHECKRSASIG`. It does not need one.
+
+RSASSA-PKCS1-v1_5 verification is a single equation — `s^e mod n` compared with a
+constant and one hash — and post-Genesis Script does arbitrary-precision modular
+arithmetic in one opcode. This repository verifies a **2048-bit RSA signature
+produced by OpenSSL** inside a locking script, against the real consensus
+interpreter, in **955 bytes**.
+
+That is one module. The idea underneath it is the point:
+
+> If a cryptographic protocol reduces to deterministic mathematics expressible
+> in Script's primitives, it can be compiled into a locking predicate without
+> Bitcoin needing to understand the protocol. The semantics live above Script;
+> consensus only has to agree on the primitives.
+
+So the unit of work is a **module**: one operation, written twice — once as
+mathematics in JavaScript, once as Script — with a test kit that proves the two
+agree on the real interpreter, and proves what the module *refuses*.
+
+## Quick start
+
+```bash
+npm install
+npm test                         # every module against the consensus interpreter
+npm run probe                    # what the interpreter actually does (measured)
+npm run cost                     # what every module costs, in bytes
+npm run malleability             # why the range check in rsa.verify is load-bearing
+node examples/rsa-lock.js        # a coin an RSA authority unlocks
+```
+
+## What is here
+
+```
+src/run.js            evaluate a fragment against bsv.Script.Interpreter
+src/asm.js            a stack-tracking, type-tracking assembler
+src/module.js         the module contract, and apply() — how two modules compose
+src/testkit.js        correctness, stack discipline, and forgery
+src/num.js            script numbers: little-endian, sign-magnitude, minimal
+src/bigint.js         the reference mathematics
+src/modules/int.js    modadd modsub modmul modexp modinv
+src/modules/bytes.js  reverse, beToNum — the endianness bridge
+src/modules/u32.js    rotr shr xor add ch maj, and SHA-2's four mixing functions
+src/modules/sha256.js SHA-256 rebuilt from primitives — the control experiment
+src/modules/rsa.js    RSA-2048 signature verification
+tools/                probes, self-tests, the cost report
+fixtures/             a throwaway RSA-2048 key, so the suite is deterministic
+```
+
+Nineteen modules, 88 cases, 50 forgery attempts, all green.
+
+## The three claims a module must earn
+
+**It computes what the model says.** Not in a simulator — `bsv.Script.Interpreter`,
+the evaluator that validates blocks, under the flags a node relays with
+(MINIMALDATA, CLEANSTACK, SIGPUSHONLY, LOW_S, NULLFAIL, DISCOURAGE_UPGRADABLE_NOPS,
+NULLDUMMY). `sha256.block` is checked against OpenSSL's digest rather than against
+a second implementation of the same misreading.
+
+**It leaves the stack as promised.** A sentinel sits beneath every module during
+its suite. A module that leaks a scratch value fails, because the next module
+would read the wrong depth.
+
+**It refuses everything else.** Some operations are far cheaper to *check* than
+to *compute* — modular inverse is one multiplication to verify and the extended
+Euclidean algorithm to derive — so a module may declare an input `witness: true`
+and have the spender supply it. That is where a module goes quietly wrong, so
+the kit attacks every witnessed input on two properties:
+
+- **soundness** — no wrong witness is accepted;
+- **canonicity** — no *second* witness is accepted either. `a·inv ≡ 1 (mod n)` is
+  true of `inv`, of `inv + n`, of `inv + 2n`. A module that checks only the
+  congruence is a function of the spender's choice, and the covenant built on it
+  is malleable.
+
+A witnessed module the kit cannot attack is reported as unproven rather than
+green. The kit is itself held to this: `npm run selftest` writes five bugs
+deliberately — a wrong value, a leaked stack slot, bytes read as a number, a
+non-canonical witness, an unattackable one — and fails if any is missed.
+
+`npm run malleability` shows the last of those on the real module:
+
+```
+  range check         unlocking script       verdict
+  with 0 ≤ s < n      the signature          ACCEPTED
+  with 0 ≤ s < n      the signature + n      refused
+  WITHOUT the check   the signature + n      ACCEPTED
+```
+
+## What it costs
+
+Full table in [docs/cost.md](docs/cost.md), generated from the code.
+
+| module | configuration | Script bytes |
+| --- | --- | ---: |
+| `int.modmul` | 2048-bit modulus | 262 |
+| `int.modexp` | e = 65537, 2048-bit | 332 |
+| `rsa.verify` | RSA-2048, PKCS#1 v1.5 | 955 |
+| `u32.add` | one addition mod 2³² | 58 |
+| `sha256.block` | one block, no `OP_SHA256` | 50,765 |
+
+Read the last two rows against the first three. RSA verification — a scheme
+Bitcoin has no opcode for — costs under a kilobyte, because every operation it
+needs is one Script opcode at any width. SHA-256 rebuilt from those same
+primitives costs **50,765×** what `OP_SHA256` costs for the same answer, because
+32-bit modular addition pays for two endianness conversions every time.
+
+Both are the same technique. The difference is only whether the primitive you
+need is already an opcode — and it is worth four orders of magnitude. This is
+the number to compute *before* lowering a new algorithm, not after.
+
+## Writing a module
+
+```js
+const modmul = defineModule({
+  name: 'int.modmul',
+  doc: 'r = (a · b) mod n',
+  inputs: ['a', 'b'],
+  outputs: ['r'],
+  model: ({ a, b }, { n }) => ({ r: mod(a * b, n) }),
+  emit: (asm, { n }) => { asm.mul('prod'); asm.num(n, '_n'); asm.mod('r') },
+  cases: [
+    { name: 'small',    inputs: { a: 7n, b: 9n }, params: { n: 11n } },
+    { name: '2048-bit', inputs: { a: (1n << 2040n) + 7n, b: (1n << 2039n) + 11n },
+                        params: { n: (1n << 2048n) - 1557n } }
+  ]
+})
+```
+
+On entry the declared inputs are the top of the stack in declared order; on exit
+they are gone and the outputs are on top. `defineModule` refuses a module with no
+cases, and refuses a witnessed input with no `hint()` to produce the honest
+value. Modules call each other through `apply()`, which moves the caller's values
+into the callee's input names — composition is a rename, not a concatenation.
+
+The assembler tracks a *kind* per value, `num` or `bytes` with a width. Handing a
+byte string to `OP_ADD` is the most expensive mistake in Script arithmetic — the
+top bit silently becomes a sign — and it is a build-time error here.
+
+## Where this sits
+
+The predicate side of this work — covenants, `OP_PUSH_TX`, state machines, and
+forty-five predicates deployed and spent on mainnet — lives in **predicate
+bench**. This repository is the layer beneath the mathematics those predicates
+assume: what a predicate can *compute* and *check*, priced.
+
+The next constructions are compositions of what is already here, not new
+primitives: HMAC and PBKDF2 over `sha256`, TOTP over HMAC, prime-field and
+elliptic-curve arithmetic over `int` (with `modinv` witnessed, which is what
+makes affine curve addition affordable), and pairing-based verification
+equations above that.
+
+## License
+
+[MIT](LICENSE). Verify every number in this README by running it.

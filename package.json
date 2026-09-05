@@ -1,0 +1,19 @@
+{
+  "name": "script-modules",
+  "version": "0.1.0",
+  "description": "High-level math and cryptography compiled to reusable, tested BSV Script modules.",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "node test.js && node tools/kit-selftest.js && node tools/probe-limits.js && node tools/malleability-demo.js && node tools/cost-report.js --check && node examples/rsa-lock.js",
+    "probe": "node tools/probe-limits.js",
+    "selftest": "node tools/kit-selftest.js",
+    "malleability": "node tools/malleability-demo.js",
+    "cost": "node tools/cost-report.js"
+  },
+  "author": "codenlighten <greg@smartledger.technology>",
+  "license": "MIT",
+  "dependencies": {
+    "@smartledger/bsv": "^9.6.0"
+  },
+  "engines": { "node": ">=20.19.0" }
+}
