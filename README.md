@@ -71,11 +71,12 @@ src/modules/hmac.js   HMAC-SHA256 and HMAC-SHA1 over the native hash opcodes
 src/modules/totp.js   RFC 6238 authenticator codes
 src/modules/ec.js     secp256k1 point arithmetic and two scalar ladders
 src/modules/ecdsa.js  ECDSA verification over an arbitrary message
+src/modules/merkle.js membership in a committed tree
 tools/                probes, self-tests, the cost report
 fixtures/             a throwaway RSA-2048 key, so the suite is deterministic
 ```
 
-Thirty modules, 168 cases, 550 forgery attempts, all green — in eighteen seconds.
+Thirty-one modules, 178 cases, 630 forgery attempts, all green — in twenty seconds.
 
 ## The three claims a module must earn
 
@@ -126,6 +127,7 @@ Full table in [docs/cost.md](docs/cost.md), generated from the code.
 | `rsa.verify` | RSA-2048, PKCS#1 v1.5 | 955 |
 | `hmac.sha256` | a 32-byte key | 175 |
 | `totp.verify` | RFC 6238, 6 digits | 269 |
+| `merkle.verify` | depth 32 (4 billion leaves) | 905 |
 | `ec.add` | secp256k1, witnessed inverse | 191 |
 | `u32.add` | one addition mod 2³² | 58 |
 | `sha256.block` | one block, no `OP_SHA256` | 50,765 |

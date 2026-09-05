@@ -42,6 +42,7 @@ of what there is to know about lowering an algorithm into Script.
 | `src/modules/totp.js` | RFC 6238 authenticator codes |
 | `src/modules/ec.js` | secp256k1 point addition, doubling, and two ladders |
 | `src/modules/ecdsa.js` | ECDSA verification over an arbitrary message |
+| `src/modules/merkle.js` | membership in a committed tree |
 
 ## The apparatus
 
@@ -64,6 +65,7 @@ npm run probe           # what the interpreter does          (24 probes)
 npm run selftest        # five deliberate bugs the kit must catch
 npm run rfc6238         # the JS reference against RFC 6238's published vectors
 npm run ec              # src/ec.js against the library's own secp256k1
+npm run merkle          # the tree against the library's own block merkle tree
 npm run malleability    # RSA's s + n and ECDSA's n − s, with the rule on and off
 npm run cost            # regenerate cost.md from the code
 npm run catalog         # regenerate catalog.md from the registry

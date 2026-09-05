@@ -31,6 +31,7 @@
 | `ec.mul(…)` | *built per key or width* | | | |
 | `ec.mulG(…)` | *built per key or width* | | | |
 | `ecdsa.verify(…)` | *built per key or width* | | | |
+| `merkle.verify(…)` | *built per key or width* | | | |
 
 A module with **no outputs** is a predicate: it asserts and returns nothing, and
 `predicate(module, params, { owner })` turns it straight into a locking script

@@ -17,6 +17,7 @@ const hmac = require('./modules/hmac')
 const totp = require('./modules/totp')
 const ec = require('./modules/ec')
 const ecdsa = require('./modules/ecdsa')
+const merkle = require('./modules/merkle')
 
 const { defineModule, apply, instantiate } = require('./module')
 const { Asm } = require('./asm')
@@ -60,7 +61,8 @@ const factories = {
   'rsa.verify': rsa.verifier,
   'ec.mul': ec.mul,
   'ec.mulG': ec.mulG,
-  'ecdsa.verify': ecdsa.verifier
+  'ecdsa.verify': ecdsa.verifier,
+  'merkle.verify': merkle.verify
 }
 
 /** What a consumer needs to decide whether a module fits. */
@@ -85,7 +87,7 @@ function catalog () {
 }
 
 module.exports = {
-  int, bytes, u32, sha256, rsa, hmac, totp, ec, ecdsa,
+  int, bytes, u32, sha256, rsa, hmac, totp, ec, ecdsa, merkle,
   modules, factories, catalog, describe,
   defineModule, apply, instantiate, predicate, Asm,
   evaluate, evaluateSpend, policyFlags,

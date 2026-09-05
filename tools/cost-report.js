@@ -16,6 +16,10 @@ const hmac = require('../src/modules/hmac')
 const totp = require('../src/modules/totp')
 const ec = require('../src/modules/ec')
 const ecdsa = require('../src/modules/ecdsa')
+const merkle = require('../src/modules/merkle')
+const crypto = require('crypto')
+const mleaves = Array.from({ length: 8 }, (_, i) => crypto.createHash('sha256').update('leaf' + i).digest())
+const mtree = merkle.tree(mleaves)
 
 const key = rsaMod.fixtureKey()
 const P256 = (1n << 256n) - 189n
@@ -41,6 +45,8 @@ const ROWS = [
   ['hmac.sha256', hmac.sha256, { keyLen: 32 }, 'a 32-byte key'],
   ['hmac.sha1', hmac.sha1, { keyLen: 20 }, 'a 20-byte key'],
   ['totp.verify', totp.verify, { keyLen: 20, digits: 6 }, 'RFC 6238, 6 digits'],
+  ['merkle.verify', merkle.verify(mtree.root, { depth: 3, leaves: mleaves }), { depth: 3, root: mtree.root }, 'depth 3 (8 leaves)'],
+  ['merkle.verify', merkle.verify(mtree.root, { depth: 32, leaves: mleaves }), { depth: 32, root: mtree.root }, 'depth 32 (4 billion leaves)'],
   ['ec.add', ec.add, {}, 'secp256k1, witnessed inverse'],
   ['ec.double', ec.double, {}, 'secp256k1, witnessed inverse'],
   ['ec.mulG', ec.mulG(256, [1n]), {}, 'k·G, 256-bit, base fixed'],

@@ -22,6 +22,8 @@
 | `hmac.sha256` | a 32-byte key | 175 | 12 |
 | `hmac.sha1` | a 20-byte key | 187 | 12 |
 | `totp.verify` | RFC 6238, 6 digits | 269 | 65 |
+| `merkle.verify` | depth 3 (8 leaves) | 122 | 69 |
+| `merkle.verify` | depth 32 (4 billion leaves) | 905 | 678 |
 | `ec.add` | secp256k1, witnessed inverse | 191 | 118 |
 | `ec.double` | secp256k1, witnessed inverse | 191 | 118 |
 | `ec.mulG` | k·G, 256-bit, base fixed | 80,216 | 39,816 |

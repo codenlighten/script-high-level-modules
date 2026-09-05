@@ -10,6 +10,11 @@ const hmac = require('./src/modules/hmac')
 const totp = require('./src/modules/totp')
 const ec = require('./src/modules/ec')
 const ecdsa = require('./src/modules/ecdsa')
+const merkle = require('./src/modules/merkle')
+const crypto = require('crypto')
+
+const leaves = Array.from({ length: 8 }, (_, i) => crypto.createHash('sha256').update('leaf' + i).digest())
+const mtree = merkle.tree(leaves)
 
 const { failures } = proveAll([
   [int.modadd, {}],
@@ -41,7 +46,8 @@ const { failures } = proveAll([
   [ec.mul(32), {}],
   [ec.mulG(8), {}],
   [ec.mulG(32), {}],
-  [ecdsa.verifier([ecdsa.signCase('22'.repeat(32), 'the price of gold is 4211 on 2026-09-05')]), {}]
+  [ecdsa.verifier([ecdsa.signCase('22'.repeat(32), 'the price of gold is 4211 on 2026-09-05')]), {}],
+  [merkle.verify(mtree.root, { depth: 3, leaves }), {}]
 ])
 
 process.exit(failures.length ? 1 : 0)
