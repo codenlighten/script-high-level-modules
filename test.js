@@ -11,10 +11,27 @@ const totp = require('./src/modules/totp')
 const ec = require('./src/modules/ec')
 const ecdsa = require('./src/modules/ecdsa')
 const merkle = require('./src/modules/merkle')
+const compose = require('./src/compose')
 const crypto = require('crypto')
 
 const leaves = Array.from({ length: 8 }, (_, i) => crypto.createHash('sha256').update('leaf' + i).digest())
 const mtree = merkle.tree(leaves)
+const totpSecret = Buffer.from('12345678901234567890')
+const totpCommit = crypto.createHash('sha256').update(totpSecret).digest()
+const vaultTime = 1111111109n
+const vaultProof = mtree.proof(2)
+const vault = compose.all('vault', [
+  { module: totp.verify, params: { keyLen: 20, digits: 6, step: 30, algo: 'sha1', keyCommitment: totpCommit } },
+  { module: merkle.verify(mtree.root, { depth: 3, leaves }), params: { depth: 3, root: mtree.root } }
+], {
+  cases: [{
+    name: 'leaf 2, current code',
+    inputs: {
+      ...compose.forPart('totp_', { key: totpSecret, time: vaultTime, code: totp.totpCode(totpSecret, Number(vaultTime), { digits: 6 }) }),
+      ...compose.forPart('merkle_', { leaf: leaves[2], path: vaultProof.path, dirs: vaultProof.dirs })
+    }
+  }]
+})
 
 const { failures } = proveAll([
   [int.modadd, {}],
@@ -47,7 +64,8 @@ const { failures } = proveAll([
   [ec.mulG(8), {}],
   [ec.mulG(32), {}],
   [ecdsa.verifier([ecdsa.signCase('22'.repeat(32), 'the price of gold is 4211 on 2026-09-05')]), {}],
-  [merkle.verify(mtree.root, { depth: 3, leaves }), {}]
+  [merkle.verify(mtree.root, { depth: 3, leaves }), {}],
+  [vault, {}]
 ])
 
 process.exit(failures.length ? 1 : 0)

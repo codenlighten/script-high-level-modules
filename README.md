@@ -58,6 +58,7 @@ src/run.js            evaluate a fragment against bsv.Script.Interpreter
 src/asm.js            a stack-tracking, type-tracking assembler
 src/module.js         the module contract, and apply() — how two modules compose
 src/testkit.js        correctness, stack discipline, and forgery
+src/compose.js        all() — several predicates as one module
 src/predicate.js      a module with no outputs, as a deployable coin
 src/index.js          the library, and the registry behind the catalogue
 src/num.js            script numbers: little-endian, sign-magnitude, minimal
@@ -76,7 +77,7 @@ tools/                probes, self-tests, the cost report
 fixtures/             a throwaway RSA-2048 key, so the suite is deterministic
 ```
 
-Thirty-one modules, 178 cases, 630 forgery attempts, all green — in twenty seconds.
+Thirty-two modules, 179 cases, 648 forgery attempts, all green — in twenty seconds.
 
 ## The three claims a module must earn
 
@@ -168,6 +169,11 @@ const coin = predicate(totp.verify,
 coin.lockingScript                                  // 332 bytes
 coin.test({ key: secret, time, code }, ownerKey)    // spend it, against the interpreter
 ```
+
+Several predicates become one with `compose.all()`, and the composition is a
+module like any other — so the kit attacks the composed thing, not just the
+parts. `examples/vault-lock.js` is an owner's key, a Merkle allowlist and an
+authenticator code in a 436-byte lock.
 
 `owner` has no default, on purpose. Every off-chain signature scheme here — RSA,
 TOTP, an oracle's ECDSA — authorises a *message*, never a *transaction*. A coin

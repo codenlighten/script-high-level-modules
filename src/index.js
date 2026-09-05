@@ -22,6 +22,7 @@ const merkle = require('./modules/merkle')
 const { defineModule, apply, instantiate } = require('./module')
 const { Asm } = require('./asm')
 const { predicate } = require('./predicate')
+const compose = require('./compose')
 const { evaluate, evaluateSpend, policyFlags } = require('./run')
 const { proveModule, proveAll, moduleSize, build } = require('./testkit')
 const num = require('./num')
@@ -89,7 +90,7 @@ function catalog () {
 module.exports = {
   int, bytes, u32, sha256, rsa, hmac, totp, ec, ecdsa, merkle,
   modules, factories, catalog, describe,
-  defineModule, apply, instantiate, predicate, Asm,
+  defineModule, apply, instantiate, predicate, compose, Asm,
   evaluate, evaluateSpend, policyFlags,
   proveModule, proveAll, moduleSize, build,
   num, bigint, math: { ec: ecMath, rsa: rsaMath }

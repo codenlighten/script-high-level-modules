@@ -52,6 +52,7 @@ of what there is to know about lowering an algorithm into Script.
 | `src/asm.js` | the stack-tracking, type-tracking assembler |
 | `src/module.js` | the module contract, and `apply()` |
 | `src/testkit.js` | correctness, stack discipline, refusal, forgery |
+| `src/compose.js` | `all()` — several predicates as one module |
 | `src/predicate.js` | a module with no outputs, as a deployable coin |
 | `src/index.js` | the library, and the registry the catalogue is generated from |
 | `src/num.js` | script numbers: little-endian, sign-magnitude, minimal |
@@ -71,10 +72,11 @@ npm run cost            # regenerate cost.md from the code
 npm run catalog         # regenerate catalog.md from the registry
 ```
 
-Three examples, all spending against the real interpreter:
+Four examples, all spending against the real interpreter:
 
 ```bash
 node examples/totp-lock.js     # the whole path in five lines, via predicate()
+node examples/vault-lock.js    # three conditions, one coin, via all()
 node examples/rsa-lock.js      # a coin an RSA authority unlocks
 node examples/oracle-lock.js   # a coin an oracle's ordinary secp256k1 key unlocks
 ```

@@ -114,6 +114,29 @@ A precondition stated in a comment is a hope. `ec.add` covers points with
 distinct x; the case above is what makes that a property rather than a note,
 because `dx = 0` has no inverse and no witness can invent one.
 
+## Conjunction
+
+`compose.all(name, parts)` builds one module out of several predicates:
+
+```js
+const rules = compose.all('vault', [
+  { module: totp.verify,  params: { keyLen: 20, digits: 6, keyCommitment } },
+  { module: merkleVerify, params: { depth: 2, root } }
+], { cases: [{ name: 'carol, with the current code', inputs }] })
+```
+
+Its inputs are theirs, prefixed so two modules that both call something `msg` do
+not collide; its `emit` runs each in turn through `apply()`; its `hint` merges
+theirs. `compose.forPart('totp_', { … })` builds one part's share of a case.
+
+The result is a module like any other, which is the point: **the test kit
+attacks the composition, not just the parts.** A composition can be broken in
+ways its parts are not — one module leaving a value where the next reads a
+depth, two modules sharing a witness that only one of them constrains — and the
+only way to find that is to put the composed thing in front of the interpreter.
+`all()` refuses a part that returns a value, and refuses to build without cases,
+for the same reason `defineModule` does.
+
 ## The escape hatch
 
 `asm.op(name, pop, push)` emits any opcode in the release by name, with an
