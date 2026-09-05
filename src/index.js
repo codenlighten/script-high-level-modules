@@ -21,6 +21,9 @@ const schnorrMod = require('./modules/schnorr')
 const merkle = require('./modules/merkle')
 const txmod = require('./modules/tx')
 const stateMod = require('./modules/state')
+const fp2 = require('./modules/fp2')
+const fp6 = require('./modules/fp6')
+const fp12 = require('./modules/fp12')
 
 const { defineModule, apply, instantiate } = require('./module')
 const { Asm } = require('./asm')
@@ -62,7 +65,27 @@ const modules = {
   'ec.double': ec.double,
   'tx.locktime': txmod.locktime,
   'tx.hashOutputs': txmod.hashOutputs,
-  'schnorr.liftX': schnorrMod.liftX
+  'schnorr.liftX': schnorrMod.liftX,
+  // The pairing tower. Every one of these takes its prime as a parameter, so
+  // they are not BLS12-381 modules — they are Fp2, Fp6 and Fp12 over any prime
+  // with p ≡ 3 (mod 4), which is what makes u² + 1 irreducible. BLS12-381 is
+  // where they are measured, in docs/pairing.md.
+  'fp2.mul': fp2.mul,
+  'fp2.sqr': fp2.sqr,
+  'fp2.add': fp2.add,
+  'fp2.sub': fp2.sub,
+  'fp2.mulXi': fp2.mulXi,
+  'fp2.mulFp': fp2.mulFp,
+  'fp2.inv': fp2.inv,
+  'fp6.mul': fp6.mul,
+  'fp6.sqr': fp6.sqr,
+  'fp6.add': fp6.add,
+  'fp6.sub': fp6.sub,
+  'fp6.mulV': fp6.mulV,
+  'fp12.mul': fp12.mul,
+  'fp12.sqr': fp12.sqr,
+  'fp12.cycSqr': fp12.cycSqr,
+  'fp12.mulLine': fp12.mulLine
 }
 
 /** The ones that are built for a particular key, width or scalar set. */
@@ -108,6 +131,7 @@ function catalog () {
 
 module.exports = {
   int, bytes, u32, sha256, rsa, hmac, totp, ec, ecdsa, schnorr: schnorrMod, merkle, tx: txmod, state: stateMod,
+  fp2, fp6, fp12, bls12381: require('./bls12381'),
   modules, factories, catalog, describe,
   defineModule, apply, instantiate, predicate, compose, recipes, Asm,
   evaluate, evaluateSpend, policyFlags,

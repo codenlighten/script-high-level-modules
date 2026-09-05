@@ -30,6 +30,22 @@
 | `tx.locktime` † | `preimage` | `locktime` | `preimage` | 4 |
 | `tx.hashOutputs` † | `preimage` | `hashOutputs` | `preimage` | 2 |
 | `schnorr.liftX` | `pubkey` `py` | `qx` `qy` | `pubkey` `py` | 5 |
+| `fp2.mul` | `a0` `a1` `b0` `b1` | `r0` `r1` | — | 7 |
+| `fp2.sqr` | `a0` `a1` | `r0` `r1` | — | 6 |
+| `fp2.add` | `a0` `a1` `b0` `b1` | `r0` `r1` | — | 3 |
+| `fp2.sub` | `a0` `a1` `b0` `b1` | `r0` `r1` | — | 3 |
+| `fp2.mulXi` | `a0` `a1` | `r0` `r1` | — | 3 |
+| `fp2.mulFp` | `a0` `a1` `k` | `r0` `r1` | — | 4 |
+| `fp2.inv` | `a0` `a1` `i0` `i1` | `r0` `r1` | `i0` `i1` | 6 |
+| `fp6.mul` | `a00` `a01` `a10` `a11` `a20` `a21` `b00` `b01` `b10` `b11` `b20` `b21` | `r00` `r01` `r10` `r11` `r20` `r21` | — | 6 |
+| `fp6.sqr` | `a00` `a01` `a10` `a11` `a20` `a21` | `r00` `r01` `r10` `r11` `r20` `r21` | — | 5 |
+| `fp6.add` | `a00` `a01` `a10` `a11` `a20` `a21` `b00` `b01` `b10` `b11` `b20` `b21` | `r00` `r01` `r10` `r11` `r20` `r21` | — | 3 |
+| `fp6.sub` | `a00` `a01` `a10` `a11` `a20` `a21` `b00` `b01` `b10` `b11` `b20` `b21` | `r00` `r01` `r10` `r11` `r20` `r21` | — | 3 |
+| `fp6.mulV` | `a00` `a01` `a10` `a11` `a20` `a21` | `r00` `r01` `r10` `r11` `r20` `r21` | — | 3 |
+| `fp12.mul` | `aA00` `aA01` `aA10` `aA11` `aA20` `aA21` `aB00` `aB01` `aB10` `aB11` `aB20` `aB21` `bA00` `bA01` `bA10` `bA11` `bA20` `bA21` `bB00` `bB01` `bB10` `bB11` `bB20` `bB21` | `rA00` `rA01` `rA10` `rA11` `rA20` `rA21` `rB00` `rB01` `rB10` `rB11` `rB20` `rB21` | — | 3 |
+| `fp12.sqr` | `aA00` `aA01` `aA10` `aA11` `aA20` `aA21` `aB00` `aB01` `aB10` `aB11` `aB20` `aB21` | `rA00` `rA01` `rA10` `rA11` `rA20` `rA21` `rB00` `rB01` `rB10` `rB11` `rB20` `rB21` | — | 3 |
+| `fp12.cycSqr` | `aA00` `aA01` `aA10` `aA11` `aA20` `aA21` `aB00` `aB01` `aB10` `aB11` `aB20` `aB21` | `rA00` `rA01` `rA10` `rA11` `rA20` `rA21` `rB00` `rB01` `rB10` `rB11` `rB20` `rB21` | — | 3 |
+| `fp12.mulLine` | `aA00` `aA01` `aA10` `aA11` `aA20` `aA21` `aB00` `aB01` `aB10` `aB11` `aB20` `aB21` `l00` `l01` `l10` `l11` `l20` `l21` | `rA00` `rA01` `rA10` `rA11` `rA20` `rA21` `rB00` `rB01` `rB10` `rB11` `rB20` `rB21` | — | 3 |
 | `rsa.verify(…)` | *built per key or width* | | | |
 | `ec.mul(…)` | *built per key or width* | | | |
 | `ec.mulG(…)` | *built per key or width* | | | |

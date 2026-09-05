@@ -90,6 +90,8 @@ At the 100 sat/KB this wallet now pays, about 29,000.
 - **[catalog.md](docs/catalog.md)** — every module, generated from the registry:
   inputs, outputs, and which inputs the *spender* supplies.
 - **[cost.md](docs/cost.md)** — what every module costs, generated from the code.
+- **[pairing.md](docs/pairing.md)** — what a BLS12-381 pairing costs in Script,
+  and a Groth16 verifier: counted, not estimated.
 
 ## What is here
 
@@ -128,7 +130,7 @@ and are now era-derived and checked after every opcode (released in 9.7.0; see
 [limits.md](docs/limits.md)). They are skipped, with a note, on a library that
 predates it. Nothing else here depends on that fix.
 
-Forty-five modules, 247 cases, 669 forgery attempts, all green.
+Sixty-one modules, 311 cases, 719 forgery attempts, all green.
 
 ## The three claims a module must earn
 
@@ -212,6 +214,8 @@ Full table in [docs/cost.md](docs/cost.md), generated from the code.
 | `tx.locktime` | OP_PUSH_TX + nLockTime | 410 |
 | `merkle.verify` | depth 32 (4 billion leaves) | 905 |
 | `ec.add` | secp256k1, witnessed inverse | 167 |
+| `fp2.mul` | BLS12-381, Karatsuba | 117 |
+| `fp12.mul` | BLS12-381 | 3,248 |
 | `u32.add` | one addition mod 2³² | 58 |
 | `sha256.block` | one block, no `OP_SHA256` | 49,181 |
 | `ec.mul` | k·P, 256-bit, both runtime | 42,112 |
@@ -227,6 +231,14 @@ two endianness conversions every time.
 Both are the same technique. The difference is only whether the primitive you
 need is already an opcode — and it is worth four orders of magnitude. This is the
 number to compute *before* lowering a new algorithm, not after.
+
+The same method, run to the end of its rope: `fp12.mul` is one multiplication in
+the degree-12 extension field a pairing lives in, and 342 cyclotomic squarings
+and 63 of these are what a final exponentiation is. Counted through, **a
+BLS12-381 pairing is 978 KB of Script and a Groth16 verifier is 1.80 MB** — not
+estimated from a formula but counted by running a pairing that agrees with
+`@noble/curves` byte for byte and measuring the modules that perform it. See
+[docs/pairing.md](docs/pairing.md).
 
 `ecdsa.verify` is the expensive end of that judgement, and worth stating plainly.
 `OP_CHECKSIG` answers one question — is this a valid signature over *this*

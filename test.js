@@ -4,6 +4,9 @@ const bsv = require('@smartledger/bsv')
 
 const { proveAll } = require('./src/testkit')
 const int = require('./src/modules/int')
+const fp2 = require('./src/modules/fp2')
+const fp6 = require('./src/modules/fp6')
+const fp12 = require('./src/modules/fp12')
 const bytes = require('./src/modules/bytes')
 const rsa = require('./src/modules/rsa')
 const u32 = require('./src/modules/u32')
@@ -48,6 +51,22 @@ const { failures } = proveAll([
   [int.modmul, {}],
   [int.modexp, {}],
   [int.modinv, {}],
+  [fp2.mul, {}],
+  [fp2.sqr, {}],
+  [fp2.add, {}],
+  [fp2.sub, {}],
+  [fp2.mulXi, {}],
+  [fp2.mulFp, {}],
+  [fp2.inv, {}],
+  [fp6.mul, {}],
+  [fp6.sqr, {}],
+  [fp6.add, {}],
+  [fp6.sub, {}],
+  [fp6.mulV, {}],
+  [fp12.mul, {}],
+  [fp12.sqr, {}],
+  [fp12.cycSqr, {}],
+  [fp12.mulLine, {}],
   [bytes.reverse, {}],
   [bytes.beToNum, {}],
   [rsa.verifier(rsa.fixtureKey()), {}],

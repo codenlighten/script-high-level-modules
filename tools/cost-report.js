@@ -8,6 +8,10 @@ const fs = require('fs')
 const path = require('path')
 const { moduleSize } = require('../src/testkit')
 const int = require('../src/modules/int')
+const fp2 = require('../src/modules/fp2')
+const fp6 = require('../src/modules/fp6')
+const fp12 = require('../src/modules/fp12')
+const BLS = require('../src/bls12381').P
 const bytes = require('../src/modules/bytes')
 const u32 = require('../src/modules/u32')
 const sha256 = require('../src/modules/sha256')
@@ -35,6 +39,14 @@ const ROWS = [
   ['int.modmul', int.modmul, { n: P2048 }, '2048-bit modulus'],
   ['int.modmul', int.modmul, { n: P256 }, '256-bit modulus'],
   ['int.modinv', int.modinv, { n: P256 }, '256-bit, witnessed'],
+  ['fp2.mul', fp2.mul, { n: BLS }, 'BLS12-381, Karatsuba'],
+  ['fp2.sqr', fp2.sqr, { n: BLS }, 'BLS12-381'],
+  ['fp2.inv', fp2.inv, { n: BLS }, 'BLS12-381, witnessed'],
+  ['fp6.mul', fp6.mul, { n: BLS }, 'BLS12-381'],
+  ['fp12.mul', fp12.mul, { n: BLS }, 'BLS12-381'],
+  ['fp12.sqr', fp12.sqr, { n: BLS }, 'BLS12-381'],
+  ['fp12.cycSqr', fp12.cycSqr, { n: BLS }, 'BLS12-381, cyclotomic subgroup'],
+  ['fp12.mulLine', fp12.mulLine, { n: BLS }, 'BLS12-381, a Miller-loop line'],
   ['int.modexp', int.modexp, { n: P2048, e: 65537n }, 'e = 65537, 2048-bit'],
   ['int.modexp', int.modexp, { n: P2048, e: 3n }, 'e = 3, 2048-bit'],
   ['bytes.reverse', bytes.reverse, { width: 32 }, 'a 32-byte digest'],
@@ -128,6 +140,8 @@ const HEADLINE = [
   ['tx.locktime', 'OP_PUSH_TX + nLockTime'],
   ['merkle.verify', 'depth 32 (4 billion leaves)'],
   ['ec.add', 'secp256k1, witnessed inverse'],
+  ['fp2.mul', 'BLS12-381, Karatsuba'],
+  ['fp12.mul', 'BLS12-381'],
   ['u32.add', 'one addition mod 2³²'],
   ['sha256.block', 'one block, no OP_SHA256'],
   ['ec.mul', 'k·P, 256-bit, both runtime'],

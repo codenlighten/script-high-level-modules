@@ -8,6 +8,14 @@
 | `int.modmul` | 2048-bit modulus | 279 | 14 |
 | `int.modmul` | 256-bit modulus | 53 | 14 |
 | `int.modinv` | 256-bit, witnessed | 60 | 18 |
+| `fp2.mul` | BLS12-381, Karatsuba | 117 | 46 |
+| `fp2.sqr` | BLS12-381 | 90 | 30 |
+| `fp2.inv` | BLS12-381, witnessed | 115 | 44 |
+| `fp6.mul` | BLS12-381 | 839 | 568 |
+| `fp12.mul` | BLS12-381 | 3,248 | 2,132 |
+| `fp12.sqr` | BLS12-381 | 2,375 | 1,588 |
+| `fp12.cycSqr` | BLS12-381, cyclotomic subgroup | 1,342 | 1,016 |
+| `fp12.mulLine` | BLS12-381, a Miller-loop line | 2,178 | 1,382 |
 | `int.modexp` | e = 65537, 2048-bit | 355 | 76 |
 | `int.modexp` | e = 3, 2048-bit | 280 | 16 |
 | `bytes.reverse` | a 32-byte digest | 124 | 93 |

@@ -37,12 +37,20 @@ const ops = { mul: 0, add: 0, sub: 0, inv: 0 }
 // separate pieces would each need. So both counters run, the Fp2 one gives the
 // number, and the Fp one is there to check it against.
 const ops2 = { mul: 0, sqr: 0, add: 0, sub: 0, neg: 0, conj: 0, mulFp: 0, mulXi: 0, inv: 0 }
+// And a third counter, at the level the four expensive modules live at. These
+// are NOT disjoint from ops2 — an Fp12 product is eighteen Fp2 products and both
+// counters see them — which is what makes the decomposition checkable: the Fp2
+// ops a pairing performs minus the ones these four account for must come out
+// non-negative, and tools/pairing-cost.js asserts that it does.
+const ops12 = { mul: 0, sqr: 0, cycSqr: 0, mulLine: 0 }
 const reset = () => {
   for (const k of Object.keys(ops)) ops[k] = 0
   for (const k of Object.keys(ops2)) ops2[k] = 0
+  for (const k of Object.keys(ops12)) ops12[k] = 0
 }
 const count = () => ({ ...ops })
 const count2 = () => ({ ...ops2 })
+const count12 = () => ({ ...ops12 })
 
 const mod = (a) => { const r = a % P; return r < 0n ? r + P : r }
 const fpMul = (a, b) => { ops.mul++; return mod(a * b) }
@@ -147,6 +155,7 @@ function f6inv (a) {
 const f12 = (c0 = F6_ZERO, c1 = F6_ZERO) => [c0, c1]
 const F12_ONE = f12(F6_ONE, F6_ZERO)
 const f12mulRaw = (a, b) => {
+  ops12.mul++
   const t0 = f6mul(a[0], b[0])
   const t1 = f6mul(a[1], b[1])
   const c0 = f6add(t0, f6mulV(t1))
@@ -155,6 +164,7 @@ const f12mulRaw = (a, b) => {
 }
 /** Karatsuba squaring: two Fp6 multiplications rather than three. */
 function f12sqr (a) {
+  ops12.sqr++
   const t = f6mul(a[0], a[1])
   const c0 = f6sub(f6sub(f6mul(f6add(a[0], a[1]), f6add(a[0], f6mulV(a[1]))), t), f6mulV(t))
   return [c0, f6add(t, t)]
@@ -317,6 +327,7 @@ function f6mulC12 (a, b1, b2) {
 }
 /** f · (l0 + l1w³ + l2w⁵), by Karatsuba over Fp6: 3 + 5 + 6 = 14 Fp2 muls. */
 function f12mulLine (f, l) {
+  ops12.mulLine++
   const t0 = f6mulC0(f[0], l.l0)
   const t1 = f6mulC12(f[1], l.l1, l.l2)
   const t2 = f6mul(f6add(f[0], f[1]), f6(l.l0, l.l1, l.l2))
@@ -386,6 +397,7 @@ function f4sqr (x, y) {
   return [f2add(t0, f2mulXi(t1)), f2sub(f2sub(f2sqr(f2add(x, y)), t0), t1)]
 }
 function cyclotomicSqr (f) {
+  ops12.cycSqr++
   const g = flat6(f)
   const [t0, t1] = f4sqr(g[0], g[3])
   const [t2, t3] = f4sqr(g[1], g[4])
@@ -474,7 +486,7 @@ function finalExponentiate (f) {
 function pairing (P, Q) { return finalExponentiate(millerLoop(P, Q)) }
 
 module.exports = {
-  P, R, X, B, B2, G1, G2, ops, ops2, reset, count, count2,
+  P, R, X, B, B2, G1, G2, ops, ops2, ops12, reset, count, count2, count12,
   mod, fpMul, fpAdd, fpSub, fpInv, fpPow,
   f2, f2add, f2sub, f2mul, f2sqr, f2inv, f2conj, f2mulXi, f2pow, f2eq, F2_ONE, F2_ZERO,
   f6, f6mul, f6sqr, f6inv, F6_ONE,
