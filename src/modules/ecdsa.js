@@ -45,13 +45,9 @@ function witness ({ z, r, s, q }) {
   const sinv = ecJs.inv(ecJs.mod(s, N), N)
   const u1 = ecJs.mod(z * sinv, N)
   const u2 = ecJs.mod(r * sinv, N)
-  const R1 = ecJs.mul(u1, ecJs.G)
-  const R2 = ecJs.mul(u2, q)
   return {
     sinv,
-    ...ec.ladderWitness('u', 256, u1, ecJs.G, { fixedBase: true }),
-    ...ec.ladderWitness('v', 256, u2, q, {}),
-    finv: ecJs.inv(ecJs.mod(R2.x - R1.x, P), P)
+    ...ec.shamirWitness('sh', 256, u1, u2, q, {})
   }
 }
 
@@ -66,13 +62,11 @@ function verifier (cases, { lowS = true } = {}) {
       { name: 'qx', witness: true },
       { name: 'qy', witness: true },
       { name: 'sinv', witness: true },
-      ...ec.ladderInputs('u', 256, true),
-      ...ec.ladderInputs('v', 256, false),
-      { name: 'finv', witness: true }
+      ...ec.shamirInputs('sh')
     ],
     outputs: [],
     maxWitnessAttacks: 10,
-    alwaysAttack: ['z', 'r', 's', 'qx', 'qy', 'sinv', 'finv'],
+    alwaysAttack: ['z', 'r', 's', 'qx', 'qy', 'sinv', 'shtape'],
     hint: (inputs) => witness({ z: inputs.z, r: inputs.r, s: inputs.s, q: { x: inputs.qx, y: inputs.qy } }),
     model: () => ({}),
     emit: (asm, { lowS = true } = {}) => {
@@ -124,18 +118,17 @@ function verifier (cases, { lowS = true } = {}) {
       asm.pick('r', '_rc'); asm.pick('sinv', '_si5')
       apply(asm, int.modmul, { n: '_N' }, ['_rc', '_si5'], ['u2'])
 
-      // 5. R = u₁·G + u₂·Q
-      ec.emitLadder(asm, { prefix: 'u', bits: 256, point: ecJs.G }, 'u1', ['r1x', 'r1y'])
-      ec.emitLadder(asm, { prefix: 'v', bits: 256, point: ['qx', 'qy'] }, 'u2', ['r2x', 'r2y'])
-      asm.roll('finv')
-      apply(asm, ec.add, {}, ['r1x', 'r1y', 'r2x', 'r2y', 'finv'], ['rx', 'ry'])
+      // 5. R = u₁·G + u₂·Q, interleaved: one accumulator, one doubling chain.
+      //    Two separate multiplications would double the chain and cost 23 KB
+      //    more (see docs/optimization.md).
+      ec.emitShamir(asm, { prefix: 'sh', bits: 256 }, ['u1', 'u2'], ['qx', 'qy'], ['rx', 'ry'])
 
       // 6. r ≡ R.x (mod n)
       asm.discard('ry')
       asm.roll('rx'); asm.pick('_N', '_n4'); asm.mod('_rmod')
       asm.pick('r', '_rf'); asm.numEqualVerify()
 
-      for (const dead of ['u1', 'u2', 'sinv', 'z', 'r', 's', '_N']) asm.discard(dead)
+      for (const dead of ['u1', 'u2', 'sinv', 'z', 'r', 's', 'qx', 'qy', '_N']) asm.discard(dead)
     },
     attacks: (honest, params, name) => {
       if (name === 's') {
@@ -164,7 +157,7 @@ function verifier (cases, { lowS = true } = {}) {
           { label: `${name} = 0`, value: 0n }
         ]
       }
-      return ec.ladderAttacks(honest, name, name.startsWith('u') || name.startsWith('v') ? P : N)
+      return ec.ladderAttacks(honest, name, P)
     },
     cases: cases.map((c) => ({ ...c, params: { lowS, ...(c.params || {}) } })),
     notes: [

@@ -579,3 +579,166 @@ module.exports.ladderAttacks = ladderAttacks
 module.exports.FIELD = FIELD
 module.exports.record = record
 module.exports.H = H
+
+// ── SHAMIR'S TRICK: two scalars, one ladder ─────────────────────────────────
+//
+// ECDSA verification needs u₁·G + u₂·Q, and doing it as two separate
+// multiplications performs 256 doublings for Q and 256 additions for each
+// scalar — 768 point operations.
+//
+// Interleaved, one accumulator serves both: double it once per bit, then add
+// whichever of G, Q or G+Q the two bits select. 256 doublings and 256
+// additions, 512 operations, and the doubling chain is shared rather than
+// duplicated.
+//
+// WHY WINDOWING DOES NOT HELP, AND NAF DOES NOT EITHER. A branch costs its
+// bytes in the locking script whether or not it is taken, so the usual
+// optimisations — non-adjacent form, which makes fewer additions HAPPEN, or a
+// wider window, which makes fewer additions but a much more expensive selection
+// — buy nothing here. Only the static instruction count matters. Measured, a
+// 2-bit window is worse: it removes 128 additions and adds a sixteen-way
+// selection to all 128 remaining steps.
+//
+// THE SELECTION IS ARITHMETIC, NOT A BRANCH. Choosing between three points with
+// nested OP_IFs would put three copies of the addition in the script. Instead,
+// with b₁ and b₂ pinned to 0 or 1:
+//
+//     S = b₁·G + b₂·Q + b₁b₂·C        where C = T − G − Q  (mod p), T = G + Q
+//
+// which is the right point for each of the three live cases and is never
+// evaluated for the fourth, because that one skips the addition entirely.
+
+/** The tape one Shamir ladder reads: T's inverse, two per step, then the final. */
+function shamirWitness (prefix, bits, u1, u2, Q, { p = P, base = ecJs.G } = {}) {
+  const G = base
+  const tape = []
+  const T = ecJs.add(G, Q)
+  tape.push(record(ecJs.inv(ecJs.mod(Q.x - G.x, p), p)))
+
+  let acc = H
+  for (let i = bits - 1; i >= 0; i--) {
+    tape.push(record(ecJs.inv(ecJs.mod(2n * acc.y, p), p)))
+    acc = ecJs.double(acc)
+    const b1 = (u1 >> BigInt(i)) & 1n
+    const b2 = (u2 >> BigInt(i)) & 1n
+    const S = (b1 && b2) ? T : b1 ? G : b2 ? Q : null
+    tape.push(record(S ? ecJs.inv(ecJs.mod(S.x - acc.x, p), p) : 0n))
+    if (S) acc = ecJs.add(acc, S)
+  }
+
+  const off = ecJs.neg(ecJs.mul(1n << BigInt(bits), H))
+  tape.push(record(ecJs.inv(ecJs.mod(off.x - acc.x, p), p)))
+  return { [`${prefix}tape`]: Buffer.concat(tape) }
+}
+
+/** What the witness for one Shamir ladder is called. */
+function shamirInputs (prefix) {
+  return [{ name: `${prefix}tape`, kind: 'bytes', witness: true }]
+}
+
+/**
+ * Emit u₁·G + u₂·Q as a single interleaved ladder.
+ *
+ * Consumes the two scalars by copy and the point Q by name; leaves the result
+ * under `out`. The offset point H is doubled along with everything else, so the
+ * accumulator ends at 2^bits·H + the answer and the last operation subtracts
+ * that — a compile-time constant, since H is.
+ */
+function emitShamir (asm, { prefix = 'sh', bits = 256, p = P, base = ecJs.G }, scalars, qNames, out) {
+  const [u1, u2] = scalars
+  const [QX, QY] = qNames
+  const TAPE = `${prefix}tape`
+  const PN = `${prefix}_p`; const PN2 = `${prefix}_p2`
+  const GX = `${prefix}gx`; const GY = `${prefix}gy`
+  const TX = `${prefix}tx`; const TY = `${prefix}ty`
+  const CX = `${prefix}cx`; const CY = `${prefix}cy`
+  const AX = `${prefix}accx`; const AY = `${prefix}accy`
+  const KB1 = `${prefix}kb1`; const KB2 = `${prefix}kb2`
+  const B1 = `${prefix}_b1`; const B2 = `${prefix}_b2`
+  const nbytes = bits / 8
+
+  asm.num(p, PN); asm.num(2n * p, PN2)
+  const pp = { p: PN, p2: PN2 }
+
+  // G lives on the stack, not in every step's instruction stream
+  asm.num(base.x, GX); asm.num(base.y, GY)
+
+  // T = G + Q, once
+  takeInverse(asm, TAPE, '_ti')
+  asm.pick(GX, '_ga'); asm.pick(GY, '_gb'); asm.pick(QX, '_qa'); asm.pick(QY, '_qb'); asm.roll('_ti')
+  apply(asm, add, pp, ['_ga', '_gb', '_qa', '_qb', '_ti'], [TX, TY])
+
+  // C = T − G − Q (mod p), so the three-way selection is three multiplications
+  for (const [t, g, q, c] of [[TX, GX, QX, CX], [TY, GY, QY, CY]]) {
+    asm.pick(t, '_ca'); asm.pick(g, '_cb'); asm.sub('_cc')
+    asm.pick(q, '_cd'); asm.sub('_ce')
+    reduceSigned(asm, PN, c)
+  }
+
+  spreadScalar(asm, u1, bits, KB1)
+  spreadScalar(asm, u2, bits, KB2)
+
+  asm.num(H.x, AX); asm.num(H.y, AY)
+
+  for (let i = bits - 1; i >= 0; i--) {
+    // The doubling comes FIRST, while the accumulator is still the top pair:
+    // the tape's record lands directly above it, which is already the callee's
+    // argument order. Extracting the bits first would bury it.
+    takeInverse(asm, TAPE, '_di')
+    apply(asm, double, pp, [AX, AY, '_di'], ['_ndx', '_ndy'])
+    asm.relabel('_ndx', AX); asm.relabel('_ndy', AY)
+
+    if (i % 8 === 7) {                                     // one byte of each, from the top
+      const remaining = Math.floor(i / 8)
+      asm.roll(KB1); asm.splitAt(remaining, KB1, `${prefix}_byte1`)
+      asm.roll(KB2); asm.splitAt(remaining, KB2, `${prefix}_byte2`)
+    }
+    takeBitOfByte(asm, `${prefix}_byte1`, i % 8, B1)
+    takeBitOfByte(asm, `${prefix}_byte2`, i % 8, B2)
+
+    // acc = acc + S, unless both bits are zero
+    takeInverse(asm, TAPE, '_ai')
+    asm.pick(B1, '_o1'); asm.pick(B2, '_o2'); asm.op('OP_BOOLOR', 2, [{ name: '_cond', kind: 'num' }])
+    asm.roll(AX); asm.roll(AY); asm.roll('_ai'); asm.roll('_cond')
+    asm.beginIf()
+    // S = b₁·(G + b₂·C) + b₂·Q — the same three cases as b₁G + b₂Q + b₁b₂C, with
+    // the shared product factored out, so there is no b₁b₂ to compute or drop.
+    for (const [g, q, c, sn] of [[GX, QX, CX, '_sx'], [GY, QY, CY, '_sy']]) {
+      asm.pick(B2, '_p1'); asm.pick(c, '_p2'); asm.mul('_t1')
+      asm.pick(g, '_p3'); asm.add('_t2')
+      asm.pick(B1, '_p4'); asm.mul('_t3')
+      asm.pick(B2, '_p5'); asm.pick(q, '_p6'); asm.mul('_t4'); asm.add('_t5')
+      asm.pick(PN, '_p7'); asm.mod(sn)                     // non-negative already: one OP_MOD
+    }
+    // [accx, accy, inv, sx, sy] → one OP_ROT puts the inverse back on top, which
+    // is the callee's argument order, so the call emits nothing.
+    asm.roll('_ai')
+    apply(asm, add, pp, [AX, AY, '_sx', '_sy', '_ai'], ['_nx', '_ny'])
+    asm.relabel('_nx', AX); asm.relabel('_ny', AY)
+    asm.elseBranch()
+    asm.roll('_ai'); asm.num(0, '_z'); asm.numEqualVerify()          // pin the unused record
+    asm.endIf()
+
+    asm.discard(B1); asm.discard(B2)
+    if (i % 8 === 0) { asm.discard(`${prefix}_byte1`); asm.discard(`${prefix}_byte2`) }
+  }
+
+  // the last record is the final inverse; after it the tape must be empty
+  takeInverse(asm, TAPE, '_fi')
+  asm.roll(TAPE); asm.num(0, '_empty'); asm.equalVerify()
+  asm.discard(KB1); asm.discard(KB2)
+  for (const n of [TX, TY, CX, CY, GX, GY]) asm.discard(n)
+
+  // undo the offset, which has been doubled along with everything else
+  const off = ecJs.neg(ecJs.mul(1n << BigInt(bits), H))
+  asm.num(off.x, '_ox'); asm.num(off.y, '_oy')
+  asm.roll(AX); asm.roll(AY); asm.roll('_ox'); asm.roll('_oy'); asm.roll('_fi')
+  apply(asm, add, pp, [AX, AY, '_ox', '_oy', '_fi'], out)
+  asm.roll(out[0]); asm.roll(out[1]); asm.discard(PN); asm.discard(PN2)
+  asm.roll(out[0]); asm.roll(out[1])
+  return asm
+}
+
+module.exports.emitShamir = emitShamir
+module.exports.shamirWitness = shamirWitness
+module.exports.shamirInputs = shamirInputs

@@ -11,7 +11,7 @@ and know immediately whether it still refuses what it used to.
 | `ec.double` | 191 | 139 | −27% |
 | `ec.mul` (256-bit) | 116,127 | 42,086 | −64% |
 | `ec.mulG` (256-bit) | 80,216 | 39,833 | −50% |
-| `ecdsa.verify` | 196,778 | 82,280 | −58% |
+| `ecdsa.verify` | 196,778 | 59,141 | −70% |
 
 The standalone figures for `ec.add` and `ec.double` are mostly the two 33-byte
 modulus constants they push for themselves; inside a ladder, where those are
@@ -171,6 +171,44 @@ to be dropped.
 This is a register allocator's job, done by hand and checked by the assembler:
 reading a value after its last use is a build-time error, because the name is
 gone from the model.
+
+## 9. One ladder for two scalars
+
+ECDSA needs u₁·G + u₂·Q. Done as two separate multiplications that is 256
+doublings for Q, 256 conditional additions for each scalar, and — because G is
+fixed at compile time — a 68-byte pair of constants pushed at every step of the
+first ladder. 768 point operations and 17 KB of table.
+
+Interleaved, one accumulator serves both. Double it once per bit, then add
+whichever of G, Q or G+Q the two bits select: 512 operations, one doubling chain
+instead of two, and G lives on the stack rather than in every step's instruction
+stream. 82,280 → 59,141 bytes, and the witness with it, 25,622 → 17,169.
+
+**Windowing and NAF buy nothing here, and it is worth knowing why.** Both make
+fewer additions *happen*. In a locking script an untaken branch still costs its
+bytes, so only the static instruction count matters. Measured, a 2-bit window is
+worse: it removes 128 additions and adds a sixteen-way selection to each of the
+128 remaining steps.
+
+**The selection is arithmetic, not a branch.** Choosing between three points with
+nested `OP_IF`s would put three copies of the addition in the script. With b₁ and
+b₂ pinned to 0 or 1:
+
+```
+S = b₁·(G + b₂·C) + b₂·Q      where C = T − G − Q (mod p),  T = G + Q
+```
+
+which is G, Q and T for the three live cases, and is never evaluated for the
+fourth because that one skips the addition entirely. Written as
+`b₁G + b₂Q + b₁b₂C` it needs the shared product computed and then dropped;
+factored this way it does not.
+
+**And the order of the step is chosen so the calls are free.** The doubling comes
+first, while the accumulator is still the top pair, so the tape's record lands
+directly above it in the callee's argument order. After the selection, one
+`OP_ROT` puts the inverse back on top and the addition's call emits nothing
+either. Extracting the bits first would bury the accumulator and cost ten bytes
+a step to dig it out.
 
 ## What was tried and rejected
 

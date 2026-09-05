@@ -43,7 +43,7 @@ const ownerPkh = bsv.crypto.Hash.sha256ripemd160(owner.publicKey.toBuffer())
 
 const statement = Buffer.from('BSV/USD close 2026-09-05: 41.87')
 
-const WITNESS_SLOTS = ['sinv', 'utape', 'ufi', 'vtape', 'vfi', 'finv']
+const WITNESS_SLOTS = ['sinv', 'shtape']
 const verifier = ecdsaMod.verifier([{ name: 'example', inputs: {} }])
 
 /** The locking script: the owner's key, and the oracle's attestation. */
@@ -53,9 +53,7 @@ function lockingScript () {
     { name: 'msg', kind: 'bytes' },
     { name: 'r' }, { name: 's' },
     { name: 'sinv' },
-    { name: 'utape', kind: 'bytes' }, { name: 'ufi' },
-    { name: 'vtape', kind: 'bytes' }, { name: 'vfi' },
-    { name: 'finv' },
+    { name: 'shtape', kind: 'bytes' },
     { name: 'ecdsaSig', kind: 'bytes' },
     { name: 'pubkey', kind: 'bytes' }
   ])
@@ -105,9 +103,7 @@ function spend ({ message = statement, signOver = null, key = owner, mutate } = 
       .add(pushData(Buffer.from(message)))
       .add(pushNum(sig.r)).add(pushNum(sig.s))
       .add(pushNum(sig.w.sinv))
-      .add(pushData(sig.w.utape)).add(pushNum(sig.w.ufi))
-      .add(pushData(sig.w.vtape)).add(pushNum(sig.w.vfi))
-      .add(pushNum(sig.w.finv))
+      .add(pushData(sig.w.shtape))
       .add(sign(key)).add(key.publicKey.toBuffer())
     return u
   })
