@@ -26,6 +26,8 @@
 | `merkle.verify` | depth 32 (4 billion leaves) | 905 | 678 |
 | `tx.locktime` | OP_PUSH_TX + nLockTime | 410 | 217 |
 | `tx.hashOutputs` | OP_PUSH_TX + the output commitment | 394 | 209 |
+| `tx.transition` | a coin that recreates itself | 441 | 239 |
+| `state.counter` | the successor is one higher | 16 | 11 |
 | `ec.add` | secp256k1, witnessed inverse | 167 | 65 |
 | `ec.double` | secp256k1, witnessed inverse | 153 | 58 |
 | `ec.mulG` | k·G, 256-bit, base fixed | 39,833 | 15,553 |
@@ -55,7 +57,7 @@ and buys the same authenticity — with a key the oracle must hold specifically
 for this purpose. That is the trade, and it is an engineering choice rather than
 a technical limit.
 
-At 1 sat/KB, that most expensive module is about
-60 satoshis of fee. Size stopped being the
+At 100 sat/KB, that most expensive module is about
+5920 satoshis of fee. Size stopped being the
 question at Genesis; what it costs, and whether a cheaper construction buys the
 same thing, is the question that replaced it.

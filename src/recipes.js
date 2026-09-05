@@ -8,6 +8,7 @@ const txMod = require('./modules/tx')
 const totp = require('./modules/totp')
 const rsaModule = require('./modules/rsa')
 const rsaJs = require('./rsa')
+const stateMod = require('./modules/state')
 
 // COMPOSITIONS WORTH HAVING A NAME FOR.
 //
@@ -203,4 +204,51 @@ function instructedOutput (address, satoshis) {
   })
 }
 
-module.exports = { timelockedTotp, authorityPays, authorityPaysCases, instruction, instructedOutput }
+/**
+ * A coin that can only be spent by advancing its own counter.
+ *
+ * The two halves of a state machine, joined: `tx.transition` reads the state out
+ * of the script's own bytes and requires the spend to pay an output carrying
+ * this exact script with the state replaced; `state.counter` says which
+ * replacements are legal. Neither knows what the other does — one is about
+ * preimages, the other about numbers — and `pipe()` is the whole of the joining.
+ *
+ * What the coin then is, is a monotonic sequence with a transaction for every
+ * step. Nobody can skip, nobody can go back, and the history is on chain because
+ * the history IS the chain of spends.
+ */
+function counterCoin ({ from = 0n, stateWidth = 8, fee = 300, step = 1n } = {}) {
+  const W = stateWidth
+  const at = (v) => stateMod.le(v, W)
+  return compose.pipe('tx.transition ▸ state.counter', [
+    { module: txMod.transition({ stateWidth: W, fee }) },
+    { module: stateMod.counter({ stateWidth: W, step }) }
+  ], {
+    doc: 'a coin that may only be spent by advancing its own counter',
+    notes: [
+      'the successor is this same script with the counter one higher, carrying the value less the fee',
+      'the state lives after a top-level OP_RETURN, where it is data at a constant offset from the end'
+    ],
+    cases: [
+      {
+        name: `stepping from ${from}`,
+        spend: { state: at(from), next: at(from + step) },
+        params: { state: at(from) }
+      },
+      {
+        name: 'skipping a step',
+        refuse: 'the rule allows exactly one successor',
+        spend: { state: at(from), next: at(from + step + step) },
+        params: { state: at(from) }
+      },
+      {
+        name: 'standing still',
+        refuse: 'a spend has to advance it',
+        spend: { state: at(from), next: at(from) },
+        params: { state: at(from) }
+      }
+    ]
+  })
+}
+
+module.exports = { timelockedTotp, authorityPays, authorityPaysCases, counterCoin, instruction, instructedOutput }

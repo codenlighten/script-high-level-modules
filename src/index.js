@@ -20,6 +20,7 @@ const ecdsa = require('./modules/ecdsa')
 const schnorrMod = require('./modules/schnorr')
 const merkle = require('./modules/merkle')
 const txmod = require('./modules/tx')
+const stateMod = require('./modules/state')
 
 const { defineModule, apply, instantiate } = require('./module')
 const { Asm } = require('./asm')
@@ -74,7 +75,10 @@ const factories = {
   'merkle.verify': merkle.verify,
   'tx.requireOutputs': txmod.requireOutputs,
   'recipes.authorityPays': recipes.authorityPays,
-  'recipes.timelockedTotp': recipes.timelockedTotp
+  'recipes.timelockedTotp': recipes.timelockedTotp,
+  'recipes.counterCoin': recipes.counterCoin,
+  'tx.transition': txmod.transition,
+  'state.counter': stateMod.counter
 }
 
 /** What a consumer needs to decide whether a module fits. */
@@ -100,7 +104,7 @@ function catalog () {
 }
 
 module.exports = {
-  int, bytes, u32, sha256, rsa, hmac, totp, ec, ecdsa, schnorr: schnorrMod, merkle, tx: txmod,
+  int, bytes, u32, sha256, rsa, hmac, totp, ec, ecdsa, schnorr: schnorrMod, merkle, tx: txmod, state: stateMod,
   modules, factories, catalog, describe,
   defineModule, apply, instantiate, predicate, compose, recipes, Asm,
   evaluate, evaluateSpend, policyFlags,

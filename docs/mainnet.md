@@ -113,6 +113,19 @@ a secp256k1 ECDSA signature over an arbitrary message — no OP_CHECKSIG involve
 | deploy | [`fe4184c05bbd3d41a0ea5641afc571c46fac7dac35577b9887a783081b382576`](https://whatsonchain.com/tx/fe4184c05bbd3d41a0ea5641afc571c46fac7dac35577b9887a783081b382576) |
 | spend | [`1a8f52d14c0e6a060f20714e75058a6a67e343034e2e8b3e8d3f30381bb4fbef`](https://whatsonchain.com/tx/1a8f52d14c0e6a060f20714e75058a6a67e343034e2e8b3e8d3f30381bb4fbef) |
 
+### tx.transition ▸ state.counter
+
+a coin advanced 3 times on chain, each spend paying the coin the next spend consumed
+
+| | |
+| --- | --- |
+| locking script | 470 bytes |
+| deploy | [`eb58479abf8ab19ad7baaff4ee8a3288ad2e7c3fafafaca3f989c7771d1acc50`](https://whatsonchain.com/tx/eb58479abf8ab19ad7baaff4ee8a3288ad2e7c3fafafaca3f989c7771d1acc50) |
+| spend | [`46674b294303cdc9df2bf2dde4d615515b8b5ef41c6f98ba239936720e041231`](https://whatsonchain.com/tx/46674b294303cdc9df2bf2dde4d615515b8b5ef41c6f98ba239936720e041231) |
+| step 0 → 1 | [`0b41407f3d7dc2389ecb13ff7bde3f3b1fa96c5e3a70f8041413417623db174c`](https://whatsonchain.com/tx/0b41407f3d7dc2389ecb13ff7bde3f3b1fa96c5e3a70f8041413417623db174c) |
+| step 1 → 2 | [`1531805bfce61981cb73fcc60cf271cfd3f48149a1fa0d93d13c84c85e4440a7`](https://whatsonchain.com/tx/1531805bfce61981cb73fcc60cf271cfd3f48149a1fa0d93d13c84c85e4440a7) |
+| step 2 → 3 | [`46674b294303cdc9df2bf2dde4d615515b8b5ef41c6f98ba239936720e041231`](https://whatsonchain.com/tx/46674b294303cdc9df2bf2dde4d615515b8b5ef41c6f98ba239936720e041231) |
+
 ## What this does and does not show
 
 It shows that these scripts are **relayable and spendable on mainnet today**: the

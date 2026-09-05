@@ -97,6 +97,35 @@
       "value": 866,
       "spendFee": 865,
       "at": "2026-09-05T22:06:06.121Z"
+    },
+    {
+      "target": "tx.transition ▸ state.counter",
+      "key": "counter",
+      "claim": "a coin advanced 3 times on chain, each spend paying the coin the next spend consumed",
+      "deploy": "eb58479abf8ab19ad7baaff4ee8a3288ad2e7c3fafafaca3f989c7771d1acc50",
+      "spend": "46674b294303cdc9df2bf2dde4d615515b8b5ef41c6f98ba239936720e041231",
+      "lockBytes": 470,
+      "lockHex": "78aa517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e209817f8165b81f259d928ce2ddbfc9b02070b87ce9562a055acbbdcf97e66be799321414136d08c5ed2bf3ba048afe6dcaebafeffffffffffffffffffffffffffffff0097012080517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e2079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179876527c7e6b04304402207c7e0202207e7c7e01417e6cac697854b50441000000887801687f77820134947f758258947f7853797e54790134b558b401007e8102fa009458807c7eaa54790128b50120b4887c757b757c7c7c7801007e8151937801007e819d7c7575516a080000000000000000",
+      "value": 1500,
+      "spendFee": 250,
+      "steps": [
+        {
+          "from": "0",
+          "to": "1",
+          "txid": "0b41407f3d7dc2389ecb13ff7bde3f3b1fa96c5e3a70f8041413417623db174c"
+        },
+        {
+          "from": "1",
+          "to": "2",
+          "txid": "1531805bfce61981cb73fcc60cf271cfd3f48149a1fa0d93d13c84c85e4440a7"
+        },
+        {
+          "from": "2",
+          "to": "3",
+          "txid": "46674b294303cdc9df2bf2dde4d615515b8b5ef41c6f98ba239936720e041231"
+        }
+      ],
+      "at": "2026-09-05T22:24:21.409Z"
     }
   ]
 }

@@ -285,4 +285,147 @@ function requireOutputs (outputs, { cases } = {}) {
 const cloneOutput = (o, delta = 0) =>
   new bsv.Transaction.Output({ script: o.script, satoshis: o.satoshis + delta })
 
-module.exports = { locktime, hashOutputs, requireOutputs, right, left, grindValue, SIGHASH_ALL_FORKID, FINAL, PushTx }
+// ── A COIN THAT REWRITES ITSELF ─────────────────────────────────────────────
+//
+// Everything else here is a stateless predicate: it verifies, and the coin
+// moves. This is the one that carries something forward.
+//
+// The BIP-143 preimage contains the locking script being spent — scriptCode,
+// which starts at offset 104 and is followed by exactly 52 bytes of tail. So a
+// script can read ITSELF out of its own preimage, replace a field, and require
+// the spend to pay an output carrying the result. The coin becomes its own
+// successor, one field different.
+//
+// THE STATE GOES AT THE END, AFTER OP_RETURN, and that placement is doing real
+// work. Post-Genesis a top-level OP_RETURN ends evaluation with the top stack
+// item deciding, so trailing bytes are inert data rather than code. Being at the
+// end makes the state a CONSTANT offset from the end of the preimage — where the
+// front of the script is a varint whose own length depends on how long the
+// script is, which is not known while the script is being written. Fixed offsets
+// from the back; nothing circular.
+//
+// And scriptCode carries its own length prefix, which is exactly what a
+// serialised output needs in front of its script. Swapping a fixed-width field
+// does not change the length, so the prefix is reused untouched and the varint
+// never has to be computed at all.
+//
+// WHAT IT DOES NOT DECIDE. This enforces the mechanics of succession — that the
+// successor is this same script with one field replaced, carrying the value that
+// came in less a fee. Whether the new state is a LEGAL successor of the old one
+// is a separate question, for a separate module: `tx.transition` hands the
+// current state out as its output, and whatever consumes it says what may follow
+// what. compose.pipe() is how the two are joined.
+
+/**
+ * Read this script's own state, and require the spend to recreate the script
+ * with `next` in its place.
+ *
+ * @param stateWidth bytes of state, fixed — the width is what makes the offsets
+ *                   constant and the length prefix reusable
+ * @param fee        satoshis the successor gives up to the miner
+ */
+function transition ({ stateWidth = 8, fee = 200, cases } = {}) {
+  const W = stateWidth
+  return defineModule({
+    name: 'tx.transition',
+    doc: `read ${W} bytes of state from this script and require the spend to recreate it`,
+    inputs: [
+      { name: 'preimage', kind: 'bytes', witness: true },
+      { name: 'next', kind: 'bytes', width: W, witness: true }
+    ],
+    // Both the current state and the successor come out, because a rule that
+    // decides which successors are legal needs to see them together — and this
+    // module deliberately does not decide that.
+    outputs: [{ name: 'state', kind: 'bytes', width: W }, { name: 'next', kind: 'bytes', width: W }],
+    contextual: true,
+    witnessFor: (ctx) => recreateWitness(ctx, W, fee),
+    hint: () => ({}),
+    model: ({ preimage, next }) => ({
+      state: Buffer.from(preimage.subarray(preimage.length - 52 - W, preimage.length - 52)),
+      next: Buffer.from(next)
+    }),
+    emit: (asm, params) => {
+      const f = params.fee === undefined ? fee : params.fee
+
+      // 1. the preimage is this transaction
+      asm.pick('preimage', '_pi')
+      asm.clause((sc) => PushTx.pushTxCore(sc), 1, [{ name: '_ok', kind: 'num' }])
+      asm.verify()
+      asm.pick('preimage', '_pf'); right(asm, 4, '_flag')
+      asm.data(Buffer.from([SIGHASH_ALL_FORKID, 0, 0, 0]), '_want'); asm.equalVerify()
+
+      // 2. the script's own bytes: everything from 104 to 52 from the end
+      asm.pick('preimage', '_p1'); asm.splitAt(104, '_pre', '_rest'); asm.nip()
+      asm.op('OP_SIZE', 0, [{ name: '_rl', kind: 'num' }])
+      asm.num(52, '_52'); asm.sub('_cut')
+      asm.split('_scriptCode', '_tail'); asm.drop()
+
+      // 3. the state is its last W bytes; the successor is the rest plus `next`
+      asm.op('OP_SIZE', 0, [{ name: '_sl', kind: 'num' }])
+      asm.num(W, '_w'); asm.sub('_cut2')
+      asm.split('_body', 'state')
+      asm.pick('_body', '_b1'); asm.pick('next', '_n1'); asm.cat('_nextCode')
+
+      // 4. the output it must pay: value in, less the fee, then the new script
+      asm.pick('preimage', '_p2'); right(asm, 52, '_t52'); left(asm, 8, '_vin')
+      asm.data(Buffer.from([0]), '_z'); asm.cat('_vinp'); asm.bin2num('_v')
+      asm.num(f, '_fee'); asm.sub('_vout')
+      asm.num2bin(8, '_voutLE')
+      asm.roll('_nextCode'); asm.cat('_txout')
+      asm.hash256('_h')
+
+      // 5. against what the transaction committed to paying
+      asm.pick('preimage', '_p3'); right(asm, 40, '_t40'); left(asm, 32, '_committed')
+      asm.equalVerify()
+
+      asm.discard('_body'); asm.discard('preimage')
+      asm.roll('state'); asm.roll('next')
+    },
+    attacks: (honest, params, name) => {
+      if (name === 'next') {
+        const v = Buffer.from(honest.next)
+        const other = Buffer.from(v); other[0] ^= 0x01
+        return [{ label: 'a successor the spend does not pay to', value: other }]
+      }
+      return preimageAttacks(honest, params, name)
+    },
+    // The script this covenant lives in ends with its state, after a top-level
+    // OP_RETURN. The harness builds that shape rather than a convenient one,
+    // because the covenant reads the script it is actually deployed in.
+    tail: (params) => Buffer.concat([
+      Buffer.from([0x6a]),                                   // OP_RETURN
+      Buffer.from([W]),                                      // a W-byte push
+      params.state || Buffer.alloc(W)
+    ]),
+    cases: cases || [
+      { name: 'a counter stepping on', spend: { state: leBytes(41n, W), next: leBytes(42n, W) }, params: { state: leBytes(41n, W) } },
+      { name: 'the state left unchanged', spend: { state: leBytes(7n, W), next: leBytes(7n, W) }, params: { state: leBytes(7n, W) } },
+      { name: 'a state of all ones', spend: { state: Buffer.alloc(W, 0xff), next: leBytes(1n, W) }, params: { state: Buffer.alloc(W, 0xff) } }
+    ],
+    notes: [
+      'enforces the mechanics of succession, not which successor is legal — pipe the state into a rule',
+      'the state is fixed width: that is what keeps the offsets constant and the length prefix reusable'
+    ]
+  })
+}
+
+/**
+ * The spender's side: build the output the covenant will demand, put it on the
+ * transaction, and only then grind — because the preimage commits to it.
+ */
+const leBytes = (v, w) => { const b = Buffer.alloc(w); b.writeBigUInt64LE(BigInt(v)); return b }
+
+function recreateWitness ({ tx, lockingScript, satoshis, spend = {} }, W, fee) {
+  const code = lockingScript.toBuffer()
+  const next = spend.next || Buffer.alloc(W)
+  const successor = bsv.Script.fromBuffer(Buffer.concat([code.subarray(0, code.length - W), next]))
+
+  tx.outputs.length = 0
+  tx.addOutput(new bsv.Transaction.Output({ script: successor, satoshis: satoshis - fee }))
+  tx._outputAmount = undefined
+
+  const g = PushTx.grind(tx, 0, lockingScript, satoshis, { field: 'sequence' })
+  return { preimage: g.preimage, next }
+}
+
+module.exports = { locktime, hashOutputs, requireOutputs, transition, recreateWitness, leBytes, right, left, grindValue, SIGHASH_ALL_FORKID, FINAL, PushTx }

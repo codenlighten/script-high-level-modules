@@ -30,9 +30,15 @@ const WALLET = path.join(__dirname, '..', '.wallet.json')
 const LEDGER = path.join(__dirname, '..', 'deployments.json')
 const UTXOS = path.join(__dirname, '..', '.wallet.utxos.json')
 
-// BSV relay policy: 0.05 sat/byte is what miners have accepted for years. Fees
-// are rounded up, and a floor keeps a tiny transaction above the minimum.
-const SAT_PER_BYTE = 0.05
+// 100 sat/KB — the rate this wallet pays. Fees are rounded up, and a floor keeps
+// a tiny transaction above the minimum.
+//
+// The first eight deployments went out at half this and confirmed, but two
+// blocks after broadcast rather than one; whether that was the rate or ordinary
+// variance is not something one sample can say. Paying the going rate is cheaper
+// than finding out.
+const SAT_PER_KB = 100
+const SAT_PER_BYTE = SAT_PER_KB / 1000
 const MIN_FEE = 1
 
 function loadWallet () {
@@ -192,5 +198,5 @@ function buildUnlock ({ txid, vout, lockingScript, satoshis, unlock, shape = {},
 module.exports = {
   loadWallet, ledger, record, feeFor, verifyLocally, buildDeploy, buildUnlock,
   spendable, unconfirmed, noteSpend, utxoCache, outpoint,
-  SAT_PER_BYTE, WALLET, LEDGER, UTXOS, woc
+  SAT_PER_BYTE, SAT_PER_KB, WALLET, LEDGER, UTXOS, woc
 }

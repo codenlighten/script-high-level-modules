@@ -243,6 +243,32 @@ Compositions worth a name live in `src/recipes.js`. A composition written out
 twice will drift — one of these had already been hand-wired in an example and in
 a deployment target, with different names for the same value.
 
+## A module that reads its own script
+
+`tx.transition` is the one place a module's correctness depends on the shape of
+the locking script it is deployed in. It reads that script out of the BIP-143
+preimage — `scriptCode`, at offset 104 with exactly 52 bytes of tail after it —
+replaces one field, and requires the spend to pay an output carrying the result.
+The coin becomes its own successor.
+
+Two details in that are doing real work.
+
+**The state goes at the end, after `OP_RETURN`.** Post-Genesis a top-level
+`OP_RETURN` ends evaluation with the top stack item deciding, so trailing bytes
+are inert data rather than code. Being at the *end* makes the state a constant
+offset from the end of the preimage — where the front of the script is a varint
+whose own length depends on how long the script is, which is not known while the
+script is being written.
+
+**`scriptCode` carries its own length prefix**, which is exactly what a
+serialised output needs in front of its script. Swapping a fixed-width field does
+not change the length, so the prefix is reused untouched and the varint never has
+to be computed at all.
+
+A module with that requirement declares `tail`, and the harness builds the script
+it will actually be deployed in rather than a convenient stand-in. `pipe()`
+propagates it, because the chain is what gets deployed.
+
 ## The escape hatch
 
 `asm.op(name, pop, push)` emits any opcode in the release by name, with an

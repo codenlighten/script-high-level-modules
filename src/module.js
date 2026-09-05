@@ -54,6 +54,12 @@ function defineModule (spec) {
     // structure a range cannot describe: a signature, a Merkle proof, a padded
     // block. Without one, tools/fuzz.js says so rather than skipping quietly.
     fuzz: spec.fuzz || null,
+    // Bytes appended after everything else in the locking script. A covenant
+    // that reads its own script needs that script to have a particular shape —
+    // tx.transition's state lives after a top-level OP_RETURN, where it is inert
+    // data at a constant offset from the end — and the harness has to build the
+    // script it will actually be deployed in, not a convenient stand-in.
+    tail: spec.tail || null,
     requires: spec.requires || null,
     ensures: spec.ensures || null,
     emit: spec.emit,

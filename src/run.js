@@ -127,12 +127,15 @@ function evaluateSpend (lock, buildUnlock, { flags } = {}) {
  * the shape of that transaction — its locktime, its sequence, its outputs —
  * becomes part of the case.
  */
-function buildSpend (lock, { satoshis = SATOSHIS, nLockTime, sequence = 0xffffffff, outputs, payTo } = {}) {
+function buildSpend (lock, { satoshis = SATOSHIS, nLockTime, sequence = 0xffffffff, outputs, payTo, prevTxId, prevVout = 0 } = {}) {
   const lockingScript = lock.script ? lock.script() : lock
   const tx = new bsv.Transaction()
   tx.addInput(new bsv.Transaction.Input({
-    prevTxId: MOCK_PREVOUT,
-    outputIndex: 0,
+    // A covenant's successor is spent in turn, and each step commits to the
+    // outpoint it consumes — so a chain of them needs the real previous txid,
+    // not a stand-in.
+    prevTxId: prevTxId ? (Buffer.isBuffer(prevTxId) ? prevTxId : Buffer.from(prevTxId, 'hex')) : MOCK_PREVOUT,
+    outputIndex: prevVout,
     script: new bsv.Script(),
     sequenceNumber: sequence
   }), lockingScript, satoshis)

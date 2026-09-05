@@ -36,6 +36,7 @@ function writeLog (entries) {
     `| deploy | [\`${e.deploy}\`](https://whatsonchain.com/tx/${e.deploy}) |`,
     `| spend | [\`${e.spend}\`](https://whatsonchain.com/tx/${e.spend}) |`,
     ...(e.supersededBy ? [`| since corrected | ${e.supersededBy} |`] : []),
+    ...(e.steps ? e.steps.map((st) => `| step ${st.from} → ${st.to} | [\`${st.txid}\`](https://whatsonchain.com/tx/${st.txid}) |`) : []),
     ''
   ].join('\n'))
 
@@ -117,7 +118,9 @@ async function main () {
       const spendRaw = await woc.rawTx(e.spend)
       const spend = new bsv.Transaction(spendRaw)
       const spendMeta = await woc.tx(e.spend)
-      const refs = spend.inputs.some((v) => v.prevTxId.toString('hex') === e.deploy && v.outputIndex === 0)
+      // A sequence's last spend consumes the step before it, not the deployment.
+      const consumes = e.steps ? e.steps[e.steps.length - 2] && e.steps[e.steps.length - 2].txid : e.deploy
+      const refs = spend.inputs.some((v) => v.prevTxId.toString('hex') === (consumes || e.deploy) && v.outputIndex === 0)
       rows.push(['the spend exists and consumes it', refs, `${(spendRaw.length / 2).toLocaleString()} B, ${spendMeta.confirmations || 0} conf`])
       const unlockBytes = spend.inputs[0].script.toBuffer().length
       rows.push(['the unlocking script is present', unlockBytes > 0, `${unlockBytes.toLocaleString()} B`])

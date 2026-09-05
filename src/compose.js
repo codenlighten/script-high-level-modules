@@ -156,8 +156,12 @@ function pipe (name, parts, opts = {}) {
     return { ...o, name: k }
   })
 
-  // A chain is contextual if any link is: the witness comes from the spend.
+  // A chain is contextual if any link is: the witness comes from the spend. And
+  // if any link needs the script to have a particular shape — a covenant that
+  // reads its own bytes does — the whole chain needs it, because the chain is
+  // what gets deployed.
   const ctx = parts.find((p) => p.module.contextual)
+  const shaped = parts.find((p) => p.module.tail)
 
   return defineModule({
     name,
@@ -166,6 +170,7 @@ function pipe (name, parts, opts = {}) {
     outputs,
     contextual: !!ctx,
     witnessFor: ctx ? ((c) => ctx.module.witnessFor(c)) : null,
+    tail: shaped ? shaped.module.tail : null,
     // A hint works out an honest witness off chain from the module's own
     // inputs. In a chain, some of those inputs do not exist off chain — they are
     // produced at spend time by an earlier part — so a part whose inputs are not

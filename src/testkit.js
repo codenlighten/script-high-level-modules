@@ -80,7 +80,7 @@ function buildAccept (m, params) {
   for (let k = 0; k < m.outputs.length; k++) asm.drop()
   asm.data(SENTINEL, 'sentinel*')
   asm.equal('ok')
-  return asm.script()
+  return withTail(m, params, asm.script())
 }
 
 /**
@@ -134,7 +134,14 @@ function buildFor (m, params, expected) {
   }
   asm.data(SENTINEL, 'sentinel*')
   asm.equal('ok')
-  return asm.script()
+  return withTail(m, params, asm.script())
+}
+
+/** A module that must live in a particular shape of script says so. */
+function withTail (m, params, script) {
+  if (!m.tail) return script
+  const extra = typeof m.tail === 'function' ? m.tail(params) : m.tail
+  return extra ? new bsv.Script(Buffer.concat([script.toBuffer(), extra])) : script
 }
 
 function sameOutputs (a, b) {

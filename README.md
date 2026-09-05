@@ -36,8 +36,10 @@ node examples/oracle-lock.js     # a coin an oracle's ordinary secp256k1 key unl
 
 ## On chain
 
-Eight of these are deployed and spent on BSV mainnet, and the first five are
-**confirmed in block 965487**. A spend the network accepted is the only evidence
+Nine of these are deployed and spent on BSV mainnet, and the first five are
+**confirmed in block 965487**. One of them is not a single spend but a
+**sequence**: a coin that advanced its own counter 0 → 1 → 2 → 3, each
+transaction paying the output the next one consumed. A spend the network accepted is the only evidence
 that leaves no room for the harness to have been wrong — it means a node ran the
 locking script against the unlocking script and agreed, and a miner put it in a
 block.
@@ -50,6 +52,7 @@ block.
 | `sha256.block` | 49,240 B | [`4cbc7f96`](https://whatsonchain.com/tx/4cbc7f96da81f7877af29a944b522cbf79731c2542e113f4a41cae39b95c205a) → [`406026bd`](https://whatsonchain.com/tx/406026bde4cf02e1c63923b87d7f5859d20eb8bee74279cfbc835a0f049b6503) |
 | `rsa.verify ▸ tx.hashOutputs` | 1,386 B | [`186ff18e`](https://whatsonchain.com/tx/186ff18e5e480b9065794fc330a6ed5c4f695aae4f997403bd7c510ea77fd946) → [`8edf5581`](https://whatsonchain.com/tx/8edf55810ab7726e67807ccda04d0617daf237c1a1a158c5d89015c97f452320) |
 | `tx.locktime ▸ totp.verify` | 746 B | [`15dfa4c4`](https://whatsonchain.com/tx/15dfa4c4ea56ad73d9f48215a250a27a9662a26f044dc9583e7d4fe65ff1f6ee) → [`0d58f227`](https://whatsonchain.com/tx/0d58f2275205f67da6a140798cd5225b1de0d9eadf607bc54e125c5268b9a934) |
+| `tx.transition ▸ state.counter` | 470 B | [`eb58479a`](https://whatsonchain.com/tx/eb58479abf8ab19ad7baaff4ee8a3288ad2e7c3fafafaca3f989c7771d1acc50) → [`0b41407f`](https://whatsonchain.com/tx/0b41407f3d7dc2389ecb13ff7bde3f3b1fa96c5e3a70f8041413417623db174c) → [`1531805b`](https://whatsonchain.com/tx/1531805bfce61981cb73fcc60cf271cfd3f48149a1fa0d93d13c84c85e4440a7) → [`46674b29`](https://whatsonchain.com/tx/46674b294303cdc9df2bf2dde4d615515b8b5ef41c6f98ba239936720e041231) |
 | `vault` | 433 B | [`0b3055d5`](https://whatsonchain.com/tx/0b3055d52367223d1bc011afe5f8a3d866b319f3c1ed695c257ddf4e64f83e88) → [`8ffb6ecb`](https://whatsonchain.com/tx/8ffb6ecb8f251c8cdcdf683ea2da11d359d859674c48442f27f7f8a8aeb08b73) |
 
 `npm run verify:chain` re-derives each locking script from the code and compares
@@ -61,7 +64,8 @@ log records the script **as deployed** and says separately whether the code stil
 builds it, because a module that has since been corrected must build something
 else. See [mainnet.md](docs/mainnet.md).
 
-Total for all eight, at 0.05 sat/byte: about 14,600 satoshis.
+Total for all eight, at the 50 sat/KB they were sent at: about 14,600 satoshis.
+At the 100 sat/KB this wallet now pays, about 29,000.
 
 ## Documentation
 
@@ -109,7 +113,8 @@ src/modules/ec.js     secp256k1 point arithmetic and two scalar ladders
 src/modules/ecdsa.js  ECDSA verification over an arbitrary message
 src/modules/schnorr.js BIP-340 Schnorr, x-only keys
 src/modules/merkle.js membership in a committed tree
-src/modules/tx.js     reading the spending transaction: locktime, output binding
+src/modules/tx.js     reading the spending transaction: locktime, outputs, succession
+src/modules/state.js  rules about which successor is legal
 tools/                probes, self-tests, the cost report
 fixtures/             a throwaway RSA-2048 key, so the suite is deterministic
 ```
@@ -120,7 +125,7 @@ and are now era-derived and checked after every opcode (released in 9.7.0; see
 [limits.md](docs/limits.md)). They are skipped, with a note, on a library that
 predates it. Nothing else here depends on that fix.
 
-Thirty-eight modules, 214 cases, 586 forgery attempts, all green.
+Forty-two modules, 235 cases, 624 forgery attempts, all green.
 
 ## The three claims a module must earn
 

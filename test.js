@@ -17,6 +17,7 @@ const compose = require('./src/compose')
 const txmod = require('./src/modules/tx')
 const recipes = require('./src/recipes')
 const schnorr = require('./src/modules/schnorr')
+const stateMod = require('./src/modules/state')
 const rsaFixture = rsa.fixtureKey()
 const payee = bsv.PrivateKey.fromBuffer(Buffer.from('55'.repeat(32), 'hex')).toAddress()
 const elsewhereAddr = bsv.PrivateKey.fromBuffer(Buffer.from('66'.repeat(32), 'hex')).toAddress()
@@ -80,7 +81,10 @@ const { failures } = proveAll([
   [txmod.requireOutputs([recipes.instructedOutput(payee, 42)]), {}],
   [recipes.authorityPays(rsaFixture, { cases: recipes.authorityPaysCases(payee, 700, elsewhereAddr) }), {}],
   [schnorr.liftX, {}],
-  [schnorr.verifier([], { cases: schnorr.bip340Cases() }), {}]
+  [schnorr.verifier([], { cases: schnorr.bip340Cases() }), {}],
+  [txmod.transition({ stateWidth: 8, fee: 200 }), {}],
+  [stateMod.counter({ stateWidth: 8 }), {}],
+  [recipes.counterCoin({ from: 41n }), {}]
 ])
 
 process.exit(failures.length ? 1 : 0)
