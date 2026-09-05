@@ -2,7 +2,7 @@
 
 const bsv = require('@smartledger/bsv')
 const { Asm } = require('./asm')
-const { evaluate, countOps } = require('./run')
+const { evaluate, countOps, buildSpend, evaluatePrepared } = require('./run')
 const { pushNum, pushData, toNum } = require('./num')
 
 // Proving a module. Three questions, in order of how often they are skipped:
@@ -94,6 +94,101 @@ function moduleSize (m, params) {
   return { bytes: asm.script().toBuffer().length, ops: countOps(asm.script()) }
 }
 
+// ── MODULES THAT READ THEIR OWN SPENDING TRANSACTION ────────────────────────
+//
+// A module holding an OP_PUSH_TX preimage cannot be handed a stand-in: the
+// bytes have to be the genuine BIP-143 preimage of the very transaction being
+// verified. So the case describes the SHAPE of that transaction and the module
+// produces its own witness from it.
+//
+// That makes the build circular — the locking script contains the constant the
+// test compares against, the transaction commits to the locking script, and the
+// witness comes from the transaction. It is broken by building twice: once with
+// nothing asserted, to obtain a witness and learn what the module computes, and
+// again with that value asserted.
+//
+// The second pass is not a formality. If what the module computes CHANGES when
+// its own script bytes change, the two passes disagree, and the kit says so —
+// a module whose output depends on its own length is not a function of its
+// inputs, and no amount of testing would pin it.
+
+function buildFor (m, params, expected) {
+  const asm = new Asm()
+  asm.given([{ name: '_sentinel', kind: 'bytes', width: SENTINEL.length }, ...m.inputs])
+  m.emit(asm, params)
+  if (expected === null) {
+    for (let k = 0; k < m.outputs.length; k++) asm.drop()
+  } else {
+    for (let k = m.outputs.length - 1; k >= 0; k--) {
+      const o = m.outputs[k]
+      if (asm.top().name !== o.name) throw new Error(`${m.name}: emit() promised '${o.name}' on top, found '${asm.top().name}' (${asm.toString()})`)
+      const want = expected[o.name]
+      if (want === undefined) throw new Error(`${m.name}: model() produced no '${o.name}'`)
+      if (o.kind === 'bytes') { asm.data(Buffer.isBuffer(want) ? want : Buffer.from(want), 'want'); asm.equalVerify() } else { asm.num(want, 'want'); asm.numEqualVerify() }
+    }
+  }
+  if (asm.stack.length !== 1 || asm.stack[0].name !== '_sentinel') {
+    throw new Error(`${m.name}: left ${asm.stack.length} value(s) on the stack — expected only the caller's [${asm.toString()}]`)
+  }
+  asm.data(SENTINEL, 'sentinel*')
+  asm.equal('ok')
+  return asm.script()
+}
+
+function sameOutputs (a, b) {
+  const ks = new Set([...Object.keys(a), ...Object.keys(b)])
+  for (const k of ks) if (!sameValue(a[k], b[k])) return false
+  return true
+}
+
+/**
+ * One pass: lock, transaction, witness, and what the module says it computed.
+ *
+ * Producing the witness generally MUTATES the transaction — an OP_PUSH_TX
+ * preimage has to be ground, and grinding varies a field. So the shape the case
+ * asked for is checked afterwards. Without that, a case pinning a final
+ * sequence and a witness generator that grinds the sequence quietly agree to
+ * test something else: the case reads as a refusal that never happened.
+ */
+function onePass (m, params, spend, expected) {
+  const lock = buildFor(m, params, expected)
+  const prepared = buildSpend(lock, spend)
+  const values = m.witnessFor({ ...prepared, spend })
+
+  const actual = { nLockTime: prepared.tx.nLockTime, sequence: prepared.tx.inputs[0].sequenceNumber }
+  for (const field of ['nLockTime', 'sequence']) {
+    if (spend[field] !== undefined && spend[field] !== actual[field]) {
+      throw new Error(`${m.name}: the case asked for ${field}=${spend[field]} and witnessFor() left ${actual[field]} — ` +
+        'the witness generator changed the transaction the case was describing, so the case tests something else')
+    }
+  }
+  return { lock, prepared, values, computed: expected === null ? m.model(values, params) : expected }
+}
+
+function buildContextual (m, params, c) {
+  const spend = c.spend || {}
+  const probe = onePass(m, params, spend, null)          // nothing asserted
+  const real = onePass(m, params, spend, probe.computed) // the value asserted
+  const after = m.model(real.values, params)
+  if (!sameOutputs(probe.computed, after)) {
+    throw new Error(`${m.name}: what it computes changed when its own script did (${JSON.stringify(probe.computed, bigints)} then ${JSON.stringify(after, bigints)}) — the output is not a function of the inputs`)
+  }
+  return { ...real, expected: probe.computed, spend }
+}
+
+const bigints = (k, v) => (typeof v === 'bigint' ? v.toString() : v)
+
+/** Push the module's values as an unlocking script, sentinel first. */
+function unlockFor (m, values) {
+  const s = new bsv.Script()
+  push(s, SENTINEL, 'bytes')
+  for (const i of m.inputs) {
+    if (!(i.name in values)) throw new Error(`${m.name}: no value for '${i.name}'`)
+    push(s, values[i.name], i.kind)
+  }
+  return s
+}
+
 /** The honest inputs for a case: what the case gives, plus the module's hints. */
 function complete (m, params, caseValues) {
   const values = { ...caseValues }
@@ -151,6 +246,29 @@ function proveModule (m, { params = {}, quiet = false } = {}) {
     const p = { ...params, ...(c.params || {}) }
     const label = c.name || JSON.stringify(c.inputs)
 
+    if (m.contextual) {
+      let r, own
+      try {
+        if (c.refuse) {
+          const probe = onePass(m, p, c.spend || {}, null)
+          own = moduleSize(m, p)
+          r = evaluatePrepared(probe.prepared, () => unlockFor(m, probe.values))
+        } else {
+          const built = buildContextual(m, p, c)
+          own = moduleSize(m, p)
+          r = evaluatePrepared(built.prepared, () => unlockFor(m, built.values))
+        }
+      } catch (err) { r = { ok: false, error: err.message } }
+      const passed = c.refuse ? !r.ok : r.ok
+      report.cases.push({ label, ok: passed, bytes: own && own.bytes, ops: own && own.ops })
+      if (passed) say(`  ok    ${label.padEnd(40)} ${c.refuse ? 'refused — ' + c.refuse : `${own.bytes} B, ${own.ops} ops`}`)
+      else {
+        report.failures.push(`${m.name} / ${label}: ${c.refuse ? 'ACCEPTED what it must refuse — ' + c.refuse : r.error}`)
+        say(`  FAIL  ${label} — ${c.refuse ? 'ACCEPTED' : r.error}`)
+      }
+      continue
+    }
+
     // A case marked `refuse` asserts the other half of the module: an input it
     // must not accept, whatever the spender supplies. The honest hint is not
     // available for such a case (there IS no honest witness), so the case
@@ -191,8 +309,16 @@ function proveModule (m, { params = {}, quiet = false } = {}) {
   for (const c of m.cases) {
     if (c.skipAttacks || c.refuse) continue
     const p = { ...params, ...(c.params || {}) }
-    let honest
-    try { honest = complete(m, p, c.inputs) } catch { continue }
+    let honest, contextual = null
+    if (m.contextual) {
+      try {
+        const probe = onePass(m, p, c.spend || {}, null)
+        honest = probe.values
+        contextual = probe.prepared
+      } catch { continue }
+    } else {
+      try { honest = complete(m, p, c.inputs) } catch { continue }
+    }
     // A module with hundreds of witnessed inputs (a 256-step ladder has one per
     // step) cannot be attacked exhaustively in a test suite. Sampling is
     // honest as long as it is SAID: the report carries how many of how many.
@@ -214,10 +340,11 @@ function proveModule (m, { params = {}, quiet = false } = {}) {
         const forged = { ...honest, [w.name]: a.value }
         let r
         try {
-          const unlock = new bsv.Script()
-          push(unlock, SENTINEL, 'bytes')
-          for (const i of m.inputs) push(unlock, forged[i.name], i.kind)
-          r = evaluate(unlock, buildAccept(m, p))
+          if (contextual) {
+            r = evaluatePrepared(contextual, () => unlockFor(m, forged))
+          } else {
+            r = evaluate(unlockFor(m, forged), buildAccept(m, p))
+          }
         } catch (err) {
           r = { ok: false, error: err.message }
         }
@@ -279,4 +406,4 @@ function proveAll (entries) {
   return { reports, failures }
 }
 
-module.exports = { sameValue, sampleWitnesses, build, buildAccept, moduleSize, proveModule, proveAll, complete, SENTINEL, defaultAttacks }
+module.exports = { sameValue, sampleWitnesses, buildContextual, onePass, unlockFor, build, buildAccept, moduleSize, proveModule, proveAll, complete, SENTINEL, defaultAttacks }

@@ -47,6 +47,10 @@ function defineModule (spec) {
     cases: spec.cases || [],
     attacks: spec.attacks || null,
     notes: spec.notes || [],
+    // A module that reads its own spending transaction cannot be handed a
+    // stand-in witness: it produces one from the spend itself.
+    contextual: !!spec.contextual,
+    witnessFor: spec.witnessFor || null,
     maxWitnessAttacks: spec.maxWitnessAttacks || null,
     alwaysAttack: spec.alwaysAttack || null
   }
@@ -54,6 +58,12 @@ function defineModule (spec) {
   if (typeof m.model !== 'function') throw new Error(`${m.name}: needs a model()`)
   if (typeof m.emit !== 'function') throw new Error(`${m.name}: needs an emit()`)
   if (!m.cases.length) throw new Error(`${m.name}: needs cases — an untested module is not a module`)
+  if (m.contextual && typeof m.witnessFor !== 'function') {
+    throw new Error(`${m.name}: reads its own spending transaction, so it needs witnessFor(context) to produce the witness from it`)
+  }
+  if (!m.contextual && m.witnessFor) {
+    throw new Error(`${m.name}: has witnessFor() but is not marked contextual — the kit would never call it`)
+  }
   const witnessed = m.inputs.filter((i) => i.witness)
   if (witnessed.length && !m.hint) {
     throw new Error(`${m.name}: declares witnessed input(s) ${witnessed.map((w) => w.name).join(', ')} but no hint() to produce the honest value`)

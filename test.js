@@ -12,6 +12,7 @@ const ec = require('./src/modules/ec')
 const ecdsa = require('./src/modules/ecdsa')
 const merkle = require('./src/modules/merkle')
 const compose = require('./src/compose')
+const txmod = require('./src/modules/tx')
 const crypto = require('crypto')
 
 const leaves = Array.from({ length: 8 }, (_, i) => crypto.createHash('sha256').update('leaf' + i).digest())
@@ -65,7 +66,8 @@ const { failures } = proveAll([
   [ec.mulG(32), {}],
   [ecdsa.verifier([ecdsa.signCase('22'.repeat(32), 'the price of gold is 4211 on 2026-09-05')]), {}],
   [merkle.verify(mtree.root, { depth: 3, leaves }), {}],
-  [vault, {}]
+  [vault, {}],
+  [txmod.locktime, {}]
 ])
 
 process.exit(failures.length ? 1 : 0)

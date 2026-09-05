@@ -123,7 +123,7 @@ const verify = defineModule({
   }))),
   notes: [
     'single use: the secret is published in the unlocking script of the spend',
-    'time must be bound to nLockTime by the surrounding predicate, or it is the spender’s choice'
+    'time must be bound to nLockTime by the surrounding predicate, or it is the spender’s choice — `tx.locktime` is that binding, and examples/totp-timelock.js wires the two together'
   ]
 })
 

@@ -109,6 +109,58 @@ function evaluateSpend (lock, buildUnlock, { flags } = {}) {
   }
 }
 
+/**
+ * Build the transaction that spends `lock`, shaped by the caller.
+ *
+ * A module that reads its own spending transaction cannot be tested against a
+ * stand-in: the preimage it is handed has to be the genuine BIP-143 preimage of
+ * the very transaction being verified, or the OP_PUSH_TX check refuses it. So
+ * the shape of that transaction — its locktime, its sequence, its outputs —
+ * becomes part of the case.
+ */
+function buildSpend (lock, { satoshis = SATOSHIS, nLockTime, sequence = 0xffffffff, outputs, payTo } = {}) {
+  const lockingScript = lock.script ? lock.script() : lock
+  const tx = new bsv.Transaction()
+  tx.addInput(new bsv.Transaction.Input({
+    prevTxId: MOCK_PREVOUT,
+    outputIndex: 0,
+    script: new bsv.Script(),
+    sequenceNumber: sequence
+  }), lockingScript, satoshis)
+  if (outputs) outputs.forEach((o) => tx.addOutput(o))
+  else tx.to(payTo || bsv.PrivateKey.fromRandom().toAddress(), satoshis)
+  if (nLockTime !== undefined) tx.nLockTime = nLockTime
+  return { tx, lockingScript, satoshis }
+}
+
+/**
+ * Evaluate a prepared spend. `unlock` receives the transaction so it can push
+ * the preimage, sign, or anything else that depends on the spend itself.
+ */
+function evaluatePrepared ({ tx, lockingScript, satoshis }, unlock, { flags } = {}) {
+  const sighashType = bsv.crypto.Signature.SIGHASH_ALL | bsv.crypto.Signature.SIGHASH_FORKID
+  const sign = (privateKey) => bsv.Transaction.Sighash
+    .sign(tx, privateKey, sighashType, 0, lockingScript, new BN(satoshis))
+    .toTxFormat()
+
+  const unlockingScript = unlock({ tx, sign, lockingScript, satoshis })
+  tx.inputs[0].setScript(unlockingScript)
+
+  const interp = new Interpreter()
+  let ok, thrown = null
+  try {
+    ok = interp.verify(unlockingScript, lockingScript, tx, 0,
+      flags !== undefined ? flags : policyFlags(), new BN(satoshis))
+  } catch (err) { ok = false; thrown = err.message }
+  return {
+    ok,
+    error: ok ? null : (thrown || interp.errstr || 'unknown'),
+    tx,
+    lockSize: lockingScript.toBuffer().length,
+    unlockSize: unlockingScript.toBuffer().length
+  }
+}
+
 /** Static opcode count — data pushes excluded, matching the consensus counter. */
 function countOps (script) {
   let n = 0
@@ -116,4 +168,4 @@ function countOps (script) {
   return n
 }
 
-module.exports = { evaluate, evaluateSpend, policyFlags, countOps, mockTx, MOCK_PREVOUT, SATOSHIS }
+module.exports = { evaluate, evaluateSpend, buildSpend, evaluatePrepared, policyFlags, countOps, mockTx, MOCK_PREVOUT, SATOSHIS }

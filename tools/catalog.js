@@ -14,7 +14,8 @@ function row (d) {
   if (d.factory) return `| \`${d.name}(…)\` | *built per key or width* | | | |`
   const io = (xs) => xs.length ? xs.map((x) => `\`${x.name}\``).join(' ') : '—'
   const w = d.witnessed.length ? d.witnessed.map((x) => `\`${x}\``).join(' ') : '—'
-  return `| \`${d.name}\` | ${io(d.inputs)} | ${io(d.outputs)} | ${w} | ${d.cases} |`
+  const name = d.contextual ? `\`${d.name}\` †` : `\`${d.name}\``
+  return `| ${name} | ${io(d.inputs)} | ${io(d.outputs)} | ${w} | ${d.cases} |`
 }
 
 const entries = lib.catalog()
@@ -39,6 +40,9 @@ and the unlocking script that spends it. Today that is ${predicates.join(', ')},
 
 A module **with** outputs is a component — \`ec.add\` returns a point, \`hmac.sha256\`
 returns a MAC — and something above it still has to say what makes the coin move.
+
+† reads its own spending transaction, so its witness is produced from that
+transaction rather than supplied by the caller.
 
 The **supplied by the spender** column is the one to read first. Those inputs are
 witnesses: values the module verifies rather than computes, because checking is

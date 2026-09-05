@@ -3,7 +3,7 @@
 const bsv = require('@smartledger/bsv')
 const { Asm } = require('./asm')
 const { pushNum, pushData } = require('./num')
-const { evaluateSpend } = require('./run')
+const { evaluateSpend, buildSpend, evaluatePrepared } = require('./run')
 
 // TURNING A MODULE INTO A COIN.
 //
@@ -103,9 +103,25 @@ function predicate (m, params = {}, { owner } = {}) {
     lockingScript,
     unlock,
     size: lockingScript.toBuffer().length,
-    /** Spend it against the real interpreter — the check before broadcasting. */
-    test (values, ownerKey) {
-      return evaluateSpend(lockingScript, ({ sign }) => unlock(values, () => sign(ownerKey)))
+
+    /**
+     * Spend it against the real interpreter — the check before broadcasting.
+     *
+     * `spend` shapes the transaction: its locktime, its sequence, its outputs.
+     * It matters for a module that reads its own spending transaction, because
+     * such a module produces its own witness FROM that transaction — the
+     * preimage has to be the genuine one — and the shape is what it will read.
+     */
+    test (values, ownerKey, spend = {}) {
+      if (!m.contextual) {
+        return evaluateSpend(lockingScript, ({ sign }) => unlock(values, () => sign(ownerKey)))
+      }
+      const prepared = buildSpend(lockingScript, spend)
+      // The witness is produced from the transaction, and producing it mutates
+      // the transaction — so it happens before anything signs.
+      const produced = m.witnessFor({ ...prepared, spend })
+      const full = { ...produced, ...values }
+      return evaluatePrepared(prepared, ({ sign }) => unlock(full, () => sign(ownerKey)))
     }
   }
 }

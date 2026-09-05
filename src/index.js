@@ -18,6 +18,7 @@ const totp = require('./modules/totp')
 const ec = require('./modules/ec')
 const ecdsa = require('./modules/ecdsa')
 const merkle = require('./modules/merkle')
+const txmod = require('./modules/tx')
 
 const { defineModule, apply, instantiate } = require('./module')
 const { Asm } = require('./asm')
@@ -54,7 +55,8 @@ const modules = {
   'hmac.sha1': hmac.sha1,
   'totp.verify': totp.verify,
   'ec.add': ec.add,
-  'ec.double': ec.double
+  'ec.double': ec.double,
+  'tx.locktime': txmod.locktime
 }
 
 /** The ones that are built for a particular key, width or scalar set. */
@@ -75,6 +77,7 @@ function describe (m) {
     outputs: m.outputs.map((o) => ({ name: o.name, kind: o.kind })),
     witnessed: m.witnessed.map((w) => w.name),
     isPredicate: m.outputs.length === 0,
+    contextual: !!m.contextual,
     cases: m.cases.length,
     notes: m.notes
   }
@@ -88,7 +91,7 @@ function catalog () {
 }
 
 module.exports = {
-  int, bytes, u32, sha256, rsa, hmac, totp, ec, ecdsa, merkle,
+  int, bytes, u32, sha256, rsa, hmac, totp, ec, ecdsa, merkle, tx: txmod,
   modules, factories, catalog, describe,
   defineModule, apply, instantiate, predicate, compose, Asm,
   evaluate, evaluateSpend, policyFlags,

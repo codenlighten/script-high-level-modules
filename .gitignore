@@ -1,3 +1,7 @@
 node_modules/
 package-lock.json
 *.log
+
+# Real keys. Never committed.
+.wallet.json
+.deployments.json

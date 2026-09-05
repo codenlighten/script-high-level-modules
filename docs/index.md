@@ -49,6 +49,7 @@ of what there is to know about lowering an algorithm into Script.
 | `src/modules/ec.js` | secp256k1 point addition, doubling, and two ladders |
 | `src/modules/ecdsa.js` | ECDSA verification over an arbitrary message |
 | `src/modules/merkle.js` | membership in a committed tree |
+| `src/modules/tx.js` | reading the spending transaction, via OP_PUSH_TX |
 
 ## The apparatus
 
@@ -78,10 +79,11 @@ npm run cost            # regenerate cost.md from the code
 npm run catalog         # regenerate catalog.md from the registry
 ```
 
-Four examples, all spending against the real interpreter:
+Five examples, all spending against the real interpreter:
 
 ```bash
 node examples/totp-lock.js     # the whole path in five lines, via predicate()
+node examples/totp-timelock.js # a code bound to the time the coin is locked to
 node examples/vault-lock.js    # three conditions, one coin, via all()
 node examples/rsa-lock.js      # a coin an RSA authority unlocks
 node examples/oracle-lock.js   # a coin an oracle's ordinary secp256k1 key unlocks

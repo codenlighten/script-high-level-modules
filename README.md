@@ -75,6 +75,7 @@ src/modules/totp.js   RFC 6238 authenticator codes
 src/modules/ec.js     secp256k1 point arithmetic and two scalar ladders
 src/modules/ecdsa.js  ECDSA verification over an arbitrary message
 src/modules/merkle.js membership in a committed tree
+src/modules/tx.js     reading the spending transaction, via OP_PUSH_TX
 tools/                probes, self-tests, the cost report
 fixtures/             a throwaway RSA-2048 key, so the suite is deterministic
 ```
@@ -85,7 +86,7 @@ and are now era-derived and checked after every opcode (released in 9.7.0; see
 [limits.md](docs/limits.md)). They are skipped, with a note, on a library that
 predates it. Nothing else here depends on that fix.
 
-Thirty-two modules, 179 cases, 528 forgery attempts, all green — in twenty seconds.
+Thirty-three modules, 183 cases, 537 forgery attempts, all green.
 
 ## The three claims a module must earn
 
@@ -98,6 +99,16 @@ a second implementation of the same misreading.
 **It leaves the stack as promised.** A sentinel sits beneath every module during
 its suite. A module that leaks a scratch value fails, because the next module
 would read the wrong depth.
+
+**It says what it cannot do.** `totp.verify` proves a code matches a time; it
+cannot prove *which* time, because the time is a number the spender pushed. That
+was written into the module as a note, and then closed: `tx.locktime` proves the
+pushed preimage is this transaction — OP_PUSH_TX — reads nLockTime out of it, and
+refuses a final sequence, without which consensus ignores nLockTime entirely.
+Wired together (`examples/totp-timelock.js`) the code must match the time the
+transaction is locked to. What that buys, exactly: the spend cannot be *mined*
+before that time. Not that the time is now. A module that overstates itself is
+worse than one that does less.
 
 **It refuses everything else.** Some operations are far cheaper to *check* than
 to *compute* — modular inverse is one multiplication to verify and the extended
@@ -136,6 +147,7 @@ Full table in [docs/cost.md](docs/cost.md), generated from the code.
 | `rsa.verify` | RSA-2048, PKCS#1 v1.5 | 955 |
 | `hmac.sha256` | a 32-byte key | 175 |
 | `totp.verify` | RFC 6238, 6 digits | 269 |
+| `tx.locktime` | OP_PUSH_TX + nLockTime | 410 |
 | `merkle.verify` | depth 32 (4 billion leaves) | 905 |
 | `ec.add` | secp256k1, witnessed inverse | 139 |
 | `u32.add` | one addition mod 2³² | 58 |

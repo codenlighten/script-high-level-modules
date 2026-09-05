@@ -289,6 +289,18 @@ class Asm {
     return this
   }
 
+  /**
+   * Run a helper that appends to the raw bsv.Script, with a declared stack
+   * effect. The escape hatch for code that is not written against this
+   * assembler — the library's OP_PUSH_TX core, for instance.
+   */
+  clause (fn, pop = 0, push = []) {
+    fn(this.s)
+    for (let i = 0; i < pop; i++) this.stack.pop()
+    for (const v of push) this.stack.push(norm(v))
+    return this
+  }
+
   /** Any opcode in the release, with an explicit stack effect. The escape hatch. */
   op (name, pop = 0, push = []) {
     this.s.add(require('./opcodes').opcode(name))

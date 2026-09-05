@@ -12,6 +12,8 @@
 const { defineModule } = require('../src/module')
 const { proveModule } = require('../src/testkit')
 const { mod, invmod } = require('../src/bigint')
+const PushTx = require('@smartledger/bsv/lib/covenant/pushtx')
+const { right, left } = require('../src/modules/tx')
 
 const N = 11n
 
@@ -76,12 +78,44 @@ const unattackable = defineModule({
   cases: [{ name: 'any', inputs: { a: 3n } }]
 })
 
+// The contextual one. A module that reads its own spending transaction has a
+// circularity to break — the script contains the value being asserted, the
+// transaction commits to the script, and the witness comes from the
+// transaction. The kit breaks it by building twice, and the second build is
+// what catches a module whose answer moves when its own bytes do.
+//
+// Here the spend pins the SEQUENCE, so the preimage grind has nothing to vary
+// but nLockTime — and nLockTime is what the module reports. Its output is
+// therefore a function of its own length, which no amount of testing could pin.
+const selfDependent = defineModule({
+  name: 'broken.selfdependent',
+  doc: 'reports a field that its own script length moves',
+  inputs: [{ name: 'preimage', kind: 'bytes', witness: true }],
+  outputs: [{ name: 'locktime', kind: 'num' }],
+  contextual: true,
+  witnessFor: ({ tx, lockingScript, satoshis }) => ({
+    preimage: PushTx.grind(tx, 0, lockingScript, satoshis, { field: 'nLockTime' }).preimage
+  }),
+  hint: () => ({}),
+  model: ({ preimage }) => ({ locktime: BigInt(preimage.readUInt32LE(preimage.length - 8)) }),
+  emit: (asm) => {
+    asm.pick('preimage', '_pi')
+    asm.clause((sc) => PushTx.pushTxCore(sc), 1, [{ name: '_ok', kind: 'num' }])
+    asm.verify()
+    asm.roll('preimage'); right(asm, 8, '_t8'); left(asm, 4, '_lt')
+    asm.data(Buffer.from([0]), '_sign'); asm.cat('_ltp'); asm.bin2num('locktime')
+  },
+  attacks: () => [{ label: 'a byte changed', value: Buffer.alloc(4) }],
+  cases: [{ name: 'sequence pinned, so the grind moves the locktime', spend: { sequence: 0xfffffffe } }]
+})
+
 const expected = [
   [offByOne, 'a wrong value'],
   [leaky, 'a leaked stack slot'],
   [confused, 'bytes read as a number'],
   [congruent, 'a non-canonical witness'],
-  [unattackable, 'a witness it cannot attack']
+  [unattackable, 'a witness it cannot attack'],
+  [selfDependent, 'an answer its own script moves']
 ]
 
 let missed = 0

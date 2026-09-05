@@ -27,6 +27,7 @@
 | `totp.verify` | `key` `time` `code` | — | `key` `code` | 10 |
 | `ec.add` | `x1` `y1` `x2` `y2` `invdx` | `x3` `y3` | `invdx` | 6 |
 | `ec.double` | `x1` `y1` `inv2y` | `x3` `y3` | `inv2y` | 4 |
+| `tx.locktime` † | `preimage` | `locktime` | `preimage` | 4 |
 | `rsa.verify(…)` | *built per key or width* | | | |
 | `ec.mul(…)` | *built per key or width* | | | |
 | `ec.mulG(…)` | *built per key or width* | | | |
@@ -40,6 +41,9 @@ and the unlocking script that spends it. Today that is `totp.verify`, plus
 
 A module **with** outputs is a component — `ec.add` returns a point, `hmac.sha256`
 returns a MAC — and something above it still has to say what makes the coin move.
+
+† reads its own spending transaction, so its witness is produced from that
+transaction rather than supplied by the caller.
 
 The **supplied by the spender** column is the one to read first. Those inputs are
 witnesses: values the module verifies rather than computes, because checking is

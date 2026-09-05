@@ -24,6 +24,7 @@
 | `totp.verify` | RFC 6238, 6 digits | 269 | 65 |
 | `merkle.verify` | depth 3 (8 leaves) | 122 | 69 |
 | `merkle.verify` | depth 32 (4 billion leaves) | 905 | 678 |
+| `tx.locktime` | OP_PUSH_TX + nLockTime | 410 | 217 |
 | `ec.add` | secp256k1, witnessed inverse | 139 | 49 |
 | `ec.double` | secp256k1, witnessed inverse | 139 | 50 |
 | `ec.mulG` | k·G, 256-bit, base fixed | 39,833 | 15,553 |
