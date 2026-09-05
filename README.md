@@ -134,8 +134,8 @@ Full table in [docs/cost.md](docs/cost.md), generated from the code.
 | `ec.add` | secp256k1, witnessed inverse | 144 |
 | `u32.add` | one addition mod 2³² | 58 |
 | `sha256.block` | one block, no `OP_SHA256` | 50,765 |
-| `ec.mul` | k·P, 256-bit, both runtime | 52,083 |
-| `ecdsa.verify` | arbitrary message, secp256k1 | 98,986 |
+| `ec.mul` | k·P, 256-bit, both runtime | 49,513 |
+| `ecdsa.verify` | arbitrary message, secp256k1 | 93,824 |
 
 RSA verification — a scheme Bitcoin has no opcode for — costs under a kilobyte,
 because every operation it needs is one Script opcode at any width. SHA-256
@@ -152,8 +152,8 @@ number to compute *before* lowering a new algorithm, not after.
 transaction's sighash — and cannot be asked whether an oracle signed a price or a
 manifest. That gap is why the BSV ecosystem reaches for Rabin signatures, which
 verify with `OP_MUL` and `OP_MOD` in a few hundred bytes. The gap is in the
-opcode, not in Script: 98,986 bytes buys an oracle signing with the secp256k1
-key it already has, over any message at all. Whether that is worth 99 KB is an
+opcode, not in Script: 93,824 bytes buys an oracle signing with the secp256k1
+key it already has, over any message at all. Whether that is worth 94 KB is an
 engineering choice, not a technical limit — but it is now a choice.
 
 ## Using one

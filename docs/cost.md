@@ -26,10 +26,10 @@
 | `merkle.verify` | depth 32 (4 billion leaves) | 905 | 678 |
 | `ec.add` | secp256k1, witnessed inverse | 144 | 54 |
 | `ec.double` | secp256k1, witnessed inverse | 143 | 54 |
-| `ec.mulG` | k·G, 256-bit, base fixed | 46,515 | 19,665 |
-| `ec.mul` | k·P, 256-bit, both runtime | 52,083 | 35,993 |
-| `ecdsa.verify` | arbitrary message, secp256k1 | 98,986 | 55,815 |
-| `sha256.block` | one block, no OP_SHA256 | 50,765 | 33,374 |
+| `ec.mulG` | k·G, 256-bit, base fixed | 43,945 | 18,380 |
+| `ec.mul` | k·P, 256-bit, both runtime | 49,513 | 34,708 |
+| `ecdsa.verify` | arbitrary message, secp256k1 | 93,824 | 53,228 |
+| `sha256.block` | one block, no OP_SHA256 | 49,181 | 31,790 |
 
 ## What to read out of this
 
@@ -37,13 +37,13 @@
 opcode for, at a size nobody needs to think about — because every operation RSA
 needs is one Script opcode at any width.
 
-**`sha256.block` is 50,765 bytes** for one block: **50,765×** what
+**`sha256.block` is 49,181 bytes** for one block: **49,181×** what
 `OP_SHA256` costs for the same answer. Same technique, four orders of magnitude
 apart. The difference is only whether the primitive you need is already an
 opcode — and 32-bit modular addition is not, so every one of them pays for two
 endianness conversions.
 
-**`ecdsa.verify` is 98,986 bytes**, the most expensive thing here
+**`ecdsa.verify` is 93,824 bytes**, the most expensive thing here
 by an order of magnitude, and the one worth justifying before use. It buys
 something nothing else here does: an oracle signs with the secp256k1 key it
 already has, over any message at all. Rabin verification is a few hundred bytes
@@ -52,6 +52,6 @@ for this purpose. That is the trade, and it is an engineering choice rather than
 a technical limit.
 
 At 1 sat/KB, that most expensive module is about
-99 satoshis of fee. Size stopped being the
+94 satoshis of fee. Size stopped being the
 question at Genesis; what it costs, and whether a cheaper construction buys the
 same thing, is the question that replaced it.

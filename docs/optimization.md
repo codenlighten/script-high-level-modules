@@ -9,9 +9,9 @@ and know immediately whether it still refuses what it used to.
 | --- | ---: | ---: | ---: |
 | `ec.add` | 191 | 144 | −25% |
 | `ec.double` | 191 | 143 | −25% |
-| `ec.mul` (256-bit) | 116,127 | 52,083 | −55% |
-| `ec.mulG` (256-bit) | 80,216 | 46,515 | −42% |
-| `ecdsa.verify` | 196,778 | 98,986 | −50% |
+| `ec.mul` (256-bit) | 116,127 | 49,513 | −57% |
+| `ec.mulG` (256-bit) | 80,216 | 43,945 | −45% |
+| `ecdsa.verify` | 196,778 | 93,824 | −52% |
 
 ## 1. Reduce only where it must be canonical
 
@@ -121,6 +121,22 @@ either zero or the mask, and `OP_IF` takes any non-zero value for true. Nearly:
 a lone `0x80` is negative zero to `CastToBool` and reads FALSE, so bit 7 of every
 byte would be silently skipped. Comparing against the mask costs two bytes and is
 the same shape for all eight.
+
+## 7. Arrange the stack so the calling convention is already satisfied
+
+`apply()` moves the caller's values into the callee's declared order. When they
+are already there, it should emit nothing — and it now checks, instead of
+rolling five arguments into the positions they were in.
+
+That makes the arrangement worth designing. In the ladder's conditional
+addition, the accumulator is already the top pair; pushing the point above it and
+rotating the inverse back on top leaves exactly `[accx, accy, x, y, inv]`, which
+is the callee's argument order, so the call itself is free. Ten bytes a step,
+512 steps in an ECDSA verification.
+
+This is the payoff for tracking values by name rather than by depth. The
+assembler knows what is where, so it can tell when the answer is "already
+correct" — which a hand-written `OP_ROLL` cannot.
 
 ## What was tried and rejected
 

@@ -103,15 +103,34 @@ function apply (asm, m, params, args, outs) {
   if (args.length !== m.inputs.length) {
     throw new Error(`${m.name}: takes ${m.inputs.length} input(s) (${m.inputs.map((i) => i.name).join(', ')}), given ${args.length}`)
   }
-  args.forEach((a, k) => {
-    asm.roll(a)
-    const want = m.inputs[k]
-    const have = asm.top()
-    if (have.kind !== want.kind) {
-      throw new Error(`${m.name}: input '${want.name}' is ${want.kind}, but '${a}' is ${have.kind}`)
-    }
-    asm.rename(want.name, want.kind, have.width)
-  })
+  // If the arguments are already the top of the stack, in order, the calling
+  // convention is satisfied and there is nothing to emit — renaming the slots is
+  // enough. Rolling them anyway costs two bytes each, and a ladder makes this
+  // call 512 times.
+  const top = asm.stack.slice(-args.length).map((v) => v.name)
+  const inPlace = args.length > 0 && top.length === args.length &&
+    top.every((n, k) => n === args[k])
+
+  if (inPlace) {
+    args.forEach((a, k) => {
+      const slot = asm.stack[asm.stack.length - args.length + k]
+      const want = m.inputs[k]
+      if (slot.kind !== want.kind) {
+        throw new Error(`${m.name}: input '${want.name}' is ${want.kind}, but '${a}' is ${slot.kind}`)
+      }
+      slot.name = want.name
+    })
+  } else {
+    args.forEach((a, k) => {
+      asm.roll(a)
+      const want = m.inputs[k]
+      const have = asm.top()
+      if (have.kind !== want.kind) {
+        throw new Error(`${m.name}: input '${want.name}' is ${want.kind}, but '${a}' is ${have.kind}`)
+      }
+      asm.rename(want.name, want.kind, have.width)
+    })
+  }
   m.emit(asm, params)
   if (outs) {
     if (outs.length !== m.outputs.length) {

@@ -412,6 +412,9 @@ function emitLadder (asm, { prefix, bits, p = P, point }, scalar, out) {
     // top few slots, and nothing beneath either path moves.
     asm.roll(AX); asm.roll(AY); asm.roll('_ai'); asm.roll('_b')
     asm.beginIf()
+    // The accumulator is already the top pair. Putting the point above it and
+    // then rotating the inverse back on top leaves exactly [accx, accy, x, y,
+    // inv] — the callee's argument order — so apply() emits nothing at all.
     if (fixedBase) { asm.num(D.x, '_ax'); asm.num(D.y, '_ay') } else { asm.pick(DX, '_ax'); asm.pick(DY, '_ay') }
     asm.roll('_ai')
     apply(asm, add, pp, [AX, AY, '_ax', '_ay', '_ai'], ['_nx', '_ny'])
@@ -425,6 +428,7 @@ function emitLadder (asm, { prefix, bits, p = P, point }, scalar, out) {
     if (i < bits - 1) {
       if (fixedBase) { D = ecJs.double(D) } else {
         takeInverse(asm, TAPE, '_di')
+        asm.roll(DX); asm.roll(DY); asm.roll('_di')
         apply(asm, double, pp, [DX, DY, '_di'], ['_ndx', '_ndy'])
         asm.relabel('_ndx', DX); asm.relabel('_ndy', DY)
       }
