@@ -15,9 +15,18 @@ const { mod, powmod, invmod, bitsOf } = require('../bigint')
 // for each reduction. For RSA-sized work that one decision is the difference
 // between a 400-byte script and a 4,000-byte one.
 
-/** Push the modulus as a local and return the name it lives under. */
+/**
+ * Put the modulus where the next opcode can read it.
+ *
+ * `n` is either a BigInt — pushed as a literal — or the NAME of a value already
+ * live on the stack, which is copied instead. The second form is what makes
+ * composition affordable: a 256-bit modulus is a 33-byte push, and a curve
+ * operation needs it six times. Pushed once by the caller and picked, those six
+ * references cost two bytes each.
+ */
 function withModulus (asm, n, name = '_n') {
-  asm.num(n, name)
+  if (typeof n === 'string') asm.pick(n, name)
+  else asm.num(n, name)
   return name
 }
 
@@ -29,7 +38,7 @@ const modadd = defineModule({
   model: ({ a, b }, { n }) => ({ r: mod(a + b, n) }),
   emit: (asm, { n }) => {
     asm.add('sum')                       // a + b ≥ 0 given the precondition
-    asm.num(n, '_n')
+    withModulus(asm, n)
     asm.mod('r')
   },
   notes: ['sound only for inputs already reduced into [0, n) — the caller owes that'],
@@ -49,9 +58,9 @@ const modsub = defineModule({
   model: ({ a, b }, { n }) => ({ r: mod(a - b, n) }),
   emit: (asm, { n }) => {
     asm.sub('diff')                      // may be negative: OP_MOD would keep the sign
-    asm.num(n, '_n')
+    withModulus(asm, n)
     asm.add('shifted')                   // + n lands it in (0, 2n)
-    asm.num(n, '_n2')
+    withModulus(asm, n, '_n2')
     asm.mod('r')
   },
   cases: [
@@ -70,7 +79,7 @@ const modmul = defineModule({
   model: ({ a, b }, { n }) => ({ r: mod(a * b, n) }),
   emit: (asm, { n }) => {
     asm.mul('prod')
-    asm.num(n, '_n')
+    withModulus(asm, n)
     asm.mod('r')
   },
   cases: [
@@ -140,10 +149,10 @@ const modinv = defineModule({
   emit: (asm, { n }) => {
     // canonicity: 0 ≤ inv < n. Drop either bound and the witness is no longer unique.
     asm.pick('inv', '_i1'); asm.num(0, '_zero'); asm.geVerify()
-    asm.pick('inv', '_i2'); asm.num(n, '_n1'); asm.ltVerify()
+    asm.pick('inv', '_i2'); withModulus(asm, n, '_n1'); asm.ltVerify()
     // soundness: a · inv ≡ 1 (mod n)
     asm.pick('a', '_a'); asm.pick('inv', '_i3'); asm.mul('_prod')
-    asm.num(n, '_n2'); asm.mod('_res')
+    withModulus(asm, n, '_n2'); asm.mod('_res')
     asm.num(1, '_one'); asm.numEqualVerify()
     asm.roll('inv'); asm.rename('r')
     asm.nip()                                     // drop a
@@ -151,7 +160,12 @@ const modinv = defineModule({
   cases: [
     { name: '3⁻¹ mod 11', inputs: { a: 3n }, params: { n: 11n } },
     { name: '1⁻¹ mod 11', inputs: { a: 1n }, params: { n: 11n } },
-    { name: '256-bit prime field', inputs: { a: (1n << 200n) + 7n }, params: { n: (1n << 256n) - 189n } }
+    { name: '256-bit prime field', inputs: { a: (1n << 200n) + 7n }, params: { n: (1n << 256n) - 189n } },
+    // Zero has no inverse, and no witness makes it look as though it does.
+    { name: '0⁻¹ mod 11', refuse: 'zero is not invertible', inputs: { a: 0n, inv: 1n }, params: { n: 11n } },
+    { name: '0⁻¹, witness 0', refuse: 'zero is not invertible', inputs: { a: 0n, inv: 0n }, params: { n: 11n } },
+    // Nor does a value sharing a factor with a composite modulus.
+    { name: '3⁻¹ mod 9', refuse: '3 and 9 are not coprime', inputs: { a: 3n, inv: 3n }, params: { n: 9n } }
   ]
 })
 

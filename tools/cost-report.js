@@ -14,6 +14,7 @@ const sha256 = require('../src/modules/sha256')
 const rsaMod = require('../src/modules/rsa')
 const hmac = require('../src/modules/hmac')
 const totp = require('../src/modules/totp')
+const ec = require('../src/modules/ec')
 
 const key = rsaMod.fixtureKey()
 const P256 = (1n << 256n) - 189n
@@ -39,6 +40,8 @@ const ROWS = [
   ['hmac.sha256', hmac.sha256, { keyLen: 32 }, 'a 32-byte key'],
   ['hmac.sha1', hmac.sha1, { keyLen: 20 }, 'a 20-byte key'],
   ['totp.verify', totp.verify, { keyLen: 20, digits: 6 }, 'RFC 6238, 6 digits'],
+  ['ec.add', ec.add, {}, 'secp256k1, witnessed inverse'],
+  ['ec.double', ec.double, {}, 'secp256k1, witnessed inverse'],
   ['sha256.block', sha256.block, {}, 'one block, no OP_SHA256']
 ]
 

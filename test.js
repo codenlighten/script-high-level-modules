@@ -8,6 +8,7 @@ const u32 = require('./src/modules/u32')
 const sha256 = require('./src/modules/sha256')
 const hmac = require('./src/modules/hmac')
 const totp = require('./src/modules/totp')
+const ec = require('./src/modules/ec')
 
 const { failures } = proveAll([
   [int.modadd, {}],
@@ -32,7 +33,9 @@ const { failures } = proveAll([
   [hmac.sha256, {}],
   [hmac.sha1, {}],
   [totp.verify, {}],
-  [totp.committed(Buffer.from('12345678901234567890')), {}]
+  [totp.committed(Buffer.from('12345678901234567890')), {}],
+  [ec.add, {}],
+  [ec.double, {}]
 ])
 
 process.exit(failures.length ? 1 : 0)

@@ -145,6 +145,27 @@ function proveModule (m, { params = {}, quiet = false } = {}) {
   for (const c of m.cases) {
     const p = { ...params, ...(c.params || {}) }
     const label = c.name || JSON.stringify(c.inputs)
+
+    // A case marked `refuse` asserts the other half of the module: an input it
+    // must not accept, whatever the spender supplies. The honest hint is not
+    // available for such a case (there IS no honest witness), so the case
+    // supplies the witness values itself.
+    if (c.refuse) {
+      let rr
+      try {
+        const unlock = new bsv.Script()
+        push(unlock, SENTINEL, 'bytes')
+        for (const i of m.inputs) push(unlock, c.inputs[i.name], i.kind)
+        rr = evaluate(unlock, buildAccept(m, p))
+      } catch (err) { rr = { ok: false, error: err.message } }
+      report.cases.push({ label, ok: !rr.ok, refuse: true })
+      if (rr.ok) {
+        report.failures.push(`${m.name} / ${label}: ACCEPTED what it must refuse — ${c.refuse}`)
+        say(`  BROKEN  ${label} was ACCEPTED (${c.refuse})`)
+      } else say(`  ok    ${label.padEnd(40)} refused — ${c.refuse}`)
+      continue
+    }
+
     let built, r
     try {
       built = build(m, p, complete(m, p, c.inputs))
@@ -163,7 +184,7 @@ function proveModule (m, { params = {}, quiet = false } = {}) {
 
   // ── refusal: every witnessed input, attacked ──────────────────────────────
   for (const c of m.cases) {
-    if (c.skipAttacks) continue
+    if (c.skipAttacks || c.refuse) continue
     const p = { ...params, ...(c.params || {}) }
     let honest
     try { honest = complete(m, p, c.inputs) } catch { continue }

@@ -102,7 +102,7 @@ Full table in [docs/cost.md](docs/cost.md), generated from the code.
 | `int.modmul` | 2048-bit modulus | 262 |
 | `int.modexp` | e = 65537, 2048-bit | 332 |
 | `rsa.verify` | RSA-2048, PKCS#1 v1.5 | 955 |
-| `hmac.sha256` | a 32-byte key | 173 |
+| `hmac.sha256` | a 32-byte key | 175 |
 | `totp.verify` | RFC 6238, 6 digits | 269 |
 | `u32.add` | one addition mod 2³² | 58 |
 | `sha256.block` | one block, no `OP_SHA256` | 50,765 |

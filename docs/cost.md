@@ -22,6 +22,8 @@
 | `hmac.sha256` | a 32-byte key | 175 | 12 |
 | `hmac.sha1` | a 20-byte key | 187 | 12 |
 | `totp.verify` | RFC 6238, 6 digits | 269 | 65 |
+| `ec.add` | secp256k1, witnessed inverse | 191 | 118 |
+| `ec.double` | secp256k1, witnessed inverse | 191 | 118 |
 | `sha256.block` | one block, no OP_SHA256 | 50,765 | 33,374 |
 
 Two numbers worth reading together. `rsa.verify` is **955 bytes**: a
