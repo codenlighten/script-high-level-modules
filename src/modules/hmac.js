@@ -68,6 +68,10 @@ function macModule (algo) {
     outputs: [{ name: 'mac', kind: 'bytes', width: A.width }],
     model,
     emit: (asm, params) => emitHmac(asm, { ...params, algo }, 'key', 'msg', 'mac'),
+    fuzz: (rnd, params) => ({
+      key: Buffer.from(Array.from({ length: params.keyLen }, () => Math.floor(rnd() * 256))),
+      msg: Buffer.from(Array.from({ length: Math.floor(rnd() * 120) }, () => Math.floor(rnd() * 256)))
+    }),
     cases: Object.entries(KEYS).flatMap(([kn, key]) => MSGS.map((msg, i) => ({
       name: `${kn} key (${key.length} B) / message ${i}`,
       inputs: { key, msg },

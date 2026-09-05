@@ -133,6 +133,17 @@ function verify (root, { depth, algo = 'hash256', leaves } = {}) {
       }
       return out
     },
+    // A tree of a random size and a random leaf in it — which is how the
+    // odd-count rule, the one every independent implementation gets wrong, gets
+    // exercised without anybody choosing to exercise it.
+    fuzz: (rnd) => {
+      const n = 1 + Math.floor(rnd() * 12)
+      const ls = Array.from({ length: n }, (_, i) => require('crypto').createHash('sha256').update('fuzz' + i + rnd()).digest())
+      const tt = tree(ls, algo)
+      const i = Math.floor(rnd() * n)
+      const { path, dirs } = tt.proof(i)
+      return { inputs: { leaf: ls[i], path, dirs }, params: { root: tt.root, depth: dirs.length } }
+    },
     cases: t
       ? leaves.map((leaf, i) => {
         const { path, dirs } = t.proof(i)

@@ -113,6 +113,12 @@ const block = defineModule({
   // itself. The case supplies the block; the model hashes the message it padded.
   model: ({ blk }, { msg }) => ({ digest: crypto.createHash('sha256').update(msg).digest() }),
   emit: (asm, params) => emitCompress(asm, params),
+  // A random message of a length one block holds, padded — the block itself
+  // cannot be random, because the padding is what makes it a message.
+  fuzz: (rnd) => {
+    const msg = Buffer.from(Array.from({ length: Math.floor(rnd() * 56) }, () => Math.floor(rnd() * 256)))
+    return { inputs: { blk: pad(msg) }, params: { msg } }
+  },
   cases: [
     { name: 'the empty string', inputs: { blk: pad(Buffer.alloc(0)) }, params: { msg: Buffer.alloc(0) } },
     { name: '“abc”', inputs: { blk: pad(Buffer.from('abc')) }, params: { msg: Buffer.from('abc') } }

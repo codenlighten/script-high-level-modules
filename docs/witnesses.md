@@ -215,8 +215,16 @@ value outside the range anybody had written a case for.
 `npm run fuzz` generates inputs instead of choosing them, and asks the two
 questions the suite otherwise asks only where a case exists — does the Script
 compute what the model says, and does the module's own `ensures` hold of what
-the model returned. Eighteen modules, forty rounds each, sampled toward the edges
-of the domain where the bugs were found.
+the model returned. Twenty-three modules, sampled toward the edges of the domain
+where the bugs were found.
+
+Some inputs have structure no range can describe — a signature, a Merkle proof,
+a padded block — and those modules generate their own. `merkle.verify` builds a
+tree of a random size between one and twelve leaves and proves a random leaf in
+it, which is how the odd-count rule that every independent implementation gets
+wrong is exercised without anybody choosing to exercise it. `schnorr.verify`
+signs a random message with a real key. `sha256.block` pads a random message and
+is checked, as always, against OpenSSL's digest.
 
 **The domains come from `requires`.** That is the second dividend of stating
 them: the declaration that decides where a bound is emitted also says what the

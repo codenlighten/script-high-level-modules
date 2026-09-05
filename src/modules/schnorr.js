@@ -219,6 +219,10 @@ function verifier (messages = ['script-modules', '', 'a longer message than one 
     }
     return ec.ladderAttacks(honest, name, P)
   },
+    fuzz: (rnd) => {
+      const msg = Buffer.from(Array.from({ length: Math.floor(rnd() * 40) }, () => Math.floor(rnd() * 256)))
+      return { inputs: { msg, pubkey, sig: schnorrJs.sign(secret, msg) } }
+    },
     cases: cases || messages.map((m) => {
       const msg = Buffer.from(m)
       return {

@@ -50,6 +50,10 @@ function defineModule (spec) {
     outputs: (spec.outputs || []).map(normSlot),
     model: spec.model,
     prologue: spec.prologue || null,
+    // How to generate a random, valid input — for modules whose inputs have
+    // structure a range cannot describe: a signature, a Merkle proof, a padded
+    // block. Without one, tools/fuzz.js says so rather than skipping quietly.
+    fuzz: spec.fuzz || null,
     requires: spec.requires || null,
     ensures: spec.ensures || null,
     emit: spec.emit,

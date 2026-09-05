@@ -161,7 +161,7 @@ the kit attacks every witnessed input on two properties:
   is malleable.
 
 And the cases are the ones somebody thought of, which is where all four of those
-bugs lived. `npm run fuzz` generates inputs instead — eighteen modules, sampled
+bugs lived. `npm run fuzz` generates inputs instead — twenty-three modules, sampled
 toward the edges — and checks both that the Script agrees with the model and that
 the module's own promise about its output holds. The domains come from
 `requires`, so the declaration that places the bounds also says what the module
