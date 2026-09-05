@@ -180,7 +180,42 @@ targets.vault = (() => {
   }
 })()
 
-// ── 6. A payment the authority directs, not merely permits ──────────────────
+// ── 6. BIP-340 Schnorr over an arbitrary message ────────────────────────────
+targets.schnorr = (() => {
+  const schnorrJs = require('../src/schnorr')
+  const schnorrMod = require('../src/modules/schnorr')
+  const secret = 0xb7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfefn
+  const pubkey = schnorrJs.publicKey(secret)
+  const statement = Buffer.from('script-modules: BIP-340, canonical by construction')
+  const sig = schnorrJs.sign(secret, statement)
+  const py = schnorrJs.liftX(schnorrJs.toInt(pubkey)).y
+  const s = schnorrJs.toInt(sig.subarray(32))
+  const e = schnorrJs.challenge(sig.subarray(0, 32), pubkey, statement)
+  const w = require('../src/modules/ec').shamirWitness('sh', 256, s, ecJs.mod(-e, ecJs.N), { x: schnorrJs.toInt(pubkey), y: py }, {})
+
+  const verifier = schnorrMod.verifier(['deployed'])
+  const asm = new Asm()
+  asm.given([
+    { name: 'msg', kind: 'bytes' }, { name: 'sig', kind: 'bytes', width: 64 },
+    { name: 'py' }, { name: 'shtape', kind: 'bytes' },
+    { name: 'ecdsaSig', kind: 'bytes' }, { name: 'pubkey2', kind: 'bytes' }
+  ])
+  ownedBy(asm)
+  asm.data(pubkey, 'pubkey')
+  apply(asm, verifier, {}, ['msg', 'pubkey', 'sig', 'py', 'shtape'], [])
+  asm.num(1, 'true')
+
+  return {
+    name: 'schnorr.verify',
+    claim: 'a BIP-340 Schnorr signature over an arbitrary message, checked against the BIP\'s own vectors',
+    lock: asm.script(),
+    unlock: ({ sign }) => new bsv.Script()
+      .add(pushData(statement)).add(pushData(sig)).add(pushNum(py)).add(pushData(w.shtape))
+      .add(sign(owner)).add(owner.publicKey.toBuffer())
+  }
+})()
+
+// ── 7. A payment the authority directs, not merely permits ──────────────────
 targets.authority = (() => {
   const key = rsaMod.fixtureKey()
   const wallet = require('../src/onchain').loadWallet()

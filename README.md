@@ -36,16 +36,19 @@ node examples/oracle-lock.js     # a coin an oracle's ordinary secp256k1 key unl
 
 ## On chain
 
-Five of these are deployed and spent on BSV mainnet. A spend the network
-accepted is the only evidence that leaves no room for the harness to have been
-wrong — it means a node ran the locking script against the unlocking script and
-agreed.
+Eight of these are deployed and spent on BSV mainnet, and the first five are
+**confirmed in block 965487**. A spend the network accepted is the only evidence
+that leaves no room for the harness to have been wrong — it means a node ran the
+locking script against the unlocking script and agreed, and a miner put it in a
+block.
 
 | module | locking script | deploy → spend |
 | --- | ---: | --- |
 | `rsa.verify` | 981 B | [`37c0c7a7`](https://whatsonchain.com/tx/37c0c7a7109054820e9951f484bf16f9838630e1a642d976147a5282f76d6b7c) → [`4b716dae`](https://whatsonchain.com/tx/4b716dae581fee37692d7820d12e15b67c2260eb0fe68bb35468f9f883bfdacc) |
-| `ecdsa.verify` | 59,247 B | [`2e283079`](https://whatsonchain.com/tx/2e2830799509ba4f7dd4cd56f9c88d80dda5ad0b2bd23083c3725e7546b08d46) → [`3d4e284f`](https://whatsonchain.com/tx/3d4e284f9bb7e6d2b6d1b8070c90752e4ee32dacd36c9186d52b929509559467) |
+| `ecdsa.verify` | 59,297 B | [`fe4184c0`](https://whatsonchain.com/tx/fe4184c05bbd3d41a0ea5641afc571c46fac7dac35577b9887a783081b382576) → [`1a8f52d1`](https://whatsonchain.com/tx/1a8f52d14c0e6a060f20714e75058a6a67e343034e2e8b3e8d3f30381bb4fbef) |
+| `schnorr.verify` | 59,721 B | [`28d106a6`](https://whatsonchain.com/tx/28d106a6cff81c70b8507fa0cc2352ca00965adb86281d209edd2022b4e21c6e) → [`4a2bafc9`](https://whatsonchain.com/tx/4a2bafc98fd0789204c20f2be992c1264852399a57c7b20dc05d0a4a3a55d0cb) |
 | `sha256.block` | 49,240 B | [`4cbc7f96`](https://whatsonchain.com/tx/4cbc7f96da81f7877af29a944b522cbf79731c2542e113f4a41cae39b95c205a) → [`406026bd`](https://whatsonchain.com/tx/406026bde4cf02e1c63923b87d7f5859d20eb8bee74279cfbc835a0f049b6503) |
+| `rsa.verify ▸ tx.hashOutputs` | 1,386 B | [`186ff18e`](https://whatsonchain.com/tx/186ff18e5e480b9065794fc330a6ed5c4f695aae4f997403bd7c510ea77fd946) → [`8edf5581`](https://whatsonchain.com/tx/8edf55810ab7726e67807ccda04d0617daf237c1a1a158c5d89015c97f452320) |
 | `tx.locktime ▸ totp.verify` | 746 B | [`15dfa4c4`](https://whatsonchain.com/tx/15dfa4c4ea56ad73d9f48215a250a27a9662a26f044dc9583e7d4fe65ff1f6ee) → [`0d58f227`](https://whatsonchain.com/tx/0d58f2275205f67da6a140798cd5225b1de0d9eadf607bc54e125c5268b9a934) |
 | `vault` | 433 B | [`0b3055d5`](https://whatsonchain.com/tx/0b3055d52367223d1bc011afe5f8a3d866b319f3c1ed695c257ddf4e64f83e88) → [`8ffb6ecb`](https://whatsonchain.com/tx/8ffb6ecb8f251c8cdcdf683ea2da11d359d859674c48442f27f7f8a8aeb08b73) |
 
@@ -53,7 +56,12 @@ agreed.
 it byte for byte against what is in the output — so it goes red if the modules
 drift from what was deployed. See [mainnet.md](docs/mainnet.md).
 
-Total cost of the five, at 0.05 sat/byte: about 6,600 satoshis.
+An earlier `ecdsa.verify` and `rsa.verify` are also on chain and superseded — the
+log records the script **as deployed** and says separately whether the code still
+builds it, because a module that has since been corrected must build something
+else. See [mainnet.md](docs/mainnet.md).
+
+Total for all eight, at 0.05 sat/byte: about 14,600 satoshis.
 
 ## Documentation
 

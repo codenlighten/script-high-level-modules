@@ -50,6 +50,7 @@ an RSA-2048 PKCS#1 v1.5 signature, made by OpenSSL, verified by Bitcoin Script
 | locking script | 981 bytes |
 | deploy | [`37c0c7a7109054820e9951f484bf16f9838630e1a642d976147a5282f76d6b7c`](https://whatsonchain.com/tx/37c0c7a7109054820e9951f484bf16f9838630e1a642d976147a5282f76d6b7c) |
 | spend | [`4b716dae581fee37692d7820d12e15b67c2260eb0fe68bb35468f9f883bfdacc`](https://whatsonchain.com/tx/4b716dae581fee37692d7820d12e15b67c2260eb0fe68bb35468f9f883bfdacc) |
+| since corrected | deployed before the range check became one OP_WITHIN that also records the bound, so int.modexp discharges from it |
 
 ### tx.locktime ▸ totp.verify
 
@@ -70,7 +71,7 @@ a secp256k1 ECDSA signature over an arbitrary message — no OP_CHECKSIG involve
 | locking script | 59,247 bytes |
 | deploy | [`2e2830799509ba4f7dd4cd56f9c88d80dda5ad0b2bd23083c3725e7546b08d46`](https://whatsonchain.com/tx/2e2830799509ba4f7dd4cd56f9c88d80dda5ad0b2bd23083c3725e7546b08d46) |
 | spend | [`3d4e284f9bb7e6d2b6d1b8070c90752e4ee32dacd36c9186d52b929509559467`](https://whatsonchain.com/tx/3d4e284f9bb7e6d2b6d1b8070c90752e4ee32dacd36c9186d52b929509559467) |
-| since corrected | deployed before the public key coordinates were bounded to [0, p) |
+| since corrected | deployed before the public key coordinates were bounded to [0, p); redeployed below |
 
 ### sha256.block
 
@@ -81,6 +82,36 @@ SHA-256 computed from OP_AND, OP_XOR, OP_LSHIFT and OP_ADD — the opcode unused
 | locking script | 49,240 bytes |
 | deploy | [`4cbc7f96da81f7877af29a944b522cbf79731c2542e113f4a41cae39b95c205a`](https://whatsonchain.com/tx/4cbc7f96da81f7877af29a944b522cbf79731c2542e113f4a41cae39b95c205a) |
 | spend | [`406026bde4cf02e1c63923b87d7f5859d20eb8bee74279cfbc835a0f049b6503`](https://whatsonchain.com/tx/406026bde4cf02e1c63923b87d7f5859d20eb8bee74279cfbc835a0f049b6503) |
+
+### schnorr.verify
+
+a BIP-340 Schnorr signature over an arbitrary message, checked against the BIP's own vectors
+
+| | |
+| --- | --- |
+| locking script | 59,721 bytes |
+| deploy | [`28d106a6cff81c70b8507fa0cc2352ca00965adb86281d209edd2022b4e21c6e`](https://whatsonchain.com/tx/28d106a6cff81c70b8507fa0cc2352ca00965adb86281d209edd2022b4e21c6e) |
+| spend | [`4a2bafc98fd0789204c20f2be992c1264852399a57c7b20dc05d0a4a3a55d0cb`](https://whatsonchain.com/tx/4a2bafc98fd0789204c20f2be992c1264852399a57c7b20dc05d0a4a3a55d0cb) |
+
+### rsa.verify ▸ tx.hashOutputs
+
+the authority names the destination in what it signs, and the chain pays whoever it named
+
+| | |
+| --- | --- |
+| locking script | 1,386 bytes |
+| deploy | [`186ff18e5e480b9065794fc330a6ed5c4f695aae4f997403bd7c510ea77fd946`](https://whatsonchain.com/tx/186ff18e5e480b9065794fc330a6ed5c4f695aae4f997403bd7c510ea77fd946) |
+| spend | [`8edf55810ab7726e67807ccda04d0617daf237c1a1a158c5d89015c97f452320`](https://whatsonchain.com/tx/8edf55810ab7726e67807ccda04d0617daf237c1a1a158c5d89015c97f452320) |
+
+### ecdsa.verify
+
+a secp256k1 ECDSA signature over an arbitrary message — no OP_CHECKSIG involved
+
+| | |
+| --- | --- |
+| locking script | 59,297 bytes |
+| deploy | [`fe4184c05bbd3d41a0ea5641afc571c46fac7dac35577b9887a783081b382576`](https://whatsonchain.com/tx/fe4184c05bbd3d41a0ea5641afc571c46fac7dac35577b9887a783081b382576) |
+| spend | [`1a8f52d14c0e6a060f20714e75058a6a67e343034e2e8b3e8d3f30381bb4fbef`](https://whatsonchain.com/tx/1a8f52d14c0e6a060f20714e75058a6a67e343034e2e8b3e8d3f30381bb4fbef) |
 
 ## What this does and does not show
 
