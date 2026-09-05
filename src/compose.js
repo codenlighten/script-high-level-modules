@@ -90,6 +90,167 @@ function all (name, parts, opts = {}) {
   })
 }
 
+// ── PIPE: one module's output is the next one's input ───────────────────────
+//
+// `all()` composes predicates that each stand alone — every part must hold, and
+// none of them talks to another. The other shape is a chain: `tx.locktime`
+// produces the transaction's locktime and `totp.verify` consumes it as the time
+// its code must match. Neither is a conjunction; the second cannot run without
+// the first.
+//
+// That was written by hand twice before this existed, in an example and in a
+// deployment target, which is the usual sign that it should not have been
+// written by hand at all. The two copies had already drifted in their naming.
+//
+// The wiring is a small linker. Walk the parts in order keeping track of what
+// has been produced; a part's input is either taken from something an earlier
+// part produced, or it becomes an input of the composed module. Whatever is
+// still unconsumed at the end is the composed module's output — so a chain that
+// consumes everything is a predicate, and `predicate()` will take it.
+
+/**
+ * @param name  what to call the result
+ * @param parts [{ module, params, as }] — `as` renames a part's outputs so a
+ *              later part can name them, e.g. `{ locktime: 'time' }`
+ * @param opts  { doc, cases, notes, prefix }
+ */
+function pipe (name, parts, opts = {}) {
+  const produced = new Map()          // name -> the part that produced it
+  const consumed = new Set()
+  const inputs = []
+  const wiring = []
+
+  parts.forEach((part, i) => {
+    const where = `${name}: part ${i} (${part.module.name})`
+    const args = part.module.inputs.map((slot) => {
+      if (produced.has(slot.name)) {
+        if (consumed.has(slot.name)) {
+          throw new Error(`${where} wants '${slot.name}', which an earlier part produced and another part already consumed — a piped value has exactly one reader`)
+        }
+        consumed.add(slot.name)
+        return slot.name
+      }
+      // not produced upstream, so the composition asks for it
+      const outer = inputs.some((x) => x.name === slot.name) ? `${part.module.name.split('.')[0]}_${slot.name}` : slot.name
+      if (inputs.some((x) => x.name === outer)) throw new Error(`${where}: two parts both want '${slot.name}' from the caller; give one an explicit prefix`)
+      inputs.push({ ...slot, name: outer })
+      return outer
+    })
+
+    const outs = part.module.outputs.map((o) => {
+      const renamed = (part.as && part.as[o.name]) || o.name
+      if (produced.has(renamed) && !consumed.has(renamed)) {
+        throw new Error(`${where} produces '${renamed}', which is already live and unread`)
+      }
+      produced.set(renamed, i)
+      return renamed
+    })
+
+    wiring.push({ part, args, outs })
+  })
+
+  const leftover = [...produced.keys()].filter((k) => !consumed.has(k))
+  const outputs = leftover.map((k) => {
+    const w = wiring.find((x) => x.outs.includes(k))
+    const o = w.part.module.outputs[w.outs.indexOf(k)]
+    return { ...o, name: k }
+  })
+
+  // A chain is contextual if any link is: the witness comes from the spend.
+  const ctx = parts.find((p) => p.module.contextual)
+
+  return defineModule({
+    name,
+    doc: opts.doc || parts.map((p) => p.module.name).join(' ▸ '),
+    inputs,
+    outputs,
+    contextual: !!ctx,
+    witnessFor: ctx ? ((c) => ctx.module.witnessFor(c)) : null,
+    // A hint works out an honest witness off chain from the module's own
+    // inputs. In a chain, some of those inputs do not exist off chain — they are
+    // produced at spend time by an earlier part — so a part whose inputs are not
+    // all available is SKIPPED rather than called with an undefined. Its witness
+    // has to come from the case, which is the honest position: nothing off chain
+    // knows what the transaction will say.
+    hint: (values, params) => {
+      const out = {}
+      for (const { part, args } of wiring) {
+        if (!part.module.hint) continue
+        const merged = { ...values, ...out }
+        const local = {}
+        let ready = true
+        part.module.inputs.forEach((slot, k) => {
+          if (!(args[k] in merged)) { ready = false; return }
+          local[slot.name] = merged[args[k]]
+        })
+        if (!ready) continue
+        const hinted = part.module.hint(local, { ...part.params, ...params })
+        for (const [k, v] of Object.entries(hinted)) {
+          const idx = part.module.inputs.findIndex((s) => s.name === k)
+          const outer = idx >= 0 ? args[idx] : k
+          if (!(outer in merged)) out[outer] = v
+        }
+      }
+      return out
+    },
+    model: opts.model || (() => ({})),
+    emit: (asm, params) => {
+      for (const { part, args, outs } of wiring) {
+        apply(asm, part.module, { ...part.params, ...params }, args, outs)
+      }
+    },
+    // A part's own forgeries are the best ones — the previous window's code, a
+    // residue of the same class — but they are computed from that part's
+    // inputs, and in a chain some of those only exist at spend time. When they
+    // are not all available the composition falls back to near-misses of the
+    // value itself. That is a weaker attack, not an absent one: the kit's rule
+    // that an unattackable witness is UNPROVEN still holds, and still bites.
+    attacks: (honest, params, fullName) => {
+      for (const { part, args } of wiring) {
+        const idx = args.indexOf(fullName)
+        if (idx < 0) continue
+        const local = {}
+        let ready = true
+        part.module.inputs.forEach((slot, k) => {
+          if (!(args[k] in honest)) ready = false
+          local[slot.name] = honest[args[k]]
+        })
+        if (part.module.attacks && ready) {
+          const list = part.module.attacks(local, { ...part.params, ...params }, part.module.inputs[idx].name)
+          if (list) return list.map((a) => ({ ...a, label: `${part.module.name}: ${a.label}` }))
+        }
+        return nearMisses(honest[fullName], `${part.module.name}: ${fullName}`)
+      }
+      return null
+    },
+    cases: opts.cases || [],
+    notes: [
+      'composed by pipe(): each part reads what the one before it produced',
+      ...(opts.notes || [])
+    ]
+  })
+}
+
+/** Generic forgeries of a value, for when a part's own generator cannot run. */
+function nearMisses (v, label) {
+  if (typeof v === 'bigint') {
+    return [
+      { label: `${label} off by one`, value: v + 1n },
+      { label: `${label} off by one the other way`, value: v - 1n },
+      { label: `${label} zeroed`, value: 0n }
+    ]
+  }
+  if (Buffer.isBuffer(v) && v.length) {
+    const flipped = Buffer.from(v); flipped[0] ^= 0x01
+    return [
+      { label: `${label}: first byte changed`, value: flipped },
+      { label: `${label}: truncated`, value: v.subarray(0, v.length - 1) },
+      { label: `${label}: a byte appended`, value: Buffer.concat([v, Buffer.from([0])]) }
+    ]
+  }
+  return null
+}
+
 /** The inputs one part of a composition contributes, for building a case. */
 function forPart (prefix, values) {
   const out = {}
@@ -97,4 +258,4 @@ function forPart (prefix, values) {
   return out
 }
 
-module.exports = { all, forPart }
+module.exports = { all, pipe, forPart, nearMisses }

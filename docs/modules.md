@@ -137,6 +137,43 @@ only way to find that is to put the composed thing in front of the interpreter.
 `all()` refuses a part that returns a value, and refuses to build without cases,
 for the same reason `defineModule` does.
 
+## Chaining
+
+`all()` composes predicates that each stand alone. The other shape is a chain,
+where one module's output is the next one's input — `tx.locktime` produces the
+transaction's locktime and `totp.verify` consumes it as the time its code must
+match. That is `compose.pipe()`:
+
+```js
+compose.pipe('tx.locktime ▸ totp.verify', [
+  { module: tx.locktime, as: { locktime: 'time' } },
+  { module: totp.verify, params: { keyLen: 20, digits: 6, keyCommitment } }
+], { cases: [...] })
+```
+
+It is a small linker. Walking the parts in order it keeps track of what has been
+produced; a part's input is either taken from something an earlier part produced
+or becomes an input of the composed module, and whatever is still unconsumed at
+the end is the composed module's output. A chain that consumes everything is a
+predicate, and `predicate()` will take it. It infers the rest too: the
+composition is contextual if any part is, and a piped value has exactly one
+reader — a second would need a copy, and being asked for it explicitly is better
+than getting it silently.
+
+Two things do not compose automatically, and the reason is the same in both. A
+part's `hint()` works out an honest witness **off chain**; in a chain some of its
+inputs do not exist off chain, because an earlier part produces them at spend
+time. Such a part is skipped rather than called with an undefined, and its
+witness has to come from the case — which is the honest position, since nothing
+off chain knows what the transaction will say. The part's own `attacks()` have
+the same problem, and there the composition falls back to near-misses of the
+value itself: a weaker forgery, but a real one, so the rule that an unattackable
+witness is UNPROVEN still bites.
+
+Compositions worth a name live in `src/recipes.js`. A composition written out
+twice will drift — one of these had already been hand-wired in an example and in
+a deployment target, with different names for the same value.
+
 ## The escape hatch
 
 `asm.op(name, pop, push)` emits any opcode in the release by name, with an

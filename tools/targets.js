@@ -13,6 +13,7 @@ const ecdsaMod = require('../src/modules/ecdsa')
 const sha256Mod = require('../src/modules/sha256')
 const merkle = require('../src/modules/merkle')
 const totp = require('../src/modules/totp')
+const recipes = require('../src/recipes')
 const txMod = require('../src/modules/tx')
 const ecJs = require('../src/ec')
 
@@ -130,34 +131,14 @@ targets.sha256 = (() => {
 // ── 4. An authenticator code bound to the transaction's own locktime ────────
 targets.timelock = (() => {
   const secret = Buffer.from('12345678901234567890')
-  const commitment = crypto.createHash('sha256').update(secret).digest()
   const STEP = 30
   const T = 1600000020
   const code = totp.totpCode(secret, T, { digits: 6, step: STEP })
 
-  const m = defineModule({
-    name: 'tx.locktime ▸ totp.verify',
-    doc: 'an authenticator code for the time the transaction is locked to',
-    inputs: [
-      { name: 'preimage', kind: 'bytes', witness: true },
-      { name: 'key', kind: 'bytes', witness: true },
-      { name: 'code', witness: true }
-    ],
-    outputs: [],
-    contextual: true,
-    witnessFor: (ctx) => txMod.locktime.witnessFor(ctx),
-    hint: () => ({}),
-    model: () => ({}),
-    emit: (asm, params) => {
-      apply(asm, txMod.locktime, {}, ['preimage'], ['time'])
-      apply(asm, totp.verify, params, ['key', 'time', 'code'], [])
-    },
-    cases: [{ name: 'deployed', spend: { nLockTime: T } }]
-  })
-
-  const coin = predicate(m, {
-    keyLen: secret.length, digits: 6, step: STEP, algo: 'sha1', keyCommitment: commitment
-  }, { owner: owner.publicKey })
+  // The same recipe the example demonstrates and the suite proves. It used to
+  // be written out again here, with different names for the same values.
+  const m = recipes.timelockedTotp(secret, { digits: 6, step: STEP, at: T })
+  const coin = predicate(m, {}, { owner: owner.publicKey })
 
   return {
     name: 'tx.locktime ▸ totp.verify',

@@ -27,50 +27,24 @@
 // they can no longer do is claim one time and spend at another — which is the
 // hole, and it is closed.
 
-const crypto = require('crypto')
 const bsv = require('@smartledger/bsv')
-const { Asm } = require('../src/asm')
-const { apply } = require('../src/module')
-const { predicate, totp } = require('../src')
-const tx = require('../src/modules/tx')
+const { predicate, totp, recipes } = require('../src')
 
 const secret = Buffer.from('12345678901234567890')
-const commitment = crypto.createHash('sha256').update(secret).digest()
 const owner = bsv.PrivateKey.fromBuffer(Buffer.from('88'.repeat(32), 'hex'))
 
 const STEP = 30
 const T = 1600000020                       // a whole TOTP window
 const code = totp.totpCode(secret, T, { digits: 6, step: STEP })
 
-// The two modules, wired: one produces the time, the other consumes it. This is
-// what apply() is for — all() composes predicates that each stand alone, and
-// here the output of one IS the input of the next.
-const timelockedTotp = {
-  name: 'tx.locktime ▸ totp.verify',
-  doc: 'an authenticator code, for the time the transaction is locked to',
-  inputs: [
-    { name: 'preimage', kind: 'bytes', witness: true },
-    { name: 'key', kind: 'bytes', witness: true },
-    { name: 'code', witness: true }
-  ],
-  outputs: [],
-  contextual: true,
-  witnessFor: (ctx) => tx.locktime.witnessFor(ctx),
-  hint: () => ({}),
-  model: () => ({}),
-  notes: [
-    'the code must match the time the transaction is locked to, not one the spender chose',
-    'enforces that the spend cannot be mined earlier than that time — not that it is now'
-  ],
-  emit: (asm, params) => {
-    apply(asm, tx.locktime, {}, ['preimage'], ['time'])
-    apply(asm, totp.verify, params, ['key', 'time', 'code'], [])
-  }
-}
+// One module produces the time, the other consumes it. `pipe()` is the linker:
+// it walks the parts, wires each input to whatever an earlier part produced,
+// and asks the caller only for what nothing upstream supplies. The result is a
+// module like any other — inputs `preimage`, `key`, `code`, no outputs, so
+// `predicate()` will take it.
+const timelockedTotp = recipes.timelockedTotp(secret, { digits: 6, step: STEP, at: T })
 
-const coin = predicate(timelockedTotp, {
-  keyLen: secret.length, digits: 6, step: STEP, algo: 'sha1', keyCommitment: commitment
-}, { owner: owner.publicKey })
+const coin = predicate(timelockedTotp, {}, { owner: owner.publicKey })
 
 const spendAt = (t) => ({ nLockTime: t })
 const honest = coin.test({ key: secret, code }, owner, spendAt(T))

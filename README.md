@@ -83,7 +83,8 @@ src/run.js            evaluate a fragment against bsv.Script.Interpreter
 src/asm.js            a stack-tracking, type-tracking assembler
 src/module.js         the module contract, and apply() — how two modules compose
 src/testkit.js        correctness, stack discipline, and forgery
-src/compose.js        all() — several predicates as one module
+src/compose.js        all() conjunction, pipe() chaining
+src/recipes.js        compositions worth a name
 src/predicate.js      a module with no outputs, as a deployable coin
 src/index.js          the library, and the registry behind the catalogue
 src/num.js            script numbers: little-endian, sign-magnitude, minimal

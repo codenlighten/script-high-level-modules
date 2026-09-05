@@ -24,6 +24,7 @@ const { defineModule, apply, instantiate } = require('./module')
 const { Asm } = require('./asm')
 const { predicate } = require('./predicate')
 const compose = require('./compose')
+const recipes = require('./recipes')
 const { evaluate, evaluateSpend, policyFlags } = require('./run')
 const { proveModule, proveAll, moduleSize, build } = require('./testkit')
 const num = require('./num')
@@ -93,7 +94,7 @@ function catalog () {
 module.exports = {
   int, bytes, u32, sha256, rsa, hmac, totp, ec, ecdsa, merkle, tx: txmod,
   modules, factories, catalog, describe,
-  defineModule, apply, instantiate, predicate, compose, Asm,
+  defineModule, apply, instantiate, predicate, compose, recipes, Asm,
   evaluate, evaluateSpend, policyFlags,
   proveModule, proveAll, moduleSize, build,
   num, bigint, math: { ec: ecMath, rsa: rsaMath }

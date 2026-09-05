@@ -150,10 +150,21 @@ function sameOutputs (a, b) {
  * sequence and a witness generator that grinds the sequence quietly agree to
  * test something else: the case reads as a refusal that never happened.
  */
-function onePass (m, params, spend, expected) {
+function onePass (m, params, spend, expected, caseValues = {}) {
   const lock = buildFor(m, params, expected)
   const prepared = buildSpend(lock, spend)
-  const values = m.witnessFor({ ...prepared, spend })
+
+  // Three sources, in falling precedence: what the case pinned, what only the
+  // spend can produce, and what the module can work out for itself. A case that
+  // states a value keeps it — otherwise a deliberately wrong one would be
+  // quietly corrected, which is the bug this rule already caught once.
+  const values = { ...caseValues }
+  const produced = m.witnessFor({ ...prepared, spend })
+  for (const k of Object.keys(produced)) if (!(k in values)) values[k] = produced[k]
+  if (m.hint) {
+    const hinted = m.hint(values, params)
+    for (const k of Object.keys(hinted)) if (!(k in values)) values[k] = hinted[k]
+  }
 
   const actual = { nLockTime: prepared.tx.nLockTime, sequence: prepared.tx.inputs[0].sequenceNumber }
   for (const field of ['nLockTime', 'sequence']) {
@@ -167,8 +178,8 @@ function onePass (m, params, spend, expected) {
 
 function buildContextual (m, params, c) {
   const spend = c.spend || {}
-  const probe = onePass(m, params, spend, null)          // nothing asserted
-  const real = onePass(m, params, spend, probe.computed) // the value asserted
+  const probe = onePass(m, params, spend, null, c.inputs)          // nothing asserted
+  const real = onePass(m, params, spend, probe.computed, c.inputs) // the value asserted
   const after = m.model(real.values, params)
   if (!sameOutputs(probe.computed, after)) {
     throw new Error(`${m.name}: what it computes changed when its own script did (${JSON.stringify(probe.computed, bigints)} then ${JSON.stringify(after, bigints)}) — the output is not a function of the inputs`)
@@ -250,7 +261,7 @@ function proveModule (m, { params = {}, quiet = false } = {}) {
       let r, own
       try {
         if (c.refuse) {
-          const probe = onePass(m, p, c.spend || {}, null)
+          const probe = onePass(m, p, c.spend || {}, null, c.inputs)
           own = moduleSize(m, p)
           r = evaluatePrepared(probe.prepared, () => unlockFor(m, probe.values))
         } else {
@@ -312,7 +323,7 @@ function proveModule (m, { params = {}, quiet = false } = {}) {
     let honest, contextual = null
     if (m.contextual) {
       try {
-        const probe = onePass(m, p, c.spend || {}, null)
+        const probe = onePass(m, p, c.spend || {}, null, c.inputs)
         honest = probe.values
         contextual = probe.prepared
       } catch { continue }

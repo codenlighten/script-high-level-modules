@@ -63,7 +63,8 @@ of what there is to know about lowering an algorithm into Script.
 | `src/asm.js` | the stack-tracking, type-tracking assembler |
 | `src/module.js` | the module contract, and `apply()` |
 | `src/testkit.js` | correctness, stack discipline, refusal, forgery |
-| `src/compose.js` | `all()` — several predicates as one module |
+| `src/compose.js` | `all()` conjunction, `pipe()` chaining |
+| `src/recipes.js` | compositions worth a name |
 | `src/predicate.js` | a module with no outputs, as a deployable coin |
 | `src/index.js` | the library, and the registry the catalogue is generated from |
 | `src/onchain.js` | fund an output, spend it, verify before broadcasting |
