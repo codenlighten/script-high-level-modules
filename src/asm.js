@@ -22,6 +22,7 @@ class Asm {
   constructor () {
     this.s = new bsv.Script()
     this.stack = []            // [{ name, kind, width }] bottom -> top
+    this.alt = []              // the altstack, modelled the same way
     this._frames = []
   }
 
@@ -83,6 +84,49 @@ class Asm {
   drop () { this.s.add(Op.OP_DROP); this.stack.pop(); return this }
   /** Move a value to the top and drop it — the explicit death of a temporary. */
   discard (name) { this.roll(name); return this.drop() }
+
+  // ── the altstack ──────────────────────────────────────────────────────────
+  // Not a second workspace so much as a place to put things that are in the
+  // way. Its one useful property here is that a value parked there is not
+  // counted in any OP_PICK depth on the main stack.
+  toAlt () { this.s.add(Op.OP_TOALTSTACK); this.alt.push(this.stack.pop()); return this }
+  fromAlt () { this.s.add(Op.OP_FROMALTSTACK); this.stack.push(this.alt.pop()); return this }
+
+  /**
+   * The floor of the region this module owns.
+   *
+   * `below` is how many of the values already on the stack belong to it — its
+   * declared inputs. Everything from there up is the module's own business and
+   * may be dropped; everything below belongs to the caller and must not be
+   * touched.
+   */
+  mark (below = 0) { return this.stack.length - below }
+
+  /**
+   * Clear everything the module owns except `keep`, which is left on top in the
+   * order given.
+   *
+   * The obvious way — roll each dead value to the top and drop it — costs three
+   * bytes each: a depth push, OP_ROLL, OP_DROP. Parking the survivors on the
+   * altstack instead lets the rest go with OP_2DROP, which takes two at a time
+   * and needs no depth at all:
+   *
+   *   13 temporaries, 2 survivors:  39 bytes rolling,  11 bytes this way
+   *
+   * At 512 point operations in an elliptic-curve ladder that is 14 KB.
+   */
+  dropTo (floor, keep = []) {
+    for (const n of keep) this.roll(n)
+    const dead = this.stack.length - keep.length - floor
+    if (dead < 0) throw new Error(`asm: dropTo would cut below the caller's values (${dead})`)
+    if (dead === 0) return this
+    for (let i = 0; i < keep.length; i++) this.toAlt()
+    let d = dead
+    while (d >= 2) { this.s.add(Op.OP_2DROP); this.stack.pop(); this.stack.pop(); d -= 2 }
+    if (d === 1) this.drop()
+    for (let i = 0; i < keep.length; i++) this.fromAlt()
+    return this
+  }
   /** Rename a live value IN PLACE. Emits nothing: a register shuffle that only
    *  moves names, like SHA-256's a..h rotation, costs no opcodes at all. */
   relabel (from, to) { this.slot(from).name = to; return this }
@@ -194,6 +238,14 @@ class Asm {
   numEqualVerify () { this.s.add(Op.OP_NUMEQUALVERIFY); this.stack.pop(); this.stack.pop(); return this }
   numEqual (out) { this.s.add(Op.OP_NUMEQUAL); this.stack.pop(); this.stack[this.stack.length - 1] = { name: out || 'eq', kind: 'num' }; return this }
   verify () { this.s.add(Op.OP_VERIFY); this.stack.pop(); return this }
+  /**
+   * OP_WITHIN: assert min ≤ x < max, consuming all three.
+   *
+   * One opcode for the pair of comparisons every witnessed inverse needs. The
+   * two-comparison form is eleven bytes; this is seven, and there are 512 of
+   * them in an elliptic-curve ladder.
+   */
+  withinVerify () { this.s.add(Op.OP_WITHIN).add(Op.OP_VERIFY); this.stack.pop(); this.stack.pop(); this.stack.pop(); return this }
   /** 2nd < top, consuming both. */
   ltVerify () { this.s.add(Op.OP_LESSTHAN).add(Op.OP_VERIFY); this.stack.pop(); this.stack.pop(); return this }
   geVerify () { this.s.add(Op.OP_GREATERTHANOREQUAL).add(Op.OP_VERIFY); this.stack.pop(); this.stack.pop(); return this }
@@ -201,14 +253,16 @@ class Asm {
   // ── branches ──────────────────────────────────────────────────────────────
   beginIf () {
     this.s.add(Op.OP_IF); this.stack.pop()
-    this._frames.push({ snap: this.stack.map((v) => ({ ...v })), ifEnd: null })
+    this._frames.push({ snap: this.stack.map((v) => ({ ...v })), altSnap: this.alt.map((v) => ({ ...v })), ifEnd: null })
     return this
   }
   elseBranch () {
     this.s.add(Op.OP_ELSE)
     const f = this._frames[this._frames.length - 1]
     f.ifEnd = this.stack.map((v) => ({ ...v }))
+    f.altEnd = this.alt.map((v) => ({ ...v }))
     this.stack = f.snap.map((v) => ({ ...v }))
+    this.alt = f.altSnap.map((v) => ({ ...v }))
     return this
   }
   endIf () {
@@ -222,6 +276,10 @@ class Asm {
     // different NAMES, the model after the branch describes only one of them,
     // and every depth computed from it afterwards is wrong on the other path.
     // Both branches must agree on what is where.
+    const otherAlt = f.ifEnd ? f.altEnd : f.altSnap
+    if (otherAlt.length !== this.alt.length) {
+      throw new Error(`asm: IF/ELSE branches leave different ALTSTACK depths (${otherAlt.length} vs ${this.alt.length})`)
+    }
     for (let i = 0; i < other.length; i++) {
       if (other[i].name !== this.stack[i].name) {
         throw new Error(`asm: IF/ELSE branches disagree at depth ${this.stack.length - 1 - i}: ` +
@@ -241,7 +299,10 @@ class Asm {
 
   script () { return this.s }
   size_ () { return this.s.toBuffer().length }
-  toString () { return this.stack.map((v) => `${v.name}:${v.kind}${v.width !== undefined ? '[' + v.width + ']' : ''}`).join(' ') }
+  toString () {
+    const show = (xs) => xs.map((v) => `${v.name}:${v.kind}${v.width !== undefined ? '[' + v.width + ']' : ''}`).join(' ')
+    return show(this.stack) + (this.alt.length ? ` | alt: ${show(this.alt)}` : '')
+  }
 }
 
 function norm (v) {

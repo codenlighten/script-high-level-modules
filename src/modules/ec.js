@@ -26,6 +26,27 @@ const ecJs = require('../ec')
 
 const P = ecJs.P
 
+/**
+ * Where the modulus lives for one point operation.
+ *
+ * `p` is either a BigInt, pushed as a literal, or the NAME of a value the
+ * caller already has on the stack. The second form is the one that matters: a
+ * 256-bit prime is a 33-byte push, and a ladder performs 512 point operations.
+ * Pushed once by the ladder and picked by each operation, that is 17 KB.
+ */
+function modulusOf (asm, p) {
+  if (typeof p === 'string') return { name: p, pushed: false }
+  asm.num(p, '_p')
+  return { name: '_p', pushed: true }
+}
+
+/** 2p, in whichever form the caller has it: a name, or pushed here. */
+function doubleModulusOf (asm, p, p2) {
+  if (typeof p2 === 'string') return { name: p2, pushed: false }
+  asm.num(2n * p, '_p2')
+  return { name: '_p2', pushed: true }
+}
+
 /** The field operations, as calls into the int modules, over a modulus already
  *  on the stack under `pName`. Each takes copies and names its result. */
 function field (asm, pName) {
@@ -33,13 +54,50 @@ function field (asm, pName) {
   return { sub: bin(int.modsub), mul: bin(int.modmul), add: bin(int.modadd) }
 }
 
-/** Assert `invName` is the inverse of `ofName` mod p — the shape every witnessed
- *  division in this file uses. Canonical: 0 ≤ inv < p, so exactly one passes. */
-function checkInverse (asm, f, pName, ofName, invName) {
-  asm.pick(invName, '_i0'); asm.num(0, '_zero'); asm.geVerify()
-  asm.pick(invName, '_i1'); asm.pick(pName, '_pl'); asm.ltVerify()
-  f.mul(ofName, invName, '_chk')
-  asm.num(1, '_one'); asm.numEqualVerify()
+// ── DEFERRED REDUCTION ──────────────────────────────────────────────────────
+//
+// The obvious way to write a point addition is one field operation per line of
+// the formula: subtract and reduce, multiply and reduce, subtract and reduce.
+// That reads beautifully and costs 168 bytes, because two thirds of it is
+// reductions nothing needed.
+//
+// Post-Genesis Script numbers are arbitrary precision. An intermediate does not
+// have to fit in a field element — it only has to be CONGRUENT to the right
+// value, and reduction can wait until a result must be canonical. λ is never
+// reduced at all here; λ² is a 1024-bit number and OP_MUL does not care. Only
+// x₃ and y₃ come out in [0, p), because those are what leaves the module.
+//
+// Two rules make this safe rather than merely smaller:
+//
+//   OP_MOD IS TRUNCATED. `a mod p` keeps the sign of a, so reducing a value
+//   that might be negative does not produce a canonical one. Where the sign is
+//   unknown the reduction is `((v mod p) + p) mod p`; where the value is
+//   provably non-negative one OP_MOD is enough — and x₃ is made provably
+//   non-negative by adding 2p first, which is why the modulus is carried in
+//   both forms.
+//
+//   A CONGRUENCE CHECK NEEDS NO SIGN. `dx·inv ≡ 1 (mod p)` is checked as
+//   `(dx·inv − 1) mod p == 0`. Zero is zero under truncation too, so dx never
+//   needs reducing before the check — which is what lets dx be a bare OP_SUB.
+//
+// The cost is paid in the interpreter's arithmetic (bigger BN operands), not in
+// bytes. Fees are bytes.
+
+/** Assert `invName` inverts the value named `ofName`, canonically. */
+function checkInverseRaw (asm, pName, ofName, invName) {
+  // 0 ≤ inv < p in one opcode rather than two comparisons and two VERIFYs.
+  asm.pick(invName, '_i0'); asm.num(0, '_zero'); asm.pick(pName, '_pw'); asm.withinVerify()
+  asm.pick(ofName, '_iv'); asm.pick(invName, '_i2'); asm.mul('_prod')
+  asm.num(1, '_one'); asm.sub('_pm1')
+  asm.pick(pName, '_pm'); asm.mod('_res')
+  asm.num(0, '_z0'); asm.numEqualVerify()                            // ≡ 1 (mod p)
+}
+
+/** r = (v mod p), canonical, when v's sign is unknown. */
+function reduceSigned (asm, pName, out) {
+  asm.pick(pName, '_ra'); asm.mod('_rm')
+  asm.pick(pName, '_rb'); asm.add('_rp')
+  asm.pick(pName, '_rc'); asm.mod(out)
 }
 
 const add = defineModule({
@@ -52,23 +110,30 @@ const add = defineModule({
     const r = ecJs.add({ x: x1, y: y1 }, { x: x2, y: y2 })
     return { x3: r.x, y3: r.y }
   },
-  emit: (asm, { p = P }) => {
-    asm.num(p, '_p')
-    const f = field(asm, '_p')
+  emit: (asm, { p = P, p2 = null }) => {
+    const floor = asm.mark(5)                    // the five declared inputs are ours
+    const N = modulusOf(asm, p)
+    const N2 = doubleModulusOf(asm, p, p2)
 
-    f.sub('x2', 'x1', '_dx')                     // dx = x₂ − x₁
-    checkInverse(asm, f, '_p', '_dx', 'invdx')
-    f.sub('y2', 'y1', '_dy')                     // dy = y₂ − y₁
-    f.mul('_dy', 'invdx', '_lam')                // λ  = dy / dx
-    f.mul('_lam', '_lam', '_lam2')
-    f.sub('_lam2', 'x1', '_t')
-    f.sub('_t', 'x2', 'x3')                      // x₃ = λ² − x₁ − x₂
-    f.sub('x1', 'x3', '_d')
-    f.mul('_lam', '_d', '_m')
-    f.sub('_m', 'y1', 'y3')                      // y₃ = λ(x₁ − x₃) − y₁
+    asm.pick('x2', '_a'); asm.pick('x1', '_b'); asm.sub('_dx')       // dx, unreduced
+    checkInverseRaw(asm, N.name, '_dx', 'invdx')
 
-    for (const dead of ['_dx', '_dy', '_lam', '_lam2', '_t', '_d', '_m', '_p', 'x1', 'y1', 'x2', 'y2', 'invdx']) asm.discard(dead)
-    asm.roll('x3'); asm.roll('y3')
+    asm.pick('y2', '_c'); asm.pick('y1', '_d'); asm.sub('_dy')
+    asm.pick('invdx', '_e'); asm.mul('_lam')                         // λ = dy·inv, unreduced
+
+    // x₃ = λ² − x₁ − x₂, made non-negative by +2p so ONE OP_MOD is canonical
+    asm.pick('_lam', '_f'); asm.pick('_lam', '_g'); asm.mul('_lam2')
+    asm.pick('x1', '_h'); asm.sub('_u')
+    asm.pick('x2', '_i'); asm.sub('_v')
+    asm.pick(N2.name, '_j'); asm.add('_w')
+    asm.pick(N.name, '_k'); asm.mod('x3')
+
+    // y₃ = λ(x₁ − x₃) − y₁, sign unknown, so the two-step reduction
+    asm.pick('_lam', '_l'); asm.pick('x1', '_m'); asm.pick('x3', '_n'); asm.sub('_o')
+    asm.mul('_q'); asm.pick('y1', '_r'); asm.sub('_s')
+    reduceSigned(asm, N.name, 'y3')
+
+    asm.dropTo(floor, ['x3', 'y3'])
   },
   attacks: (honest, params) => {
     const p = params.p || P
@@ -111,25 +176,29 @@ const double = defineModule({
     const r = ecJs.double({ x: x1, y: y1 })
     return { x3: r.x, y3: r.y }
   },
-  emit: (asm, { p = P }) => {
-    asm.num(p, '_p')
-    const f = field(asm, '_p')
+  emit: (asm, { p = P, p2 = null }) => {
+    const floor = asm.mark(3)
+    const N = modulusOf(asm, p)
+    const N2 = doubleModulusOf(asm, p, p2)
 
-    f.add('y1', 'y1', '_2y')                     // 2y
-    checkInverse(asm, f, '_p', '_2y', 'inv2y')
-    f.mul('x1', 'x1', '_x2')                     // 3x²
-    asm.num(3, '_three'); asm.rename('_three')
-    asm.pick('_x2', '_x2c'); apply(asm, int.modmul, { n: '_p' }, ['_three', '_x2c'], ['_3x2'])
-    f.mul('_3x2', 'inv2y', '_lam')               // λ = 3x² / 2y
-    f.mul('_lam', '_lam', '_lam2')
-    f.sub('_lam2', 'x1', '_t')
-    f.sub('_t', 'x1', 'x3')                      // x₃ = λ² − 2x₁
-    f.sub('x1', 'x3', '_d')
-    f.mul('_lam', '_d', '_m')
-    f.sub('_m', 'y1', 'y3')                      // y₃ = λ(x₁ − x₃) − y₁
+    asm.pick('y1', '_a'); asm.op('OP_DUP', 0, ['_b']); asm.add('_2y')  // 2y, unreduced
+    checkInverseRaw(asm, N.name, '_2y', 'inv2y')
 
-    for (const dead of ['_2y', '_x2', '_3x2', '_lam', '_lam2', '_t', '_d', '_m', '_p', 'x1', 'y1', 'inv2y']) asm.discard(dead)
-    asm.roll('x3'); asm.roll('y3')
+    asm.pick('x1', '_c'); asm.op('OP_DUP', 0, ['_d']); asm.mul('_xx')
+    asm.num(3, '_three'); asm.mul('_3xx')
+    asm.pick('inv2y', '_e'); asm.mul('_lam')                           // λ = 3x²·inv, unreduced
+
+    asm.pick('_lam', '_f'); asm.pick('_lam', '_g'); asm.mul('_lam2')
+    asm.pick('x1', '_h'); asm.sub('_u')
+    asm.pick('x1', '_i'); asm.sub('_v')                                // x₃ = λ² − 2x₁
+    asm.pick(N2.name, '_j'); asm.add('_w')
+    asm.pick(N.name, '_k'); asm.mod('x3')
+
+    asm.pick('_lam', '_l'); asm.pick('x1', '_m'); asm.pick('x3', '_n'); asm.sub('_o')
+    asm.mul('_q'); asm.pick('y1', '_r'); asm.sub('_s')
+    reduceSigned(asm, N.name, 'y3')
+
+    asm.dropTo(floor, ['x3', 'y3'])
   },
   attacks: (honest, params) => {
     const p = params.p || P
@@ -151,7 +220,7 @@ const double = defineModule({
   notes: ['a = 0 is baked in: this is secp256k1’s doubling, not the general one']
 })
 
-module.exports = { add, double, field, checkInverse, P }
+module.exports = { add, double, field, checkInverseRaw, reduceSigned, modulusOf, doubleModulusOf, P }
 
 // ── SCALAR MULTIPLICATION ───────────────────────────────────────────────────
 //
@@ -281,6 +350,16 @@ function emitLadder (asm, { prefix, bits, p = P, point }, scalar, out) {
   const SUM = `${prefix}_sum`; const POW = `${prefix}_pow`
   const AX = `${prefix}accx`; const AY = `${prefix}accy`
   const DX = `${prefix}_dx`; const DY = `${prefix}_dy`
+  const PN = `${prefix}_p`; const PN2 = `${prefix}_p2`
+
+  // The modulus, pushed ONCE for the whole ladder, in both the forms a point
+  // operation needs: p to reduce with, and 2p to shift a possibly-negative
+  // value non-negative before a single truncated OP_MOD is enough. Each point
+  // operation picks them instead of carrying its own 33-byte literals — at 512
+  // operations that is 34 KB of constants that never had to be there.
+  asm.num(p, PN)
+  asm.num(2n * p, PN2)
+  const pp = { p: PN, p2: PN2 }
 
   // The scalar is checked against its bits as they are consumed, least
   // significant first: sum += bᵢ·2ⁱ. One pass, so the bits are never all on the
@@ -307,7 +386,7 @@ function emitLadder (asm, { prefix, bits, p = P, point }, scalar, out) {
     asm.beginIf()
     if (fixedBase) { asm.num(D.x, '_ax'); asm.num(D.y, '_ay') } else { asm.pick(DX, '_ax'); asm.pick(DY, '_ay') }
     asm.roll('_ai')
-    apply(asm, add, { p }, [AX, AY, '_ax', '_ay', '_ai'], ['_nx', '_ny'])
+    apply(asm, add, pp, [AX, AY, '_ax', '_ay', '_ai'], ['_nx', '_ny'])
     asm.relabel('_nx', AX); asm.relabel('_ny', AY)
     asm.elseBranch()
     asm.roll('_ai'); asm.num(0, '_z'); asm.numEqualVerify()      // pin the unused record
@@ -316,7 +395,7 @@ function emitLadder (asm, { prefix, bits, p = P, point }, scalar, out) {
     if (i < bits - 1) {
       if (fixedBase) { D = ecJs.double(D) } else {
         takeInverse(asm, TAPE, '_di')
-        apply(asm, double, { p }, [DX, DY, '_di'], ['_ndx', '_ndy'])
+        apply(asm, double, pp, [DX, DY, '_di'], ['_ndx', '_ndy'])
         asm.relabel('_ndx', DX); asm.relabel('_ndy', DY)
       }
     }
@@ -331,7 +410,9 @@ function emitLadder (asm, { prefix, bits, p = P, point }, scalar, out) {
   // undo the offset: the result is acc − H
   if (!fixedBase) { asm.discard(DX); asm.discard(DY) }
   asm.num(H.x, '_hx'); asm.num(ecJs.mod(-H.y, p), '_hy'); asm.roll(`${prefix}fi`)
-  apply(asm, add, { p }, [AX, AY, '_hx', '_hy', `${prefix}fi`], out)
+  apply(asm, add, pp, [AX, AY, '_hx', '_hy', `${prefix}fi`], out)
+  asm.roll(out[0]); asm.roll(out[1]); asm.discard(PN); asm.discard(PN2)
+  asm.roll(out[0]); asm.roll(out[1])
   return asm
 }
 

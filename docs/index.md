@@ -20,6 +20,12 @@ than to compute, so the spender supplies the answer; a module that takes a
 witness owes both soundness *and* canonicity, and the difference between those
 two is where the bugs live. Four worked examples, three of them real bugs.
 
+**[optimization.md](optimization.md)** — how the elliptic-curve modules got half
+their size back: deferring modular reduction to where canonicity is actually
+required, hoisting constants out of the loop, clearing temporaries with the
+altstack instead of rolls, and `OP_WITHIN`. With the before-and-after, and what
+was tried and rejected.
+
 **[catalog.md](catalog.md)** — every module, generated from the registry: what
 it takes, what it returns, and which of its inputs the *spender* supplies. That
 last column is the one to read first.

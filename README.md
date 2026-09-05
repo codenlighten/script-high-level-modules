@@ -47,6 +47,8 @@ node examples/oracle-lock.js     # a coin an oracle's ordinary secp256k1 key unl
 - **[witnesses.md](docs/witnesses.md)** — soundness *and* canonicity, the
   difference between them, and four worked examples of what happens when the
   second one is skipped.
+- **[optimization.md](docs/optimization.md)** — how the curve modules halved:
+  deferred reduction, hoisted constants, the altstack, `OP_WITHIN`.
 - **[catalog.md](docs/catalog.md)** — every module, generated from the registry:
   inputs, outputs, and which inputs the *spender* supplies.
 - **[cost.md](docs/cost.md)** — what every module costs, generated from the code.
@@ -129,11 +131,11 @@ Full table in [docs/cost.md](docs/cost.md), generated from the code.
 | `hmac.sha256` | a 32-byte key | 175 |
 | `totp.verify` | RFC 6238, 6 digits | 269 |
 | `merkle.verify` | depth 32 (4 billion leaves) | 905 |
-| `ec.add` | secp256k1, witnessed inverse | 191 |
+| `ec.add` | secp256k1, witnessed inverse | 144 |
 | `u32.add` | one addition mod 2³² | 58 |
 | `sha256.block` | one block, no `OP_SHA256` | 50,765 |
-| `ec.mul` | k·P, 256-bit, both runtime | 116,127 |
-| `ecdsa.verify` | arbitrary message, secp256k1 | 196,778 |
+| `ec.mul` | k·P, 256-bit, both runtime | 55,790 |
+| `ecdsa.verify` | arbitrary message, secp256k1 | 106,403 |
 
 RSA verification — a scheme Bitcoin has no opcode for — costs under a kilobyte,
 because every operation it needs is one Script opcode at any width. SHA-256
@@ -150,8 +152,8 @@ number to compute *before* lowering a new algorithm, not after.
 transaction's sighash — and cannot be asked whether an oracle signed a price or a
 manifest. That gap is why the BSV ecosystem reaches for Rabin signatures, which
 verify with `OP_MUL` and `OP_MOD` in a few hundred bytes. The gap is in the
-opcode, not in Script: 196,778 bytes buys an oracle signing with the secp256k1
-key it already has, over any message at all. Whether that is worth 197 KB is an
+opcode, not in Script: 106,403 bytes buys an oracle signing with the secp256k1
+key it already has, over any message at all. Whether that is worth 106 KB is an
 engineering choice, not a technical limit — but it is now a choice.
 
 ## Using one
