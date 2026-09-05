@@ -53,27 +53,50 @@ and preserve its length (`01020304 << 8 = 02030400`, `0f0f << 4 = f0f0`). That
 is why a 32-bit word is stored big-endian here: rotations are two shifts and an
 OR, one opcode each.
 
-## The stack is capped at 1000 elements
+## The stack cap is era-derived — and this repository is why
 
-The one limit here that actually bites. `999` elements verify; `1001` is
-`SCRIPT_ERR_STACK_SIZE`. It is a cap on the COUNT, not the size: a single
-100 KB element is fine.
+Pre-Genesis the two stacks may hold 1000 elements between them. Genesis removed
+that cap, replacing the element *count* with a bound on the memory the stacks
+occupy, so a script is limited by what it uses rather than by how it is divided
+up. Measured: 5,000 elements verify post-Genesis, and 1,001 is
+`SCRIPT_ERR_STACK_SIZE` under pre-Genesis flags.
 
-This is what decides the shape of any construction with a large witness. A
-256-step elliptic-curve ladder needs a bit and one or two inverses per step —
-over seven hundred values — and two ladders in one script overflow the cap long
-before the fee becomes interesting. So the witness arrives as **a packed tape**:
-two byte strings that the script splits one field off the front of as it goes.
-Three stack elements per ladder instead of seven hundred. See `emitLadder` in
-`src/modules/ec.js`.
+**This document used to say the opposite**, because the interpreter said the
+opposite. Building a 256-step elliptic-curve ladder is what found it: the
+library applied 1000 unconditionally, and it checked the cap *once, at the end
+of the script* rather than after every opcode. Two divergences from the node in
+five lines, in opposite directions —
 
-A caveat worth stating rather than hiding: post-Genesis BSV nodes replaced the
-element-count limit with a limit on stack *memory*. This interpreter enforces
-1000 elements unconditionally. Since this interpreter is what proves every
-module here, that is the number the modules are built against — but a script
-that fails only on this limit might be accepted by a node, and one that passes
-here is not thereby proven to fit a node's memory limit. Neither direction is
-assumed.
+- a **false reject**: post-Genesis scripts the network accepts were refused here;
+- a **false accept**: a script that piles up 1,001 elements and drops back to one
+  before it finishes passed here and is rejected by the network. No vector in the
+  node's corpus catches that one, because every `STACK_SIZE` vector ends over the
+  cap, which is exactly the case an end-of-script check does see.
+
+Both are fixed in `@smartledger/bsv` (`maxStackSize()`, `maxStackMemoryUsage()`,
+`checkStackLimits()` after every opcode). The probes above now measure the
+corrected behaviour and go red if it regresses.
+
+### The packed tape stays anyway
+
+The ladder was designed around the old cap: the bits and inverses a 256-step
+ladder needs — over seven hundred values — arrive as **two packed byte strings**
+that the script splits one field off the front of as it goes, three stack
+elements instead of seven hundred.
+
+The cap is gone and the tape is still the right design, which is worth saying
+plainly rather than quietly deleting the constraint that produced it. It makes
+the unlocking script smaller (no per-push prefix on seven hundred values), it
+lets the script require the tape to be *exactly* used up so no unread bytes ride
+along, and it leaves the stack shallow enough that every `OP_PICK` depth stays a
+one-byte push. See `emitLadder` in `src/modules/ec.js`.
+
+### The memory bound
+The post-Genesis replacement is a policy limit — the node's
+`-maxstackmemoryusagepolicy`, default 100 MB — and each element is charged the
+footprint of its container as well as its bytes, so a stack of many small
+elements is not free. Nothing here comes close to it; the largest module holds a
+few dozen elements.
 
 ## Size is not the constraint people expect
 

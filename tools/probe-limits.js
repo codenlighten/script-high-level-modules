@@ -10,8 +10,8 @@ const { toNum, toLE, pushNum } = require('../src/num')
 
 const results = []
 function probe (name, build, expectOk = true) {
-  const { unlock, lock } = build()
-  const r = evaluate(unlock, lock)
+  const { unlock, lock, flags } = build()
+  const r = evaluate(unlock, lock, flags === undefined ? {} : { flags })
   const pass = r.ok === expectOk
   results.push({ name, pass, ok: r.ok, error: r.error, lockSize: r.lockSize, opCount: r.opCount })
   console.log(`${pass ? 'ok  ' : 'FAIL'}  ${name.padEnd(52)} ${r.ok ? '' : '(' + String(r.error).slice(0, 60) + ')'}`)
@@ -87,11 +87,14 @@ probe('OP_LSHIFT by a non-multiple of 8 (bit-level)', () => ({
   lock: S().add(pushNum(4)).add(Op.OP_LSHIFT).add(Buffer.from('f0f0', 'hex')).add(Op.OP_EQUAL)
 }))
 
-// ── 5. the stack is capped at 1000 elements, and that cap is not the fee ────
-// The one limit here that bites in practice. It is a count, not a size: a
-// thousand one-byte values is refused and a single 100 KB value is not. Any
-// construction whose witness runs to hundreds of values has to arrive as a
-// packed tape rather than as pushes — see the ladder in src/modules/ec.js.
+// ── 5. the stack cap is era-derived, and this repository is why ─────────────
+// The pre-Genesis cap is 1000 elements across the main and alt stacks; Genesis
+// removed it, replacing the element COUNT with a bound on the memory the two
+// stacks occupy. This probe used to record the opposite, because the
+// interpreter applied 1000 unconditionally and checked it once at the end of
+// the script rather than after every opcode. Both were fixed in the library
+// (see docs/limits.md); the probe now measures the corrected behaviour, and
+// would go red again if it regressed.
 function stackOf (n) {
   const unlock = S()
   for (let i = 0; i < n; i++) unlock.add(Op.OP_1)
@@ -99,8 +102,16 @@ function stackOf (n) {
   for (let i = 0; i < n - 1; i++) lock.add(Op.OP_DROP)
   return { unlock, lock }
 }
+const PRE_GENESIS = bsv.Script.Interpreter.SCRIPT_VERIFY_P2SH | bsv.Script.Interpreter.SCRIPT_VERIFY_STRICTENC
+
 probe('999 stack elements', () => stackOf(999))
-probe('1001 stack elements is refused', () => stackOf(1001), false)
+probe('1001 stack elements, post-Genesis', () => stackOf(1001))
+probe('5000 stack elements, post-Genesis', () => stackOf(5000))
+probe('…but 1001 is refused under pre-Genesis flags', () => {
+  const unlock = S()
+  for (let i = 0; i < 1001; i++) unlock.add(Op.OP_1)
+  return { unlock, lock: S().add(Op.OP_1), flags: PRE_GENESIS }
+}, false)
 probe('one 100 KB element is fine', () => ({
   unlock: S().add(Buffer.alloc(100000, 7)),
   lock: S().add(Op.OP_SIZE).add(Op.OP_NIP).add(pushNum(100000)).add(Op.OP_NUMEQUAL)
