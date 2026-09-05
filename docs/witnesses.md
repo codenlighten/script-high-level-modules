@@ -1,0 +1,136 @@
+# Witnessed values: soundness, and the other thing
+
+Some operations are far cheaper to **check** than to **compute**.
+
+The modular inverse is the standard example. Computing it means the extended
+Euclidean algorithm — a data-dependent loop, which an unrolled Script cannot
+express without bounding it by the size of the modulus. Checking it is one
+multiplication:
+
+```
+0 ≤ inv < n   ∧   a · inv ≡ 1 (mod n)
+```
+
+So the spender supplies it, and the module verifies it. `int.modinv` is 82 bytes
+at 256 bits. That single trade is what makes affine elliptic-curve arithmetic
+affordable in Script at all, and it is why every point operation in this
+repository takes a witness.
+
+It is also where a module goes quietly, dangerously wrong. A witnessed module
+carries two obligations, not one.
+
+## Soundness: no wrong witness is accepted
+
+The obvious one. If the module accepts a witness that does not satisfy the
+relation, it computes the wrong answer and the covenant above it is broken.
+
+## Canonicity: no *second* witness is accepted either
+
+The one that gets skipped.
+
+`a · inv ≡ 1 (mod n)` is true of `inv`. It is also true of `inv + n`, and of
+`inv + 2n`, and of every other representative of the same residue class. A
+module that checks only the congruence is sound — it never accepts a *wrong*
+answer — and still broken, because its output is a function of the spender's
+choice rather than of its inputs.
+
+What that costs depends on what sits above it:
+
+- a module that **returns** the witness produces a different result for each
+  accepted witness, so the covenant computes something the spender picked;
+- a module that only **verifies** still lets the unlocking script be rewritten,
+  which changes the transaction's txid without changing what it does. Anything
+  downstream that referenced the old txid — a chain of unbroadcast transactions,
+  a payment channel — breaks.
+
+The range check `0 ≤ inv < n` is what reduces the residue class to one member.
+Two comparisons.
+
+## The kit attacks both
+
+For every witnessed input, the test kit builds an **acceptance** script — the
+module with its outputs dropped and nothing asserted about them — and asks
+whether the module accepts a forged witness. The near-misses, not random noise:
+off by one, zero, one, negated, and the same residue plus or minus the modulus.
+
+Asking the *correctness* script instead is the mistake that hides all of this,
+and it is the first thing this kit got wrong. A forged witness that the module
+happily accepts still fails the test's own comparison against the honest answer,
+so the run reports a refusal that never happened. Separating "did the module
+accept?" from "did it compute the right value?" is the whole difference.
+
+Three rules follow, and each is enforced rather than recommended:
+
+**A witness that cannot be attacked is not proven.** If the module supplies no
+`attacks()` and the kit cannot construct the near-misses itself, it reports
+`UNPROVEN` rather than a green run it did not earn.
+
+**An attack equal to the honest value is not an attack.** Flipping a bit of an
+empty message produces the empty message; being accepted is then correct
+behaviour. Counting it as a refusal, or as a break, would both be lies, so the
+kit discards it — and if nothing survives, says so.
+
+**Witnesses that are the point of a module are always attacked.** A module with
+hundreds of witnessed inputs cannot be attacked exhaustively, so the kit samples
+and reports the sample honestly (`a sample of 10 of the 13 witnessed inputs`).
+But a signature's own `r` and `s` are never left to a sample.
+
+## Four worked examples
+
+### `int.modinv` — the range check is the module
+
+Drop `0 ≤ inv < n` and `inv + n` is accepted. `npm run selftest` writes exactly
+that bug on purpose and fails if the kit misses it.
+
+### `rsa.verify` — s and s + n are both e-th roots
+
+`s^e mod n` does not distinguish `s` from `s + n`. Without the bound, one RSA
+signature is an unbounded family of valid unlocking scripts:
+
+```
+  range check         unlocking script       verdict
+  with 0 ≤ s < n      the signature          ACCEPTED
+  with 0 ≤ s < n      the signature + n      refused
+  WITHOUT the check   the signature + n      ACCEPTED
+```
+
+Cost of the check: 267 bytes. `npm run malleability`.
+
+### `ecdsa.verify` — the malleability is in the scheme, not the module
+
+If `(r, s)` verifies then so does `(r, n − s)`: `R` and `−R` share an x
+coordinate, and x is all the equation looks at. Both are genuine signatures over
+the same message by the same key, so this is not a bug to fix — it is a
+canonicity rule to choose. Enforcing `s ≤ (n−1)/2` picks one.
+
+This is the same rule Bitcoin applies to `OP_CHECKSIG`, where `LOW_S` is
+mandatory policy, for the same reason. A verifier built out of arithmetic
+inherits the problem and should inherit the answer.
+
+### `ec.mul` — the witness that is never read
+
+In a double-and-add ladder, a step whose bit is zero never reads its inverse.
+Leaving it unconstrained would let anyone rewrite that push — a value the script
+does not look at — and change the txid. The `ELSE` branch therefore requires it
+to be zero. Three bytes per step.
+
+The same reasoning applies to the packed witness tape: after the last step, the
+script requires what remains of the tape to be **empty**. Trailing junk would
+otherwise ride along in the unlocking script, unread and unconstrained.
+
+## Sound but not complete
+
+One more distinction worth keeping separate from the two above.
+
+The elliptic-curve ladder starts its accumulator at a nothing-up-my-sleeve point,
+because affine coordinates cannot represent the point at infinity and a runtime
+scalar gives no first-set-bit to start from. If an intermediate addition lands on
+infinity, `dx` is zero, no inverse exists, and the spend is **refused**.
+
+That is a completeness failure, not a soundness one: the module never accepts a
+wrong answer, it occasionally declines to accept a right one. For inputs that are
+not chosen adversarially the chance is about 2⁻¹²⁸ per step. An attacker who
+controls the point can force a refusal — which costs them a spend they could
+equally have declined to make.
+
+Saying which of the two a limitation is, is most of the work of documenting it.

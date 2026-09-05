@@ -29,9 +29,25 @@ npm install
 npm test                         # every module against the consensus interpreter
 npm run probe                    # what the interpreter actually does (measured)
 npm run cost                     # what every module costs, in bytes
-npm run malleability             # why the range check in rsa.verify is load-bearing
+npm run malleability             # RSA's s + n and ECDSA's n − s, rule on and off
 node examples/rsa-lock.js        # a coin an RSA authority unlocks
+node examples/oracle-lock.js     # a coin an oracle's ordinary secp256k1 key unlocks
 ```
+
+## Documentation
+
+**Start at [docs/index.md](docs/index.md)** — the map. The individual documents:
+
+- **[limits.md](docs/limits.md)** — what the interpreter actually does, measured
+  rather than quoted: 4096-bit `OP_MUL`, truncated `OP_MOD`, signed
+  `OP_NUM2BIN`, and the 1000-element stack cap that decides the shape of
+  anything with a large witness.
+- **[modules.md](docs/modules.md)** — the module contract: `model` and `emit`,
+  the calling convention, kinds, composition through `apply()`, refusal cases.
+- **[witnesses.md](docs/witnesses.md)** — soundness *and* canonicity, the
+  difference between them, and four worked examples of what happens when the
+  second one is skipped.
+- **[cost.md](docs/cost.md)** — what every module costs, generated from the code.
 
 ## What is here
 
@@ -49,11 +65,13 @@ src/modules/sha256.js SHA-256 rebuilt from primitives — the control experiment
 src/modules/rsa.js    RSA-2048 signature verification
 src/modules/hmac.js   HMAC-SHA256 and HMAC-SHA1 over the native hash opcodes
 src/modules/totp.js   RFC 6238 authenticator codes
+src/modules/ec.js     secp256k1 point arithmetic and two scalar ladders
+src/modules/ecdsa.js  ECDSA verification over an arbitrary message
 tools/                probes, self-tests, the cost report
 fixtures/             a throwaway RSA-2048 key, so the suite is deterministic
 ```
 
-Twenty-three modules, 132 cases, 210 forgery attempts, all green.
+Thirty modules, 168 cases, 550 forgery attempts, all green — in eighteen seconds.
 
 ## The three claims a module must earn
 
@@ -104,18 +122,30 @@ Full table in [docs/cost.md](docs/cost.md), generated from the code.
 | `rsa.verify` | RSA-2048, PKCS#1 v1.5 | 955 |
 | `hmac.sha256` | a 32-byte key | 175 |
 | `totp.verify` | RFC 6238, 6 digits | 269 |
+| `ec.add` | secp256k1, witnessed inverse | 191 |
 | `u32.add` | one addition mod 2³² | 58 |
 | `sha256.block` | one block, no `OP_SHA256` | 50,765 |
+| `ec.mul` | k·P, 256-bit, both runtime | 116,127 |
+| `ecdsa.verify` | arbitrary message, secp256k1 | 196,778 |
 
-Read the last two rows against the first three. RSA verification — a scheme
-Bitcoin has no opcode for — costs under a kilobyte, because every operation it
-needs is one Script opcode at any width. SHA-256 rebuilt from those same
-primitives costs **50,765×** what `OP_SHA256` costs for the same answer, because
-32-bit modular addition pays for two endianness conversions every time.
+RSA verification — a scheme Bitcoin has no opcode for — costs under a kilobyte,
+because every operation it needs is one Script opcode at any width. SHA-256
+rebuilt from those same primitives costs **50,765×** what `OP_SHA256` costs for
+the same answer, because 32-bit modular addition is *not* one opcode and pays for
+two endianness conversions every time.
 
 Both are the same technique. The difference is only whether the primitive you
-need is already an opcode — and it is worth four orders of magnitude. This is
-the number to compute *before* lowering a new algorithm, not after.
+need is already an opcode — and it is worth four orders of magnitude. This is the
+number to compute *before* lowering a new algorithm, not after.
+
+`ecdsa.verify` is the expensive end of that judgement, and worth stating plainly.
+`OP_CHECKSIG` answers one question — is this a valid signature over *this*
+transaction's sighash — and cannot be asked whether an oracle signed a price or a
+manifest. That gap is why the BSV ecosystem reaches for Rabin signatures, which
+verify with `OP_MUL` and `OP_MOD` in a few hundred bytes. The gap is in the
+opcode, not in Script: 196,778 bytes buys an oracle signing with the secp256k1
+key it already has, over any message at all. Whether that is worth 197 KB is an
+engineering choice, not a technical limit — but it is now a choice.
 
 ## Writing a module
 
@@ -152,15 +182,17 @@ forty-five predicates deployed and spent on mainnet — lives in **predicate
 bench**. This repository is the layer beneath the mathematics those predicates
 assume: what a predicate can *compute* and *check*, priced.
 
-`hmac` and `totp` are the pattern working: an authenticator code is HMAC-SHA1 of
-a counter, a truncation that reads its own offset out of the digest, and a
-reduction mod 10⁶ — 269 bytes, checked against RFC 6238's published vectors.
-Neither needed a new primitive.
+Everything above `int` and `u32` is a composition. An authenticator code is
+HMAC-SHA1 of a counter, a truncation that reads its own offset out of the digest,
+and a reduction mod 10⁶ — checked against RFC 6238's published vectors. A curve
+point addition is six field operations and a witnessed inverse. ECDSA is two
+ladders and a comparison. None of them needed a new primitive, and none of them
+needed anything from consensus.
 
-Next, on the same principle: PBKDF2 over `hmac`, prime-field and elliptic-curve
-arithmetic over `int` (with `modinv` witnessed, which is what makes affine curve
-addition affordable), ECDSA over an *arbitrary* message rather than the
-transaction sighash, and pairing-based verification equations above that.
+Next, on the same principle: PBKDF2 over `hmac`, Schnorr and BIP-340 over the
+same ladders (cheaper than ECDSA, and canonical by construction), Merkle
+verification, and pairing-based verification equations above the field
+arithmetic.
 
 ## License
 

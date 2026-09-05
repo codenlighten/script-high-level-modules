@@ -168,6 +168,7 @@ function verifier (cases, { lowS = true } = {}) {
     },
     cases: cases.map((c) => ({ ...c, params: { lowS, ...(c.params || {}) } })),
     notes: [
+      'z is an INPUT: bind it to a message you care about (hash it in the script), or this proves only that a signature exists for some z',
       lowS ? 'low-S enforced: (r, n − s) is refused, so the signature is canonical' : 'low-S NOT enforced: (r, n − s) verifies too and the spend is malleable',
       'the public key is checked to be on the curve — an invalid-curve point is refused',
       'about 195 KB: the most expensive module here, and the one to justify before using'

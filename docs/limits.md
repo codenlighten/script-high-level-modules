@@ -53,7 +53,30 @@ and preserve its length (`01020304 << 8 = 02030400`, `0f0f << 4 = f0f0`). That
 is why a 32-bit word is stored big-endian here: rotations are two shifts and an
 OR, one opcode each.
 
+## The stack is capped at 1000 elements
+
+The one limit here that actually bites. `999` elements verify; `1001` is
+`SCRIPT_ERR_STACK_SIZE`. It is a cap on the COUNT, not the size: a single
+100 KB element is fine.
+
+This is what decides the shape of any construction with a large witness. A
+256-step elliptic-curve ladder needs a bit and one or two inverses per step —
+over seven hundred values — and two ladders in one script overflow the cap long
+before the fee becomes interesting. So the witness arrives as **a packed tape**:
+two byte strings that the script splits one field off the front of as it goes.
+Three stack elements per ladder instead of seven hundred. See `emitLadder` in
+`src/modules/ec.js`.
+
+A caveat worth stating rather than hiding: post-Genesis BSV nodes replaced the
+element-count limit with a limit on stack *memory*. This interpreter enforces
+1000 elements unconditionally. Since this interpreter is what proves every
+module here, that is the number the modules are built against — but a script
+that fails only on this limit might be accepted by a node, and one that passes
+here is not thereby proven to fit a node's memory limit. Neither direction is
+assumed.
+
 ## Size is not the constraint people expect
 
-50,000 sequential opcodes in a 100 KB script verify without complaint. The
-budget that matters is the fee, and the fee is bytes — see [cost.md](cost.md).
+50,000 sequential opcodes in a 100 KB script verify without complaint, and the
+largest module here is a 197 KB script that runs 112,753 opcodes. The budget
+that matters is the fee, and the fee is bytes — see [cost.md](cost.md).
