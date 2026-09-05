@@ -57,7 +57,8 @@ const modules = {
   'totp.verify': totp.verify,
   'ec.add': ec.add,
   'ec.double': ec.double,
-  'tx.locktime': txmod.locktime
+  'tx.locktime': txmod.locktime,
+  'tx.hashOutputs': txmod.hashOutputs
 }
 
 /** The ones that are built for a particular key, width or scalar set. */
@@ -66,7 +67,10 @@ const factories = {
   'ec.mul': ec.mul,
   'ec.mulG': ec.mulG,
   'ecdsa.verify': ecdsa.verifier,
-  'merkle.verify': merkle.verify
+  'merkle.verify': merkle.verify,
+  'tx.requireOutputs': txmod.requireOutputs,
+  'recipes.authorityPays': recipes.authorityPays,
+  'recipes.timelockedTotp': recipes.timelockedTotp
 }
 
 /** What a consumer needs to decide whether a module fits. */

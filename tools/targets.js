@@ -180,4 +180,31 @@ targets.vault = (() => {
   }
 })()
 
+// ── 6. A payment the authority directs, not merely permits ──────────────────
+targets.authority = (() => {
+  const key = rsaMod.fixtureKey()
+  const wallet = require('../src/onchain').loadWallet()
+  const AMOUNT = 120                        // paid back to the funding address
+  const msg = recipes.instruction(wallet.address, AMOUNT)
+  const out = recipes.instructedOutput(wallet.address, AMOUNT)
+  const m = recipes.authorityPays(key, {
+    cases: recipes.authorityPaysCases(wallet.address, AMOUNT, owner.toAddress())
+  })
+  // No owner: replaying this witness produces the same payment to the same
+  // address, so the check that exists to stop a replay has nothing to stop.
+  const coin = predicate(m, {}, { owner: null })
+
+  return {
+    name: 'rsa.verify ▸ tx.hashOutputs',
+    claim: 'the authority names the destination in what it signs, and the chain pays whoever it named',
+    lock: coin.lockingScript,
+    shape: { outputs: [out] },
+    valueFor: (fee) => AMOUNT + fee,
+    unlock: ({ tx, lockingScript, satoshis, shape }) => {
+      const produced = m.witnessFor({ tx, lockingScript, satoshis, spend: shape })
+      return coin.unlock({ ...produced, msg })
+    }
+  }
+})()
+
 module.exports = { targets, owner, ownerPkh }

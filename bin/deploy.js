@@ -58,7 +58,15 @@ async function run () {
   const wallet = onchain.loadWallet()
   let utxos = await onchain.spendable(wallet.address)
   const held = utxos.reduce((s, u) => s + u.value, 0)
-  console.log(`\n  wallet ${wallet.address}   ${held} sat in ${utxos.length} spendable output(s)\n`)
+  const pending = onchain.unconfirmed(utxos)
+  console.log(`\n  wallet ${wallet.address}   ${held} sat in ${utxos.length} spendable output(s)` +
+    (pending ? `, ${pending} unconfirmed` : ''))
+  if (BROADCAST && pending === utxos.length && utxos.length) {
+    console.log('  every output is unconfirmed — a node limits how deep an unconfirmed')
+    console.log('  chain may go, and each deployment adds two links. If a broadcast comes')
+    console.log('  back too-long-mempool-chain, it wants a block, not a retry.')
+  }
+  console.log('')
 
   const results = []
   for (const key of chosen) {
@@ -69,7 +77,10 @@ async function run () {
     // funds the output with exactly the fee that spend will need.
     const probe = buildSpend(target, '00'.repeat(32), 100000, 1)
     const spendFee = onchain.feeFor(probe.size)
-    const value = spendFee + 1
+    // A covenant that pins its outputs decides what the input must hold: it pays
+    // a fixed amount, and the fee is the remainder. Everything else just needs
+    // to cover its own spend.
+    const value = target.valueFor ? target.valueFor(spendFee) : spendFee + 1
 
     const dep = await onchain.buildDeploy(target.lock, { satoshis: value, utxos })
     const deployTxid = dep.tx.hash

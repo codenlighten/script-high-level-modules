@@ -28,11 +28,15 @@
 | `ec.add` | `x1` `y1` `x2` `y2` `invdx` | `x3` `y3` | `invdx` | 6 |
 | `ec.double` | `x1` `y1` `inv2y` | `x3` `y3` | `inv2y` | 4 |
 | `tx.locktime` † | `preimage` | `locktime` | `preimage` | 4 |
+| `tx.hashOutputs` † | `preimage` | `hashOutputs` | `preimage` | 2 |
 | `rsa.verify(…)` | *built per key or width* | | | |
 | `ec.mul(…)` | *built per key or width* | | | |
 | `ec.mulG(…)` | *built per key or width* | | | |
 | `ecdsa.verify(…)` | *built per key or width* | | | |
 | `merkle.verify(…)` | *built per key or width* | | | |
+| `tx.requireOutputs(…)` | *built per key or width* | | | |
+| `recipes.authorityPays(…)` | *built per key or width* | | | |
+| `recipes.timelockedTotp(…)` | *built per key or width* | | | |
 
 A module with **no outputs** is a predicate: it asserts and returns nothing, and
 `predicate(module, params, { owner })` turns it straight into a locking script

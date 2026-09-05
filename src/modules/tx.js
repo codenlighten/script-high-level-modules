@@ -87,6 +87,44 @@ function left (asm, n, out) {
  * field of a transaction that does not exist. There is no way to obtain a field
  * here without the proof that came with it.
  */
+// The two fixed destinations the output cases pay to. Throwaway, and fixed so a
+// case reproduces byte for byte.
+const PAY_A = bsv.PrivateKey.fromBuffer(Buffer.from('11'.repeat(32), 'hex')).toAddress()
+const PAY_B = bsv.PrivateKey.fromBuffer(Buffer.from('22'.repeat(32), 'hex')).toAddress()
+
+/**
+ * The spender's side of any preimage module: grind until the in-script signature
+ * is canonical, then push the result.
+ *
+ * The grind has to vary something, and it must not be something the spend has
+ * pinned. A covenant reading nLockTime grinds the sequence; one pinning both
+ * grinds the output value, which is what a real spender would vary — their own
+ * change. A case that pins all three is telling the truth about a transaction
+ * that cannot be built.
+ */
+function locktimeWitnessFor ({ tx, lockingScript, satoshis, spend = {} }) {
+  const pinned = (f) => spend[f] !== undefined
+  const field = !pinned('sequence') ? 'sequence' : !pinned('nLockTime') ? 'nLockTime' : null
+  const g = field
+    ? PushTx.grind(tx, 0, lockingScript, satoshis, { field })
+    : grindValue(tx, 0, lockingScript, satoshis)
+  return { preimage: g.preimage }
+}
+
+/** Forgeries of a preimage: change a byte, change the field, cut it short. */
+function preimageAttacks (honest, params, name) {
+  const v = Buffer.from(honest[name])
+  const flipped = Buffer.from(v); flipped[0] ^= 0x01
+  const field = Buffer.from(v); field[v.length - 8] ^= 0x01
+  const outs = Buffer.from(v); outs[v.length - 40] ^= 0x01
+  return [
+    { label: 'a byte of the preimage changed', value: flipped },
+    { label: 'the locktime field rewritten', value: field },
+    { label: 'the output commitment rewritten', value: outs },
+    { label: 'the preimage truncated', value: v.subarray(0, v.length - 1) }
+  ]
+}
+
 const locktime = defineModule({
   name: 'tx.locktime',
   doc: 'prove the preimage is this spend, and read its nLockTime',
@@ -95,18 +133,7 @@ const locktime = defineModule({
   contextual: true,
   // The spender's side: grind the sequence until the in-script signature is
   // canonical, then push the resulting preimage.
-  witnessFor: ({ tx, lockingScript, satoshis, spend = {} }) => {
-    // The grind has to vary something, and it must not be something the spend
-    // has pinned. A covenant that reads nLockTime grinds the sequence; a case
-    // that pins BOTH cannot be ground at all and says so rather than quietly
-    // testing a different transaction.
-    const pinned = (f) => spend[f] !== undefined
-    const field = !pinned('sequence') ? 'sequence' : !pinned('nLockTime') ? 'nLockTime' : null
-    const g = field
-      ? PushTx.grind(tx, 0, lockingScript, satoshis, { field })
-      : grindValue(tx, 0, lockingScript, satoshis)
-    return { preimage: g.preimage }
-  },
+  witnessFor: locktimeWitnessFor,
   hint: () => ({}),
   model: ({ preimage }) => ({ locktime: BigInt(preimage.readUInt32LE(preimage.length - 8)) }),
   emit: (asm) => {
@@ -131,16 +158,7 @@ const locktime = defineModule({
     asm.data(Buffer.from([0]), '_sign'); asm.cat('_ltp')     // keep it positive past 2038
     asm.bin2num('locktime')
   },
-  attacks: (honest, params, name) => {
-    const v = Buffer.from(honest[name])
-    const flipped = Buffer.from(v); flipped[0] ^= 0x01
-    const late = Buffer.from(v); late[v.length - 8] ^= 0x01   // the locktime field itself
-    return [
-      { label: 'a byte of the preimage changed', value: flipped },
-      { label: 'the locktime rewritten', value: late },
-      { label: 'the preimage truncated', value: v.subarray(0, v.length - 1) }
-    ]
-  },
+  attacks: preimageAttacks,
   cases: [
     // The locktime is pinned and the sequence is left free for the grind.
     { name: 'a locktime in the past', spend: { nLockTime: 1600000000 } },
@@ -160,4 +178,111 @@ const locktime = defineModule({
   ]
 })
 
-module.exports = { locktime, right, left, grindValue, SIGHASH_ALL_FORKID, FINAL, PushTx }
+/**
+ * Authenticate the preimage and read the commitment to the spend's OUTPUTS.
+ *
+ * This is the primitive that turns a verifier into a contract. Every module
+ * before it answers "may this coin move?"; hashOutputs is what lets a script
+ * also say WHERE. The BIP-143 preimage commits to HASH256 of the whole
+ * serialised output set, so pinning that one 32-byte field pins every
+ * destination and every amount at once — and pins them as a SET, so an extra
+ * output nobody asked for is refused along with a changed one.
+ *
+ * Authentication and extraction are one module for the same reason as in
+ * `locktime`: there is no way to obtain the field without the proof that came
+ * with it.
+ *
+ * It reads the SIGHASH_ALL layout, and says so. Under SIGHASH_SINGLE the field
+ * covers one output and under SIGHASH_NONE it covers nothing, so a covenant that
+ * pinned it while the spender chose the flag would be pinning something else
+ * entirely. The PUSH_TX core fixes the flag implicitly; the check makes it fail
+ * loudly rather than quietly reading the wrong bytes.
+ */
+const hashOutputs = defineModule({
+  name: 'tx.hashOutputs',
+  doc: 'prove the preimage is this spend, and read what it commits its outputs to',
+  inputs: [{ name: 'preimage', kind: 'bytes', witness: true }],
+  outputs: [{ name: 'hashOutputs', kind: 'bytes', width: 32 }],
+  contextual: true,
+  witnessFor: locktimeWitnessFor,
+  hint: () => ({}),
+  model: ({ preimage }) => ({ hashOutputs: Buffer.from(preimage.subarray(preimage.length - 40, preimage.length - 8)) }),
+  emit: (asm) => {
+    asm.pick('preimage', '_pi')
+    asm.clause((s2) => PushTx.pushTxCore(s2), 1, [{ name: '_ok', kind: 'num' }])
+    asm.verify()
+
+    asm.pick('preimage', '_pf'); right(asm, 4, '_flag')
+    asm.data(Buffer.from([SIGHASH_ALL_FORKID, 0, 0, 0]), '_want'); asm.equalVerify()
+
+    asm.roll('preimage'); right(asm, 40, '_tail40'); left(asm, 32, 'hashOutputs')
+  },
+  attacks: preimageAttacks,
+  cases: [
+    // Spelled out rather than left to the default: a module that reads the
+    // transaction's own output commitment must be tested against outputs the
+    // case chose, or the case is describing something it cannot see.
+    {
+      name: 'one output',
+      spend: { outputs: [new bsv.Transaction.Output({ script: bsv.Script.buildPublicKeyHashOut(PAY_A), satoshis: 70 })] }
+    },
+    {
+      name: 'two outputs',
+      spend: {
+        outputs: [
+          new bsv.Transaction.Output({ script: bsv.Script.buildPublicKeyHashOut(PAY_A), satoshis: 40 }),
+          new bsv.Transaction.Output({ script: bsv.Script.buildPublicKeyHashOut(PAY_B), satoshis: 30 })
+        ]
+      }
+    }
+  ],
+  notes: ['pins the output SET: an extra output is refused along with a changed one']
+})
+
+/**
+ * The predicate form: the spend must pay exactly this.
+ *
+ * `outputs` is the whole set, in order. Anything else — a different amount, a
+ * different destination, an extra output, a missing one — changes the hash and
+ * the spend is refused.
+ */
+function requireOutputs (outputs, { cases } = {}) {
+  const expected = PushTx.hashOutputs(outputs)
+  return defineModule({
+    name: 'tx.requireOutputs',
+    doc: 'the spend may only pay exactly this set of outputs',
+    inputs: [{ name: 'preimage', kind: 'bytes', witness: true }],
+    outputs: [],
+    contextual: true,
+    witnessFor: locktimeWitnessFor,
+    hint: () => ({}),
+    model: () => ({}),
+    emit: (asm) => {
+      hashOutputs.emit(asm, {})
+      asm.data(expected, '_want'); asm.equalVerify()
+    },
+    attacks: preimageAttacks,
+    cases: cases || [
+      { name: 'paying exactly what it must', spend: { outputs: outputs.map(cloneOutput) } },
+      {
+        name: 'one satoshi less to the same address',
+        refuse: 'the amount is inside the commitment',
+        spend: { outputs: outputs.map((o, i) => cloneOutput(o, i === 0 ? -1 : 0)) }
+      },
+      {
+        name: 'an extra output appended',
+        refuse: 'the commitment is over the whole set, not a subset',
+        spend: {
+          outputs: [...outputs.map((o) => cloneOutput(o)),
+            new bsv.Transaction.Output({ script: bsv.Script.buildPublicKeyHashOut(PAY_B), satoshis: 1 })]
+        }
+      }
+    ],
+    notes: ['pins destinations and amounts together, as a set']
+  })
+}
+
+const cloneOutput = (o, delta = 0) =>
+  new bsv.Transaction.Output({ script: o.script, satoshis: o.satoshis + delta })
+
+module.exports = { locktime, hashOutputs, requireOutputs, right, left, grindValue, SIGHASH_ALL_FORKID, FINAL, PushTx }

@@ -49,6 +49,7 @@ const ROWS = [
   ['merkle.verify', merkle.verify(mtree.root, { depth: 3, leaves: mleaves }), { depth: 3, root: mtree.root }, 'depth 3 (8 leaves)'],
   ['merkle.verify', merkle.verify(mtree.root, { depth: 32, leaves: mleaves }), { depth: 32, root: mtree.root }, 'depth 32 (4 billion leaves)'],
   ['tx.locktime', txmod.locktime, {}, 'OP_PUSH_TX + nLockTime'],
+  ['tx.hashOutputs', txmod.hashOutputs, {}, 'OP_PUSH_TX + the output commitment'],
   ['ec.add', ec.add, {}, 'secp256k1, witnessed inverse'],
   ['ec.double', ec.double, {}, 'secp256k1, witnessed inverse'],
   ['ec.mulG', ec.mulG(256, [1n]), {}, 'k·G, 256-bit, base fixed'],

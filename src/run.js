@@ -31,6 +31,15 @@ function policyFlags () {
 const MOCK_PREVOUT = Buffer.from('0'.repeat(63) + '1', 'hex')
 const SATOSHIS = 1000
 
+// Where a spend pays when the caller does not say. This used to be
+// PrivateKey.fromRandom(), which is invisible until a module reads the
+// transaction's own output commitment — and then the same case computes a
+// different answer on every run. A fixed key costs nothing and removes the
+// whole class.
+const MOCK_PAYEE = bsv.PrivateKey
+  .fromBuffer(Buffer.from('0'.repeat(62) + '42', 'hex'))
+  .toAddress()
+
 function mockTx (lockingScript) {
   const tx = new bsv.Transaction()
   tx.addInput(new bsv.Transaction.Input({
@@ -39,7 +48,7 @@ function mockTx (lockingScript) {
     script: new bsv.Script(),
     sequenceNumber: 0xffffffff
   }), lockingScript, SATOSHIS)
-  tx.to(bsv.PrivateKey.fromRandom().toAddress(), SATOSHIS)
+  tx.to(MOCK_PAYEE, SATOSHIS)
   return tx
 }
 
@@ -128,7 +137,7 @@ function buildSpend (lock, { satoshis = SATOSHIS, nLockTime, sequence = 0xffffff
     sequenceNumber: sequence
   }), lockingScript, satoshis)
   if (outputs) outputs.forEach((o) => tx.addOutput(o))
-  else tx.to(payTo || bsv.PrivateKey.fromRandom().toAddress(), satoshis)
+  else tx.to(payTo || MOCK_PAYEE, satoshis)
   if (nLockTime !== undefined) tx.nLockTime = nLockTime
   return { tx, lockingScript, satoshis }
 }
@@ -168,4 +177,4 @@ function countOps (script) {
   return n
 }
 
-module.exports = { evaluate, evaluateSpend, buildSpend, evaluatePrepared, policyFlags, countOps, mockTx, MOCK_PREVOUT, SATOSHIS }
+module.exports = { evaluate, evaluateSpend, buildSpend, evaluatePrepared, policyFlags, MOCK_PAYEE, countOps, mockTx, MOCK_PREVOUT, SATOSHIS }

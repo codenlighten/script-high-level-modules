@@ -1,5 +1,7 @@
 'use strict'
 
+const bsv = require('@smartledger/bsv')
+
 const { proveAll } = require('./src/testkit')
 const int = require('./src/modules/int')
 const bytes = require('./src/modules/bytes')
@@ -14,6 +16,9 @@ const merkle = require('./src/modules/merkle')
 const compose = require('./src/compose')
 const txmod = require('./src/modules/tx')
 const recipes = require('./src/recipes')
+const rsaFixture = rsa.fixtureKey()
+const payee = bsv.PrivateKey.fromBuffer(Buffer.from('55'.repeat(32), 'hex')).toAddress()
+const elsewhereAddr = bsv.PrivateKey.fromBuffer(Buffer.from('66'.repeat(32), 'hex')).toAddress()
 const crypto = require('crypto')
 
 const leaves = Array.from({ length: 8 }, (_, i) => crypto.createHash('sha256').update('leaf' + i).digest())
@@ -69,7 +74,10 @@ const { failures } = proveAll([
   [merkle.verify(mtree.root, { depth: 3, leaves }), {}],
   [vault, {}],
   [txmod.locktime, {}],
-  [recipes.timelockedTotp(Buffer.from('12345678901234567890'), { digits: 6, step: 30, at: 1600000020 }), {}]
+  [recipes.timelockedTotp(Buffer.from('12345678901234567890'), { digits: 6, step: 30, at: 1600000020 }), {}],
+  [txmod.hashOutputs, {}],
+  [txmod.requireOutputs([recipes.instructedOutput(payee, 42)]), {}],
+  [recipes.authorityPays(rsaFixture, { cases: recipes.authorityPaysCases(payee, 700, elsewhereAddr) }), {}]
 ])
 
 process.exit(failures.length ? 1 : 0)

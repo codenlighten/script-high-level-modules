@@ -99,7 +99,7 @@ src/modules/totp.js   RFC 6238 authenticator codes
 src/modules/ec.js     secp256k1 point arithmetic and two scalar ladders
 src/modules/ecdsa.js  ECDSA verification over an arbitrary message
 src/modules/merkle.js membership in a committed tree
-src/modules/tx.js     reading the spending transaction, via OP_PUSH_TX
+src/modules/tx.js     reading the spending transaction: locktime, output binding
 tools/                probes, self-tests, the cost report
 fixtures/             a throwaway RSA-2048 key, so the suite is deterministic
 ```
@@ -110,7 +110,7 @@ and are now era-derived and checked after every opcode (released in 9.7.0; see
 [limits.md](docs/limits.md)). They are skipped, with a note, on a library that
 predates it. Nothing else here depends on that fix.
 
-Thirty-three modules, 183 cases, 537 forgery attempts, all green.
+Thirty-seven modules, 195 cases, 571 forgery attempts, all green.
 
 ## The three claims a module must earn
 

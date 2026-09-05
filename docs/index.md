@@ -88,11 +88,12 @@ npm run verify:chain    # every deployed txid, against the chain (needs network)
 npm run deploy          # list the deployable targets; --broadcast to send one
 ```
 
-Five examples, all spending against the real interpreter:
+Six examples, all spending against the real interpreter:
 
 ```bash
 node examples/totp-lock.js     # the whole path in five lines, via predicate()
 node examples/totp-timelock.js # a code bound to the time the coin is locked to
+node examples/authority-pays.js # a payment an authority directs, not merely permits
 node examples/vault-lock.js    # three conditions, one coin, via all()
 node examples/rsa-lock.js      # a coin an RSA authority unlocks
 node examples/oracle-lock.js   # a coin an oracle's ordinary secp256k1 key unlocks

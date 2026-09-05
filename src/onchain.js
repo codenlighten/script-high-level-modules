@@ -82,15 +82,32 @@ function noteSpend (inputs, created) {
   saveUtxoCache(c)
 }
 
-/** Everything the wallet can spend right now, indexer and local notes combined. */
+/**
+ * Everything the wallet can spend right now, indexer and local notes combined,
+ * CONFIRMED FIRST.
+ *
+ * A node limits how deep an unconfirmed chain may go — deploying several
+ * covenants in a row spends change that is still in the mempool, and each
+ * deployment is one link deeper. Somewhere around a dozen the next broadcast
+ * comes back `too-long-mempool-chain`, which is not a fee problem and not
+ * something to retry: it needs a block, or a confirmed output to start a fresh
+ * chain from.
+ *
+ * So confirmed outputs are offered first, and `chainDepth()` says how deep the
+ * unconfirmed run has become before a broadcast finds out the hard way.
+ */
 async function spendable (address) {
   const c = utxoCache()
   let indexed = []
   try { indexed = await woc.utxos(address) } catch (e) { /* the local note stands alone */ }
   const all = [...indexed]
   for (const o of c.created) if (!all.some((x) => outpoint(x) === outpoint(o))) all.push(o)
-  return all.filter((u) => !c.spent.includes(outpoint(u)))
+  const live = all.filter((u) => !c.spent.includes(outpoint(u)))
+  return live.sort((a, b) => (b.height || 0) - (a.height || 0))
 }
+
+/** How many of these outputs are still unconfirmed. */
+const unconfirmed = (utxos) => utxos.filter((u) => !u.height).length
 
 /** Verify a fully-formed spend the way every test in this repository does. */
 function verifyLocally (tx, lockingScript, satoshis, inputIndex = 0) {
@@ -150,11 +167,19 @@ function buildUnlock ({ txid, vout, lockingScript, satoshis, unlock, shape = {},
   }), lockingScript, satoshis)
 
   // The output has to exist before the preimage is computed: it is committed to.
-  const provisional = fee === undefined ? 1 : fee
-  tx.addOutput(new bsv.Transaction.Output({
-    script: bsv.Script.buildPublicKeyHashOut(payTo || w.address),
-    satoshis: Math.max(1, satoshis - provisional)
-  }))
+  // A covenant that PINS its outputs supplies them, and then the fee is whatever
+  // the input holds minus what the covenant insists on paying — which is why
+  // such a target has to say how much to fund, rather than being handed the
+  // change.
+  if (shape.outputs) {
+    shape.outputs.forEach((o) => tx.addOutput(new bsv.Transaction.Output({ script: o.script, satoshis: o.satoshis })))
+  } else {
+    const provisional = fee === undefined ? 1 : fee
+    tx.addOutput(new bsv.Transaction.Output({
+      script: bsv.Script.buildPublicKeyHashOut(payTo || w.address),
+      satoshis: Math.max(1, satoshis - provisional)
+    }))
+  }
   if (shape.nLockTime !== undefined) tx.nLockTime = shape.nLockTime
 
   const script = unlock({ tx, lockingScript, satoshis, shape })
@@ -166,6 +191,6 @@ function buildUnlock ({ txid, vout, lockingScript, satoshis, unlock, shape = {},
 
 module.exports = {
   loadWallet, ledger, record, feeFor, verifyLocally, buildDeploy, buildUnlock,
-  spendable, noteSpend, utxoCache, outpoint,
+  spendable, unconfirmed, noteSpend, utxoCache, outpoint,
   SAT_PER_BYTE, WALLET, LEDGER, UTXOS, woc
 }
