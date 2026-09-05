@@ -60,7 +60,8 @@ const modules = {
   'ec.add': ec.add,
   'ec.double': ec.double,
   'tx.locktime': txmod.locktime,
-  'tx.hashOutputs': txmod.hashOutputs
+  'tx.hashOutputs': txmod.hashOutputs,
+  'schnorr.liftX': schnorrMod.liftX
 }
 
 /** The ones that are built for a particular key, width or scalar set. */

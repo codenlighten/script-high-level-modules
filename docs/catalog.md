@@ -29,6 +29,7 @@
 | `ec.double` | `x1` `y1` `inv2y` | `x3` `y3` | `inv2y` | 4 |
 | `tx.locktime` † | `preimage` | `locktime` | `preimage` | 4 |
 | `tx.hashOutputs` † | `preimage` | `hashOutputs` | `preimage` | 2 |
+| `schnorr.liftX` | `pubkey` `py` | `qx` `qy` | `pubkey` `py` | 5 |
 | `rsa.verify(…)` | *built per key or width* | | | |
 | `ec.mul(…)` | *built per key or width* | | | |
 | `ec.mulG(…)` | *built per key or width* | | | |

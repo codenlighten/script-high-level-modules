@@ -79,6 +79,7 @@ const { failures } = proveAll([
   [txmod.hashOutputs, {}],
   [txmod.requireOutputs([recipes.instructedOutput(payee, 42)]), {}],
   [recipes.authorityPays(rsaFixture, { cases: recipes.authorityPaysCases(payee, 700, elsewhereAddr) }), {}],
+  [schnorr.liftX, {}],
   [schnorr.verifier([], { cases: schnorr.bip340Cases() }), {}]
 ])
 

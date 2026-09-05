@@ -31,7 +31,8 @@
 | `ec.mulG` | k·G, 256-bit, base fixed | 39,833 | 15,553 |
 | `ec.mul` | k·P, 256-bit, both runtime | 42,086 | 29,331 |
 | `ecdsa.verify` | arbitrary message, secp256k1 | 59,141 | 38,401 |
-| `schnorr.verify` | BIP-340, x-only key | 59,643 | 38,745 |
+| `schnorr.liftX` | x-only key to a point | 208 | 126 |
+| `schnorr.verify` | BIP-340, x-only key | 59,653 | 38,753 |
 | `sha256.block` | one block, no OP_SHA256 | 49,181 | 31,790 |
 
 ## What to read out of this

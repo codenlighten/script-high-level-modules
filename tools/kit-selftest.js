@@ -14,6 +14,9 @@ const { proveModule } = require('../src/testkit')
 const { mod, invmod } = require('../src/bigint')
 const PushTx = require('@smartledger/bsv/lib/covenant/pushtx')
 const { right, left } = require('../src/modules/tx')
+const { apply } = require('../src/module')
+const bytesMod = require('../src/modules/bytes')
+const schnorrJs = require('../src/schnorr')
 
 const N = 11n
 
@@ -109,13 +112,61 @@ const selfDependent = defineModule({
   cases: [{ name: 'sequence pinned, so the grind moves the locktime', spend: { sequence: 0xfffffffe } }]
 })
 
+// The seventh, and the one that came out of auditing rather than out of writing:
+// BIP-340's lift takes the x BELOW the field size, and 32 bytes can encode more
+// than the field holds. x = 1 is on secp256k1, so 1 + p fits in 32 bytes and is
+// congruent to a real point — two encodings, one key. The standard's own vector
+// 14 does not catch it, because the value it uses has no y at all.
+//
+// Here is the same module with the bound removed. It must accept what the
+// standard refuses.
+const unbounded = defineModule({
+  name: 'broken.unboundedx',
+  doc: 'lifts an x-only key without checking that x is below the field size',
+  inputs: [
+    { name: 'pubkey', kind: 'bytes', width: 32, witness: true },
+    { name: 'py', witness: true }
+  ],
+  outputs: ['qx', 'qy'],
+  hint: ({ pubkey }) => { const p = schnorrJs.liftX(schnorrJs.toInt(pubkey)); return p ? { py: p.y } : {} },
+  model: ({ pubkey }) => { const p = schnorrJs.liftX(schnorrJs.toInt(pubkey)); return { qx: p.x, qy: p.y } },
+  emit: (asm) => {
+    const P = schnorrJs.P
+    asm.num(P, '_P')
+    apply(asm, bytesMod.beToNum, { width: 32 }, ['pubkey'], ['qx'])
+    asm.pick('py', '_y0'); asm.num(0, '_z1'); asm.pick('_P', '_p1'); asm.withinVerify()
+    asm.pick('py', '_y1'); asm.num(2, '_two'); asm.mod('_par')
+    asm.num(0, '_z2'); asm.numEqualVerify()
+    asm.pick('py', '_y2'); asm.pick('py', '_y3'); asm.mul('_yy')
+    asm.pick('_P', '_p2'); asm.mod('_lhs')
+    asm.pick('qx', '_x1'); asm.pick('qx', '_x2'); asm.mul('_xx')
+    asm.pick('qx', '_x3'); asm.mul('_xxx')
+    asm.num(7, '_b'); asm.add('_rhs0')
+    asm.pick('_P', '_p3'); asm.mod('_rhs')
+    asm.numEqualVerify()
+    asm.discard('_P')
+    asm.roll('py'); asm.rename('qy')
+    asm.roll('qx'); asm.roll('qy')
+  },
+  attacks: () => [{ label: 'a different y', value: 1n }],
+  cases: (() => {
+    const one = schnorrJs.liftX(1n)
+    return [{
+      name: 'x = 1 + p',
+      refuse: 'an encoding above the field size names no key',
+      inputs: { pubkey: schnorrJs.be32(1n + schnorrJs.P), py: one.y }
+    }]
+  })()
+})
+
 const expected = [
   [offByOne, 'a wrong value'],
   [leaky, 'a leaked stack slot'],
   [confused, 'bytes read as a number'],
   [congruent, 'a non-canonical witness'],
   [unattackable, 'a witness it cannot attack'],
-  [selfDependent, 'an answer its own script moves']
+  [selfDependent, 'an answer its own script moves'],
+  [unbounded, 'an x above the field size']
 ]
 
 let missed = 0

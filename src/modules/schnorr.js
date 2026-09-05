@@ -30,6 +30,104 @@ const schnorrJs = require('../schnorr')
 const P = ecJs.P
 const N = ecJs.N
 
+/**
+ * Lift an x-only public key to the point it names.
+ *
+ * BIP-340 spells this out in three parts and every one of them is load-bearing:
+ * the x must be BELOW THE FIELD SIZE, a y must exist for it, and the y taken is
+ * the even one. Computing that y is a square root; checking it is a squaring, so
+ * the spender supplies it.
+ *
+ * The range check is the part that is easy to leave out and hard to see the loss
+ * of, so it is here as its own module with the case that catches it. Thirty-two
+ * bytes can encode a value at or above p, and `x mod p` is then a different,
+ * perfectly valid key — x = 1 is on secp256k1, so `1 + p` fits in 32 bytes,
+ * exceeds the field size, and is congruent to a real point. Without the bound,
+ * two distinct encodings name one key and the standard's vector 14 does not
+ * catch it, because the value it uses happens to have no y at all.
+ *
+ * Nothing turns on it for a covenant that hard-codes its key. It matters when
+ * the key is an input, which is when a module should behave exactly as the
+ * standard says rather than nearly.
+ */
+const liftX = defineModule({
+  name: 'schnorr.liftX',
+  doc: 'the point an x-only BIP-340 key names, with the y supplied and checked',
+  inputs: [
+    { name: 'pubkey', kind: 'bytes', width: 32, witness: true },
+    { name: 'py', witness: true }
+  ],
+  outputs: ['qx', 'qy'],
+  hint: ({ pubkey }) => {
+    const p = schnorrJs.liftX(schnorrJs.toInt(pubkey))
+    return p ? { py: p.y } : {}
+  },
+  model: ({ pubkey }) => {
+    const p = schnorrJs.liftX(schnorrJs.toInt(pubkey))
+    if (!p) throw new Error('schnorr.liftX: no point for that x')
+    return { qx: p.x, qy: p.y }
+  },
+  emit: (asm) => {
+    asm.num(P, '_P')
+    apply(asm, bytes.beToNum, { width: 32 }, ['pubkey'], ['qx'])
+
+    // x < p. Without this, x and x + p are two encodings of one key.
+    asm.pick('qx', '_x0'); asm.num(0, '_z0'); asm.pick('_P', '_p0'); asm.withinVerify()
+    // 0 ≤ y < p, and y is the EVEN one
+    asm.pick('py', '_y0'); asm.num(0, '_z1'); asm.pick('_P', '_p1'); asm.withinVerify()
+    asm.pick('py', '_y1'); asm.num(2, '_two'); asm.mod('_par')
+    asm.num(0, '_z2'); asm.numEqualVerify()
+    // y² = x³ + 7
+    asm.pick('py', '_y2'); asm.pick('py', '_y3'); asm.mul('_yy')
+    asm.pick('_P', '_p2'); asm.mod('_lhs')
+    asm.pick('qx', '_x1'); asm.pick('qx', '_x2'); asm.mul('_xx')
+    asm.pick('qx', '_x3'); asm.mul('_xxx')
+    asm.num(7, '_b'); asm.add('_rhs0')
+    asm.pick('_P', '_p3'); asm.mod('_rhs')
+    asm.numEqualVerify()
+
+    asm.discard('_P')
+    asm.roll('py'); asm.rename('qy')
+    asm.roll('qx'); asm.roll('qy')
+  },
+  attacks: (honest, params, name) => {
+    if (name === 'py') {
+      return [
+        { label: 'the odd y of the same x', value: P - honest.py },
+        { label: 'y off by one', value: honest.py + 1n },
+        { label: 'y = 0', value: 0n }
+      ]
+    }
+    const v = Buffer.from(honest.pubkey)
+    const flipped = Buffer.from(v); flipped[31] ^= 0x01
+    return [{ label: 'a different x', value: flipped }]
+  },
+  cases: (() => {
+    const key = schnorrJs.publicKey(0xb7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfefn)
+    const one = schnorrJs.liftX(1n)                       // x = 1 is on secp256k1
+    return [
+      { name: 'an ordinary key', inputs: { pubkey: key } },
+      { name: 'x = 1', inputs: { pubkey: schnorrJs.be32(1n) } },
+      {
+        name: 'x = 1 + p, which is congruent to it',
+        refuse: 'an encoding at or above the field size names no key, even when x mod p does',
+        inputs: { pubkey: schnorrJs.be32(1n + P), py: one.y }
+      },
+      {
+        name: 'the odd y offered for a valid x',
+        refuse: 'BIP-340 takes the even y, so the odd one is a second encoding of one key',
+        inputs: { pubkey: schnorrJs.be32(1n), py: P - one.y }
+      },
+      {
+        name: 'an x with no y at all',
+        refuse: 'not every x is on the curve',
+        inputs: { pubkey: schnorrJs.be32(2n), py: 1n }
+      }
+    ]
+  })(),
+  notes: ['x must be below the field size: 32 bytes can encode more than the field holds']
+})
+
 /** e = int(tagged_hash("BIP0340/challenge", r ‖ pk ‖ m)) mod n, on the stack. */
 function emitChallenge (asm, rName, pkName, msgName, nName, out) {
   asm.data(schnorrJs.challengeTagPrefix(), '_tag')      // SHA256(tag) ‖ SHA256(tag)
@@ -74,7 +172,7 @@ function verifier (messages = ['script-modules', '', 'a longer message than one 
   },
   model: () => ({}),
   emit: (asm) => {
-    asm.num(N, '_N'); asm.num(P, '_P')
+    asm.num(N, '_N')
 
     // the signature is r ‖ s, both big-endian
     asm.roll('sig'); asm.splitAt(32, '_rb', '_sb')
@@ -84,22 +182,11 @@ function verifier (messages = ['script-modules', '', 'a longer message than one 
     // the challenge, over the SIGNED bytes rather than any value derived here
     emitChallenge(asm, '_rb', 'pubkey', 'msg', '_N', '_e')
 
-    // lift the x-only key: y is supplied, and checked
-    apply(asm, bytes.beToNum, { width: 32 }, ['pubkey'], ['_px'])
-    asm.pick('py', '_y0'); asm.num(0, '_z1'); asm.pick('_P', '_p0'); asm.withinVerify()   // 0 ≤ y < p
-    asm.pick('py', '_y1'); asm.num(2, '_two'); asm.mod('_par')
-    asm.num(0, '_z2'); asm.numEqualVerify()                                               // y is even
-    asm.pick('py', '_y2'); asm.pick('py', '_y3'); asm.mul('_yy')
-    asm.pick('_P', '_p1'); asm.mod('_lhs')
-    asm.pick('_px', '_x1'); asm.pick('_px', '_x2'); asm.mul('_xx')
-    asm.pick('_px', '_x3'); asm.mul('_xxx')
-    asm.num(7, '_b'); asm.add('_rhs0')
-    asm.pick('_P', '_p2'); asm.mod('_rhs')
-    asm.numEqualVerify()                                                                  // y² = x³ + 7
+    // lift the x-only key — range, parity and curve membership, in one module
+    apply(asm, liftX, {}, ['pubkey', 'py'], ['qx', 'qy'])
 
     // R = s·G + (n − e)·P
     asm.pick('_N', '_n1'); asm.pick('_e', '_e1'); asm.sub('_u2')
-    asm.roll('_px'); asm.rename('qx'); asm.roll('py'); asm.rename('qy')
     ec.emitShamir(asm, { prefix: 'sh', bits: 256 }, ['_s', '_u2'], ['qx', 'qy'], ['rx', 'ry'])
 
     // R.y must be even, and R.x must be the r that was signed
@@ -108,7 +195,7 @@ function verifier (messages = ['script-modules', '', 'a longer message than one 
     apply(asm, bytes.beToNum, { width: 32 }, ['_rb'], ['_r'])
     asm.roll('rx'); asm.numEqualVerify()
 
-    for (const dead of ['_s', '_u2', '_e', 'qx', 'qy', '_N', '_P']) asm.discard(dead)
+    for (const dead of ['_s', '_u2', '_e', 'qx', 'qy', '_N']) asm.discard(dead)
   },
   attacks: (honest, params, name) => {
     if (name === 'py') {
@@ -202,4 +289,4 @@ function bip340Cases (which = null) {
   })
 }
 
-module.exports = { verifier, bip340Cases, emitChallenge, P, N }
+module.exports = { verifier, liftX, bip340Cases, emitChallenge, P, N }
