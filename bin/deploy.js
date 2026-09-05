@@ -113,7 +113,16 @@ async function run () {
     const spendId = await woc.broadcast(spend.tx.toString())
     console.log(`    spent     ${spendId}\n`)
     onchain.noteSpend([`${deployId}:0`], [])
-    onchain.record({ target: target.name, key, claim: target.claim, deploy: deployId, spend: spendId, lockBytes: target.lock.toBuffer().length, value, spendFee })
+    // The script AS DEPLOYED is recorded, not just its length. A module that is
+    // later corrected produces different bytes, and the log has to be able to
+    // say "this is what went on chain, and the code has moved since" rather than
+    // simply going red.
+    onchain.record({
+      target: target.name, key, claim: target.claim,
+      deploy: deployId, spend: spendId,
+      lockBytes: target.lock.toBuffer().length, lockHex: target.lock.toHex(),
+      value, spendFee
+    })
     results.push({ key, ok: true, deploy: deployId, spend: spendId })
 
     utxos = await onchain.spendable(wallet.address)

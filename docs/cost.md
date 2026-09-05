@@ -30,7 +30,7 @@
 | `ec.double` | secp256k1, witnessed inverse | 139 | 50 |
 | `ec.mulG` | k·G, 256-bit, base fixed | 39,833 | 15,553 |
 | `ec.mul` | k·P, 256-bit, both runtime | 42,086 | 29,331 |
-| `ecdsa.verify` | arbitrary message, secp256k1 | 59,141 | 38,401 |
+| `ecdsa.verify` | arbitrary message, secp256k1 | 59,155 | 38,409 |
 | `schnorr.liftX` | x-only key to a point | 208 | 126 |
 | `schnorr.verify` | BIP-340, x-only key | 59,653 | 38,753 |
 | `sha256.block` | one block, no OP_SHA256 | 49,181 | 31,790 |
@@ -47,7 +47,7 @@ apart. The difference is only whether the primitive you need is already an
 opcode — and 32-bit modular addition is not, so every one of them pays for two
 endianness conversions.
 
-**`ecdsa.verify` is 59,141 bytes**, the most expensive thing here
+**`ecdsa.verify` is 59,155 bytes**, the most expensive thing here
 by an order of magnitude, and the one worth justifying before use. It buys
 something nothing else here does: an oracle signs with the secp256k1 key it
 already has, over any message at all. Rabin verification is a few hundred bytes

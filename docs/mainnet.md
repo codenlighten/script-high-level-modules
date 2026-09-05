@@ -24,6 +24,13 @@ It reads raw transactions and parses them here rather than trusting a decoded
 API view — which truncates a large script at 50,000 characters and made the
 59,247-byte ECDSA locking script look like a 50,000-byte one that had drifted.
 
+It asks two separate questions, because they have different meanings. **Is the
+output byte for byte what was recorded?** That is a check, and it must hold.
+**Does the code still build that script?** That is information: a module which
+has since been corrected must build something else, and saying so is more honest
+than a log that goes red or a log that quietly stops comparing. Where a
+deployment has been superseded, the reason is printed with it.
+
 ### vault
 
 an allowlist, an authenticator code and an owner key, composed and attacked as one
@@ -63,6 +70,7 @@ a secp256k1 ECDSA signature over an arbitrary message — no OP_CHECKSIG involve
 | locking script | 59,247 bytes |
 | deploy | [`2e2830799509ba4f7dd4cd56f9c88d80dda5ad0b2bd23083c3725e7546b08d46`](https://whatsonchain.com/tx/2e2830799509ba4f7dd4cd56f9c88d80dda5ad0b2bd23083c3725e7546b08d46) |
 | spend | [`3d4e284f9bb7e6d2b6d1b8070c90752e4ee32dacd36c9186d52b929509559467`](https://whatsonchain.com/tx/3d4e284f9bb7e6d2b6d1b8070c90752e4ee32dacd36c9186d52b929509559467) |
+| since corrected | deployed before the public key coordinates were bounded to [0, p) |
 
 ### sha256.block
 

@@ -181,7 +181,7 @@ Full table in [docs/cost.md](docs/cost.md), generated from the code.
 | `u32.add` | one addition mod 2³² | 58 |
 | `sha256.block` | one block, no `OP_SHA256` | 49,181 |
 | `ec.mul` | k·P, 256-bit, both runtime | 42,086 |
-| `ecdsa.verify` | arbitrary message, secp256k1 | 59,141 |
+| `ecdsa.verify` | arbitrary message, secp256k1 | 59,155 |
 <!-- /cost:table -->
 
 RSA verification — a scheme Bitcoin has no opcode for — costs under a kilobyte,

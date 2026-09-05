@@ -35,6 +35,7 @@ function writeLog (entries) {
     `| locking script | ${e.lockBytes.toLocaleString()} bytes |`,
     `| deploy | [\`${e.deploy}\`](https://whatsonchain.com/tx/${e.deploy}) |`,
     `| spend | [\`${e.spend}\`](https://whatsonchain.com/tx/${e.spend}) |`,
+    ...(e.supersededBy ? [`| since corrected | ${e.supersededBy} |`] : []),
     ''
   ].join('\n'))
 
@@ -64,6 +65,13 @@ It reads raw transactions and parses them here rather than trusting a decoded
 API view — which truncates a large script at 50,000 characters and made the
 59,247-byte ECDSA locking script look like a 50,000-byte one that had drifted.
 
+It asks two separate questions, because they have different meanings. **Is the
+output byte for byte what was recorded?** That is a check, and it must hold.
+**Does the code still build that script?** That is information: a module which
+has since been corrected must build something else, and saying so is more honest
+than a log that goes red or a log that quietly stops comparing. Where a
+deployment has been superseded, the reason is printed with it.
+
 ${rows.join('\n')}
 ## What this does and does not show
 
@@ -84,6 +92,7 @@ async function main () {
   for (const e of entries) {
     const target = targets[e.key]
     const rows = []
+    let drift = null
     try {
       const depRaw = await woc.rawTx(e.deploy)
       const dep = new bsv.Transaction(depRaw)
@@ -91,9 +100,19 @@ async function main () {
       const depMeta = await woc.tx(e.deploy)
       rows.push(['deployment exists', true, `${(depRaw.length / 2).toLocaleString()} B, ${depMeta.confirmations || 0} conf`])
       rows.push(['output 0 is the locking script', onChainScript.length / 2 === e.lockBytes, `${onChainScript.length / 2} B on chain, ${e.lockBytes} B recorded`])
+      // What was deployed must match what was recorded. That is a check.
+      if (e.lockHex) {
+        rows.push(['it is byte for byte what was recorded', e.lockHex === onChainScript, e.lockHex === onChainScript ? 'exactly' : 'THE RECORD IS WRONG'])
+      }
+      // Whether the CODE still builds it is a different question, and drift is
+      // an answer rather than a failure: a module that has since been corrected
+      // must build something else. It is reported, with the note saying why.
       if (target) {
         const rebuilt = target.lock.toHex()
-        rows.push(['it still matches what this repository builds', rebuilt === onChainScript, rebuilt === onChainScript ? 'byte for byte' : 'DRIFTED'])
+        const same = rebuilt === onChainScript
+        drift = drift || (!same && { key: e.key, note: e.supersededBy })
+        rows.push([same ? 'the code still builds it' : 'the code has moved on (see the note)', true,
+          same ? 'byte for byte' : (e.supersededBy || 'reason not recorded')])
       }
       const spendRaw = await woc.rawTx(e.spend)
       const spend = new bsv.Transaction(spendRaw)

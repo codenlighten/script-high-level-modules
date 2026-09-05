@@ -89,10 +89,23 @@ function verifier (cases, { lowS = true } = {}) {
       asm.pick('z', '_z1'); asm.num(0, '_zero'); asm.geVerify()
       asm.pick('z', '_z2'); asm.pick('_N', '_n2'); asm.ltVerify()
 
-      // 2. Q is a point on the curve. Without this an attacker supplies a point
-      //    on some other curve, where the discrete logarithm may be easy, and
-      //    the arithmetic below carries on regardless.
+      // 2. Q is a point on the curve, and its coordinates are the canonical
+      //    ones.
+      //
+      //    Both halves are needed and the second is the easier to miss. The
+      //    curve equation is checked mod p, so it holds just as well for
+      //    qx + p as for qx — and a Script number has no width limit, so the
+      //    spender can push either. Without the bounds, EVERY public key has
+      //    infinitely many accepted encodings and the spend is malleable in a
+      //    value nobody thought was a witness. Fourteen bytes.
+      //
+      //    The curve check itself stops an attacker supplying a point on some
+      //    other curve, where the discrete logarithm may be easy and the
+      //    arithmetic below would carry on regardless.
       asm.num(P, '_P')
+      for (const v of ['qx', 'qy']) {
+        asm.pick(v, '_q0'); asm.num(0, '_qz'); asm.pick('_P', '_qp'); asm.withinVerify()
+      }
       asm.pick('qy', '_qy1'); asm.pick('qy', '_qy2')
       apply(asm, int.modmul, { n: '_P' }, ['_qy1', '_qy2'], ['_y2'])
       asm.pick('qx', '_qx1'); asm.pick('qx', '_qx2')
@@ -148,7 +161,11 @@ function verifier (cases, { lowS = true } = {}) {
       if (name === 'qx' || name === 'qy') {
         return [
           { label: `${name} off by one (off the curve)`, value: honest[name] + 1n },
-          { label: `${name} = 0`, value: 0n }
+          { label: `${name} = 0`, value: 0n },
+          // The same point, encoded above the field size. The curve equation is
+          // checked mod p and holds for this too; only the bound refuses it.
+          { label: `${name} + p (the same point, encoded again)`, value: honest[name] + P },
+          { label: `${name} + 2p`, value: honest[name] + 2n * P }
         ]
       }
       if (name === 'sinv' || name === 'finv') {
