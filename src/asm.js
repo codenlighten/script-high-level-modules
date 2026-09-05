@@ -141,6 +141,17 @@ class Asm {
     this.stack.push({ name: hi, kind: 'bytes', width: v.width === undefined ? undefined : v.width - at })
     return this
   }
+  /** Split the top item at an index taken FROM THE STACK — a runtime offset,
+   *  which is what dynamic truncation (RFC 4226) needs and a constant cannot do. */
+  split (lo, hi) {
+    this.stack.pop()                              // the index
+    const v = this.stack.pop()                    // the buffer
+    this.s.add(Op.OP_SPLIT)
+    this.stack.push({ name: lo, kind: 'bytes' })
+    this.stack.push({ name: hi, kind: 'bytes', width: v.width })   // width unknown until split
+    this.stack[this.stack.length - 1].width = undefined
+    return this
+  }
   bin2num (out) {
     this.s.add(Op.OP_BIN2NUM)
     this.stack[this.stack.length - 1] = { name: out, kind: 'num' }
@@ -171,6 +182,7 @@ class Asm {
   lshift (bits, out) { const t = this.top(); this.s.add(pushNum(bits)).add(Op.OP_LSHIFT); this.stack[this.stack.length - 1] = { name: out, kind: 'bytes', width: t.width }; return this }
   rshift (bits, out) { const t = this.top(); this.s.add(pushNum(bits)).add(Op.OP_RSHIFT); this.stack[this.stack.length - 1] = { name: out, kind: 'bytes', width: t.width }; return this }
   size (out) { this.s.add(Op.OP_SIZE); this.stack.push({ name: out, kind: 'num' }); return this }
+  sha1 (out) { this.s.add(Op.OP_SHA1); this.stack[this.stack.length - 1] = { name: out, kind: 'bytes', width: 20 }; return this }
   sha256 (out) { this.s.add(Op.OP_SHA256); this.stack[this.stack.length - 1] = { name: out, kind: 'bytes', width: 32 }; return this }
   hash256 (out) { this.s.add(Op.OP_HASH256); this.stack[this.stack.length - 1] = { name: out, kind: 'bytes', width: 32 }; return this }
   hash160 (out) { this.s.add(Op.OP_HASH160); this.stack[this.stack.length - 1] = { name: out, kind: 'bytes', width: 20 }; return this }

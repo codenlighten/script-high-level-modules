@@ -19,6 +19,9 @@
 | `u32.maj` | SHA-2 majority | 17 | 13 |
 | `sha256.Sigma1` | one mixing function | 31 | 22 |
 | `rsa.verify` | RSA-2048, PKCS#1 v1.5 | 955 | 176 |
+| `hmac.sha256` | a 32-byte key | 175 | 12 |
+| `hmac.sha1` | a 20-byte key | 187 | 12 |
+| `totp.verify` | RFC 6238, 6 digits | 269 | 65 |
 | `sha256.block` | one block, no OP_SHA256 | 50,765 | 33,374 |
 
 Two numbers worth reading together. `rsa.verify` is **955 bytes**: a

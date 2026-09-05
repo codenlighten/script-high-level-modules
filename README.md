@@ -47,11 +47,13 @@ src/modules/bytes.js  reverse, beToNum — the endianness bridge
 src/modules/u32.js    rotr shr xor add ch maj, and SHA-2's four mixing functions
 src/modules/sha256.js SHA-256 rebuilt from primitives — the control experiment
 src/modules/rsa.js    RSA-2048 signature verification
+src/modules/hmac.js   HMAC-SHA256 and HMAC-SHA1 over the native hash opcodes
+src/modules/totp.js   RFC 6238 authenticator codes
 tools/                probes, self-tests, the cost report
 fixtures/             a throwaway RSA-2048 key, so the suite is deterministic
 ```
 
-Nineteen modules, 88 cases, 50 forgery attempts, all green.
+Twenty-three modules, 132 cases, 210 forgery attempts, all green.
 
 ## The three claims a module must earn
 
@@ -100,6 +102,8 @@ Full table in [docs/cost.md](docs/cost.md), generated from the code.
 | `int.modmul` | 2048-bit modulus | 262 |
 | `int.modexp` | e = 65537, 2048-bit | 332 |
 | `rsa.verify` | RSA-2048, PKCS#1 v1.5 | 955 |
+| `hmac.sha256` | a 32-byte key | 173 |
+| `totp.verify` | RFC 6238, 6 digits | 269 |
 | `u32.add` | one addition mod 2³² | 58 |
 | `sha256.block` | one block, no `OP_SHA256` | 50,765 |
 
@@ -148,11 +152,15 @@ forty-five predicates deployed and spent on mainnet — lives in **predicate
 bench**. This repository is the layer beneath the mathematics those predicates
 assume: what a predicate can *compute* and *check*, priced.
 
-The next constructions are compositions of what is already here, not new
-primitives: HMAC and PBKDF2 over `sha256`, TOTP over HMAC, prime-field and
-elliptic-curve arithmetic over `int` (with `modinv` witnessed, which is what
-makes affine curve addition affordable), and pairing-based verification
-equations above that.
+`hmac` and `totp` are the pattern working: an authenticator code is HMAC-SHA1 of
+a counter, a truncation that reads its own offset out of the digest, and a
+reduction mod 10⁶ — 269 bytes, checked against RFC 6238's published vectors.
+Neither needed a new primitive.
+
+Next, on the same principle: PBKDF2 over `hmac`, prime-field and elliptic-curve
+arithmetic over `int` (with `modinv` witnessed, which is what makes affine curve
+addition affordable), ECDSA over an *arbitrary* message rather than the
+transaction sighash, and pairing-based verification equations above that.
 
 ## License
 

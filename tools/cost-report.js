@@ -12,6 +12,8 @@ const bytes = require('../src/modules/bytes')
 const u32 = require('../src/modules/u32')
 const sha256 = require('../src/modules/sha256')
 const rsaMod = require('../src/modules/rsa')
+const hmac = require('../src/modules/hmac')
+const totp = require('../src/modules/totp')
 
 const key = rsaMod.fixtureKey()
 const P256 = (1n << 256n) - 189n
@@ -34,6 +36,9 @@ const ROWS = [
   ['u32.maj', u32.maj, {}, 'SHA-2 majority'],
   ['sha256.Sigma1', u32.Sigma1, {}, 'one mixing function'],
   ['rsa.verify', rsaMod.verifier(key), { n: key.n, e: key.e, emLen: key.emLen }, 'RSA-2048, PKCS#1 v1.5'],
+  ['hmac.sha256', hmac.sha256, { keyLen: 32 }, 'a 32-byte key'],
+  ['hmac.sha1', hmac.sha1, { keyLen: 20 }, 'a 20-byte key'],
+  ['totp.verify', totp.verify, { keyLen: 20, digits: 6 }, 'RFC 6238, 6 digits'],
   ['sha256.block', sha256.block, {}, 'one block, no OP_SHA256']
 ]
 
