@@ -7,11 +7,15 @@ and know immediately whether it still refuses what it used to.
 
 | | before | after | |
 | --- | ---: | ---: | ---: |
-| `ec.add` | 191 | 144 | −25% |
-| `ec.double` | 191 | 143 | −25% |
-| `ec.mul` (256-bit) | 116,127 | 49,513 | −57% |
-| `ec.mulG` (256-bit) | 80,216 | 43,945 | −45% |
-| `ecdsa.verify` | 196,778 | 93,824 | −52% |
+| `ec.add` | 191 | 139 | −27% |
+| `ec.double` | 191 | 139 | −27% |
+| `ec.mul` (256-bit) | 116,127 | 42,086 | −64% |
+| `ec.mulG` (256-bit) | 80,216 | 39,833 | −50% |
+| `ecdsa.verify` | 196,778 | 82,280 | −58% |
+
+The standalone figures for `ec.add` and `ec.double` are mostly the two 33-byte
+modulus constants they push for themselves; inside a ladder, where those are
+hoisted, each is about 65 bytes.
 
 ## 1. Reduce only where it must be canonical
 
@@ -137,6 +141,36 @@ is the callee's argument order, so the call itself is free. Ten bytes a step,
 This is the payoff for tracking values by name rather than by depth. The
 assembler knows what is where, so it can tell when the answer is "already
 correct" — which a hand-written `OP_ROLL` cannot.
+
+## 8. Consume a value where it is last needed
+
+The cleanest of them, and the one that made the previous trick unnecessary.
+
+Every read of a live value is either a `pick` — copy it, I need it again — or a
+`roll` — take it, this is the last time. They cost the same. But a value that is
+rolled at its last use is gone, and a value that is picked is still there at the
+end, waiting to be dropped.
+
+Written with picks throughout, `ec.add` finished with nine values live and paid
+eleven bytes of altstack and `OP_2DROP` to clear the seven it no longer wanted.
+Written with a roll at each last use, it finishes with exactly its two results
+and pays nothing:
+
+```
+x₂  read in dx, read in x₃            → pick, then roll
+y₂  read once, in λ                    → roll
+invdx  read in the check, then in λ    → pick, then roll
+λ   read twice in x₃, once in y₃       → pick, pick, then roll
+```
+
+The same idea removes the temporaries that were never worth naming. `dx` has
+exactly one use — the inverse check — so it is built on top of the stack, checked
+there, and consumed there. A temporary that is never named is one that never has
+to be dropped.
+
+This is a register allocator's job, done by hand and checked by the assembler:
+reading a value after its last use is a build-time error, because the name is
+gone from the model.
 
 ## What was tried and rejected
 

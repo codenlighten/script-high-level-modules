@@ -24,11 +24,11 @@
 | `totp.verify` | RFC 6238, 6 digits | 269 | 65 |
 | `merkle.verify` | depth 3 (8 leaves) | 122 | 69 |
 | `merkle.verify` | depth 32 (4 billion leaves) | 905 | 678 |
-| `ec.add` | secp256k1, witnessed inverse | 144 | 54 |
-| `ec.double` | secp256k1, witnessed inverse | 143 | 54 |
-| `ec.mulG` | k·G, 256-bit, base fixed | 43,945 | 18,380 |
-| `ec.mul` | k·P, 256-bit, both runtime | 49,513 | 34,708 |
-| `ecdsa.verify` | arbitrary message, secp256k1 | 93,824 | 53,228 |
+| `ec.add` | secp256k1, witnessed inverse | 139 | 49 |
+| `ec.double` | secp256k1, witnessed inverse | 139 | 50 |
+| `ec.mulG` | k·G, 256-bit, base fixed | 39,833 | 15,553 |
+| `ec.mul` | k·P, 256-bit, both runtime | 42,086 | 29,331 |
+| `ecdsa.verify` | arbitrary message, secp256k1 | 82,280 | 45,019 |
 | `sha256.block` | one block, no OP_SHA256 | 49,181 | 31,790 |
 
 ## What to read out of this
@@ -43,7 +43,7 @@ apart. The difference is only whether the primitive you need is already an
 opcode — and 32-bit modular addition is not, so every one of them pays for two
 endianness conversions.
 
-**`ecdsa.verify` is 93,824 bytes**, the most expensive thing here
+**`ecdsa.verify` is 82,280 bytes**, the most expensive thing here
 by an order of magnitude, and the one worth justifying before use. It buys
 something nothing else here does: an oracle signs with the secp256k1 key it
 already has, over any message at all. Rabin verification is a few hundred bytes
@@ -52,6 +52,6 @@ for this purpose. That is the trade, and it is an engineering choice rather than
 a technical limit.
 
 At 1 sat/KB, that most expensive module is about
-94 satoshis of fee. Size stopped being the
+83 satoshis of fee. Size stopped being the
 question at Genesis; what it costs, and whether a cheaper construction buys the
 same thing, is the question that replaced it.

@@ -83,11 +83,19 @@ function field (asm, pName) {
 // The cost is paid in the interpreter's arithmetic (bigger BN operands), not in
 // bytes. Fees are bytes.
 
-/** Assert `invName` inverts the value named `ofName`, canonically. */
-function checkInverseRaw (asm, pName, ofName, invName) {
+/**
+ * Assert that `invName` inverts the value now on TOP of the stack, canonically,
+ * consuming that value.
+ *
+ * The value being inverted is a difference with no other use — dx in an
+ * addition, 2y in a doubling — so it is passed on the stack rather than named,
+ * and consumed here. A temporary that is never named is one that never has to
+ * be dropped.
+ */
+function checkInverseOfTop (asm, pName, invName) {
   // 0 ≤ inv < p in one opcode rather than two comparisons and two VERIFYs.
   asm.pick(invName, '_i0'); asm.num(0, '_zero'); asm.pick(pName, '_pw'); asm.withinVerify()
-  asm.pick(ofName, '_iv'); asm.pick(invName, '_i2'); asm.mul('_prod')
+  asm.pick(invName, '_i2'); asm.mul('_prod')
   asm.num(1, '_one'); asm.sub('_pm1')
   asm.pick(pName, '_pm'); asm.mod('_res')
   asm.num(0, '_z0'); asm.numEqualVerify()                            // ≡ 1 (mod p)
@@ -110,30 +118,38 @@ const add = defineModule({
     const r = ecJs.add({ x: x1, y: y1 }, { x: x2, y: y2 })
     return { x3: r.x, y3: r.y }
   },
+  // Every value is ROLLED at its last use and PICKED before it. A value
+  // consumed where it is last needed never becomes a temporary, so this module
+  // ends with exactly its two results live and no cleanup at all — where the
+  // same code with picks throughout needed eleven bytes of altstack and
+  // OP_2DROP to clear what it had left lying about.
   emit: (asm, { p = P, p2 = null }) => {
-    const floor = asm.mark(5)                    // the five declared inputs are ours
+    const floor = asm.mark(5)
     const N = modulusOf(asm, p)
     const N2 = doubleModulusOf(asm, p, p2)
 
-    asm.pick('x2', '_a'); asm.pick('x1', '_b'); asm.sub('_dx')       // dx, unreduced
-    checkInverseRaw(asm, N.name, '_dx', 'invdx')
+    // dx is never named: it is built on top, checked, and consumed there
+    asm.pick('x2', '_a'); asm.pick('x1', '_b'); asm.sub('_dx')
+    checkInverseOfTop(asm, N.name, 'invdx')
 
-    asm.pick('y2', '_c'); asm.pick('y1', '_d'); asm.sub('_dy')
-    asm.pick('invdx', '_e'); asm.mul('_lam')                         // λ = dy·inv, unreduced
+    asm.roll('y2'); asm.pick('y1', '_d'); asm.sub('_dy')             // y₂ last used here
+    asm.roll('invdx'); asm.mul('_lam')                               // λ = dy·inv, unreduced
 
     // x₃ = λ² − x₁ − x₂, made non-negative by +2p so ONE OP_MOD is canonical
     asm.pick('_lam', '_f'); asm.pick('_lam', '_g'); asm.mul('_lam2')
     asm.pick('x1', '_h'); asm.sub('_u')
-    asm.pick('x2', '_i'); asm.sub('_v')
+    asm.roll('x2'); asm.sub('_v')                                    // x₂ last used here
     asm.pick(N2.name, '_j'); asm.add('_w')
     asm.pick(N.name, '_k'); asm.mod('x3')
 
     // y₃ = λ(x₁ − x₃) − y₁, sign unknown, so the two-step reduction
-    asm.pick('_lam', '_l'); asm.pick('x1', '_m'); asm.pick('x3', '_n'); asm.sub('_o')
-    asm.mul('_q'); asm.pick('y1', '_r'); asm.sub('_s')
+    asm.roll('_lam'); asm.roll('x1'); asm.pick('x3', '_n'); asm.sub('_o')
+    asm.mul('_q'); asm.roll('y1'); asm.sub('_s')
     reduceSigned(asm, N.name, 'y3')
 
-    asm.dropTo(floor, ['x3', 'y3'])
+    // Only the standalone form has anything left: the constants it pushed
+    // itself. Inside a ladder they belong to the caller and this emits nothing.
+    if (N.pushed || N2.pushed) asm.dropTo(floor, ['x3', 'y3'])
   },
   attacks: (honest, params) => {
     const p = params.p || P
@@ -181,12 +197,12 @@ const double = defineModule({
     const N = modulusOf(asm, p)
     const N2 = doubleModulusOf(asm, p, p2)
 
-    asm.pick('y1', '_a'); asm.op('OP_DUP', 0, ['_b']); asm.add('_2y')  // 2y, unreduced
-    checkInverseRaw(asm, N.name, '_2y', 'inv2y')
+    asm.pick('y1', '_a'); asm.op('OP_DUP', 0, ['_b']); asm.add('_2y')  // 2y, unnamed
+    checkInverseOfTop(asm, N.name, 'inv2y')
 
     asm.pick('x1', '_c'); asm.op('OP_DUP', 0, ['_d']); asm.mul('_xx')
     asm.num(3, '_three'); asm.mul('_3xx')
-    asm.pick('inv2y', '_e'); asm.mul('_lam')                           // λ = 3x²·inv, unreduced
+    asm.roll('inv2y'); asm.mul('_lam')                                 // λ = 3x²·inv
 
     asm.pick('_lam', '_f'); asm.pick('_lam', '_g'); asm.mul('_lam2')
     asm.pick('x1', '_h'); asm.sub('_u')
@@ -194,11 +210,11 @@ const double = defineModule({
     asm.pick(N2.name, '_j'); asm.add('_w')
     asm.pick(N.name, '_k'); asm.mod('x3')
 
-    asm.pick('_lam', '_l'); asm.pick('x1', '_m'); asm.pick('x3', '_n'); asm.sub('_o')
-    asm.mul('_q'); asm.pick('y1', '_r'); asm.sub('_s')
+    asm.roll('_lam'); asm.roll('x1'); asm.pick('x3', '_n'); asm.sub('_o')
+    asm.mul('_q'); asm.roll('y1'); asm.sub('_s')
     reduceSigned(asm, N.name, 'y3')
 
-    asm.dropTo(floor, ['x3', 'y3'])
+    if (N.pushed || N2.pushed) asm.dropTo(floor, ['x3', 'y3'])
   },
   attacks: (honest, params) => {
     const p = params.p || P
@@ -220,7 +236,7 @@ const double = defineModule({
   notes: ['a = 0 is baked in: this is secp256k1’s doubling, not the general one']
 })
 
-module.exports = { add, double, field, checkInverseRaw, reduceSigned, modulusOf, doubleModulusOf, P }
+module.exports = { add, double, field, checkInverseOfTop, reduceSigned, modulusOf, doubleModulusOf, P }
 
 // ── SCALAR MULTIPLICATION ───────────────────────────────────────────────────
 //
