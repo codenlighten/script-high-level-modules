@@ -251,4 +251,68 @@ function counterCoin ({ from = 0n, stateWidth = 8, fee = 300, step = 1n } = {}) 
   })
 }
 
-module.exports = { timelockedTotp, authorityPays, authorityPaysCases, counterCoin, instruction, instructedOutput }
+/**
+ * A coin with a spending allowance it enforces on itself.
+ *
+ * `tx.transitionPaying` commits to both of the spend's outputs — the successor
+ * and one payment — and does the value arithmetic itself, so nothing is left
+ * over to be redirected. `state.limit` requires the successor's allowance to be
+ * lower by exactly what was paid.
+ *
+ * What that is, is delegated authority with a ceiling nobody can raise. Whoever
+ * can satisfy the predicate may pay whatever they like to whomever they like,
+ * and the total is fixed at the moment the coin is funded — not by the holder,
+ * not by whoever writes the spend, and not by anything that happens afterwards.
+ * Overspending is not refused by a comparison; there is simply no successor that
+ * balances the equation.
+ *
+ * It deliberately says nothing about WHO may spend or to WHOM. Those are more
+ * rules, alongside — an owner key, an allowlist of payees, a time window — and
+ * `all()` is how they join.
+ */
+function budgetCoin ({ allowance = 1000n, stateWidth = 8, fee = 300, payee, cases } = {}) {
+  const W = stateWidth
+  const at = (v) => stateMod.le(v, W)
+  const to = payee || Buffer.alloc(20, 0x5a)
+  return compose.pipe('tx.transitionPaying ▸ state.limit', [
+    { module: txMod.transitionPaying({ stateWidth: W, fee }) },
+    { module: stateMod.limit({ stateWidth: W }) }
+  ], {
+    doc: 'a coin that may pay anyone, up to an allowance it carries and decrements',
+    notes: [
+      'the allowance is fixed when the coin is funded and nothing can raise it',
+      'overspending is unrepresentable: no successor balances the equation',
+      'the allowance is denominated in the coin\'s OWN satoshis, so it must be funded with at least the allowance plus a fee per step',
+      'says nothing about who may spend or to whom — compose those alongside'
+    ],
+    cases: cases || [
+      {
+        name: `paying 400 of ${allowance}`,
+        spend: { state: at(allowance), next: at(allowance - 400n), amount: 400n, payee: to },
+        params: { state: at(allowance) }
+      },
+      {
+        // Funded with the allowance and a fee besides: the payment comes out of
+        // the coin's own value, so a coin holding exactly the allowance cannot
+        // also pay the miner.
+        name: 'paying the whole allowance',
+        spend: { state: at(allowance), next: at(0n), amount: allowance, payee: to, satoshis: Number(allowance) + fee + 1 },
+        params: { state: at(allowance) }
+      },
+      {
+        name: 'paying more than remains',
+        refuse: 'no successor balances the equation',
+        spend: { state: at(allowance), next: at(0n), amount: allowance + 1n, payee: to },
+        params: { state: at(allowance) }
+      },
+      {
+        name: 'paying without decrementing',
+        refuse: 'the allowance falls by exactly what was paid',
+        spend: { state: at(allowance), next: at(allowance), amount: 400n, payee: to },
+        params: { state: at(allowance) }
+      }
+    ]
+  })
+}
+
+module.exports = { timelockedTotp, authorityPays, authorityPaysCases, counterCoin, budgetCoin, instruction, instructedOutput }

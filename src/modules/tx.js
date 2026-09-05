@@ -316,6 +316,54 @@ const cloneOutput = (o, delta = 0) =>
 // current state out as its output, and whatever consumes it says what may follow
 // what. compose.pipe() is how the two are joined.
 
+// The pieces every covenant that reads its own script needs, factored out
+// because there are now two of them and there will be more. Each leaves exactly
+// what it names on the stack.
+
+/** Prove the preimage is this spend, under the flag the offsets assume. */
+function emitAuthenticate (asm) {
+  asm.pick('preimage', '_pi')
+  asm.clause((sc) => PushTx.pushTxCore(sc), 1, [{ name: '_ok', kind: 'num' }])
+  asm.verify()
+  asm.pick('preimage', '_pf'); right(asm, 4, '_flag')
+  asm.data(Buffer.from([SIGHASH_ALL_FORKID, 0, 0, 0]), '_wantFlag'); asm.equalVerify()
+}
+
+/** This script's own bytes, length prefix and all: preimage[104 : len−52]. */
+function emitScriptCode (asm, out) {
+  asm.pick('preimage', '_p1'); asm.splitAt(104, '_pre', '_rest'); asm.nip()
+  asm.op('OP_SIZE', 0, [{ name: '_rl', kind: 'num' }])
+  asm.num(52, '_52'); asm.sub('_cut')
+  asm.split(out, '_tail'); asm.drop()
+}
+
+/** Split the trailing state off the script's bytes. */
+function emitSplitState (asm, code, W, bodyOut, stateOut) {
+  asm.roll(code)
+  asm.op('OP_SIZE', 0, [{ name: '_sl', kind: 'num' }])
+  asm.num(W, '_w'); asm.sub('_cut2')
+  asm.split(bodyOut, stateOut)
+}
+
+/** The satoshis this input carries, as a number. */
+function emitValueIn (asm, out) {
+  asm.pick('preimage', '_pv'); right(asm, 52, '_t52'); left(asm, 8, '_vin')
+  asm.data(Buffer.from([0]), '_vz'); asm.cat('_vinp'); asm.bin2num(out)
+}
+
+/** What the transaction committed to paying. */
+function emitCommitted (asm, out) {
+  asm.pick('preimage', '_pc'); right(asm, 40, '_t40'); left(asm, 32, out)
+}
+
+/** A serialised P2PKH output: amount(8 LE) ‖ 0x19 ‖ the standard 25 bytes. */
+function emitP2PKHOut (asm, amountName, pkhName, out) {
+  asm.roll(amountName); asm.num2bin(8, '_amtLE')
+  asm.data(Buffer.from('1976a914', 'hex'), '_pfx'); asm.cat('_o1')
+  asm.roll(pkhName); asm.cat('_o2')
+  asm.data(Buffer.from('88ac', 'hex'), '_sfx'); asm.cat(out)
+}
+
 /**
  * Read this script's own state, and require the spend to recreate the script
  * with `next` in its place.
@@ -428,4 +476,128 @@ function recreateWitness ({ tx, lockingScript, satoshis, spend = {} }, W, fee) {
   return { preimage: g.preimage, next }
 }
 
-module.exports = { locktime, hashOutputs, requireOutputs, transition, recreateWitness, leBytes, right, left, grindValue, SIGHASH_ALL_FORKID, FINAL, PushTx }
+/**
+ * Succession that also PAYS.
+ *
+ * `transition` requires the output set to be exactly the successor, which makes
+ * a coin that can carry state and cannot spend money — and a budget that cannot
+ * pay anything out is not a budget. This one commits to two outputs: the
+ * successor, and a P2PKH payment whose destination and amount it hands to
+ * whatever rule sits above it.
+ *
+ * The value arithmetic is the covenant's, not the spender's: the successor
+ * carries what came in, less the payment, less the fee. Nothing is left over to
+ * be quietly redirected, because the commitment covers the whole output set.
+ */
+function transitionPaying ({ stateWidth = 8, fee = 300, cases } = {}) {
+  const W = stateWidth
+  return defineModule({
+    name: 'tx.transitionPaying',
+    doc: `recreate this script with ${W} bytes of new state, and pay one output besides`,
+    inputs: [
+      { name: 'preimage', kind: 'bytes', witness: true },
+      { name: 'next', kind: 'bytes', width: W, witness: true },
+      { name: 'amount', witness: true },
+      { name: 'payee', kind: 'bytes', width: 20, witness: true }
+    ],
+    outputs: [
+      { name: 'state', kind: 'bytes', width: W },
+      { name: 'next', kind: 'bytes', width: W },
+      { name: 'amount', kind: 'num' }
+    ],
+    contextual: true,
+    witnessFor: (ctx) => payingWitness(ctx, W, fee),
+    hint: () => ({}),
+    model: ({ preimage, next, amount }) => ({
+      state: Buffer.from(preimage.subarray(preimage.length - 52 - W, preimage.length - 52)),
+      next: Buffer.from(next),
+      amount: BigInt(amount)
+    }),
+    emit: (asm, params) => {
+      const f = params.fee === undefined ? fee : params.fee
+      emitAuthenticate(asm)
+      emitScriptCode(asm, '_scriptCode')
+      emitSplitState(asm, '_scriptCode', W, '_body', 'state')
+
+      // the successor: this script with the new state, carrying what is left
+      asm.pick('_body', '_b1'); asm.pick('next', '_n1'); asm.cat('_nextCode')
+      emitValueIn(asm, '_v')
+      asm.num(f, '_fee'); asm.sub('_afterFee')
+      asm.pick('amount', '_a1'); asm.sub('_vout')
+      asm.num2bin(8, '_voutLE')
+      asm.roll('_nextCode'); asm.cat('_txout1')
+
+      // the payment
+      asm.pick('amount', '_a2'); asm.pick('payee', '_pk')
+      emitP2PKHOut(asm, '_a2', '_pk', '_txout2')
+
+      asm.roll('_txout1'); asm.roll('_txout2'); asm.cat('_outs')
+      asm.hash256('_h')
+      emitCommitted(asm, '_committed')
+      asm.equalVerify()
+
+      asm.discard('_body'); asm.discard('preimage'); asm.discard('payee')
+      asm.roll('state'); asm.roll('next'); asm.roll('amount')
+    },
+    attacks: (honest, params, name) => {
+      if (name === 'amount') {
+        return [
+          { label: 'paying one satoshi more than the spend does', value: BigInt(honest.amount) + 1n },
+          { label: 'paying nothing', value: 0n }
+        ]
+      }
+      if (name === 'payee') {
+        const v = Buffer.from(honest.payee); v[0] ^= 0x01
+        return [{ label: 'a payee the spend does not pay', value: v }]
+      }
+      if (name === 'next') {
+        const v = Buffer.from(honest.next); v[0] ^= 0x01
+        return [{ label: 'a successor the spend does not pay to', value: v }]
+      }
+      return preimageAttacks(honest, params, name)
+    },
+    tail: (params) => Buffer.concat([Buffer.from([0x6a]), Buffer.from([W]), params.state || Buffer.alloc(W)]),
+    cases: cases || (() => {
+      const payee = Buffer.alloc(20, 0x5a)
+      const other = Buffer.alloc(20, 0x77)
+      return [
+        {
+          name: 'paying 500 and stepping the state',
+          spend: { state: leBytes(1000n, W), next: leBytes(500n, W), amount: 500n, payee },
+          params: { state: leBytes(1000n, W) }
+        },
+        {
+          name: 'paying one satoshi',
+          spend: { state: leBytes(9n, W), next: leBytes(8n, W), amount: 1n, payee: other },
+          params: { state: leBytes(9n, W) }
+        }
+      ]
+    })(),
+    notes: [
+      'commits to BOTH outputs, so nothing is left over to be redirected',
+      'the successor carries what came in less the payment less the fee — the covenant does that arithmetic, not the spender'
+    ]
+  })
+}
+
+/** The spender's side: build both outputs, then grind, because it commits to them. */
+function payingWitness ({ tx, lockingScript, satoshis, spend = {} }, W, fee) {
+  const code = lockingScript.toBuffer()
+  const next = spend.next || Buffer.alloc(W)
+  const amount = spend.amount === undefined ? 1n : BigInt(spend.amount)
+  const payee = spend.payee || Buffer.alloc(20, 0xab)
+  const successor = bsv.Script.fromBuffer(Buffer.concat([code.subarray(0, code.length - W), next]))
+
+  tx.outputs.length = 0
+  tx.addOutput(new bsv.Transaction.Output({ script: successor, satoshis: satoshis - fee - Number(amount) }))
+  tx.addOutput(new bsv.Transaction.Output({
+    script: bsv.Script.fromBuffer(Buffer.concat([Buffer.from('76a914', 'hex'), payee, Buffer.from('88ac', 'hex')])),
+    satoshis: Number(amount)
+  }))
+  tx._outputAmount = undefined
+
+  const g = PushTx.grind(tx, 0, lockingScript, satoshis, { field: 'sequence' })
+  return { preimage: g.preimage, next, amount, payee }
+}
+
+module.exports = { locktime, hashOutputs, requireOutputs, transition, transitionPaying, recreateWitness, payingWitness, leBytes, right, left, grindValue, SIGHASH_ALL_FORKID, FINAL, PushTx }

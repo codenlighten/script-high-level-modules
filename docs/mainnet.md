@@ -126,6 +126,19 @@ a coin advanced 3 times on chain, each spend paying the coin the next spend cons
 | step 1 → 2 | [`1531805bfce61981cb73fcc60cf271cfd3f48149a1fa0d93d13c84c85e4440a7`](https://whatsonchain.com/tx/1531805bfce61981cb73fcc60cf271cfd3f48149a1fa0d93d13c84c85e4440a7) |
 | step 2 → 3 | [`46674b294303cdc9df2bf2dde4d615515b8b5ef41c6f98ba239936720e041231`](https://whatsonchain.com/tx/46674b294303cdc9df2bf2dde4d615515b8b5ef41c6f98ba239936720e041231) |
 
+### tx.transitionPaying ▸ state.limit
+
+a coin stepped 3 times on chain, each spend paying the coin the next spend consumed
+
+| | |
+| --- | --- |
+| locking script | 510 bytes |
+| deploy | [`3226e448dc8a5c5194a4fc2e4168e702ebde36eed2ec14652b05e1a243a0523a`](https://whatsonchain.com/tx/3226e448dc8a5c5194a4fc2e4168e702ebde36eed2ec14652b05e1a243a0523a) |
+| spend | [`5f26ba03e13ce017ded181ce742a2540a2985a08f4d234374f1d3caa69020a95`](https://whatsonchain.com/tx/5f26ba03e13ce017ded181ce742a2540a2985a08f4d234374f1d3caa69020a95) |
+| step 1500 → 900 | [`f7e607262ae7823d3e9e8a5fe1d0d0ff764917ad1ac63b13fa4cf4ad0ac4c6ad`](https://whatsonchain.com/tx/f7e607262ae7823d3e9e8a5fe1d0d0ff764917ad1ac63b13fa4cf4ad0ac4c6ad) |
+| step 900 → 400 | [`cb39e8c6e9dba217fec870cbf44f84698c78a3daa013c25759b1e9526bd2e6c4`](https://whatsonchain.com/tx/cb39e8c6e9dba217fec870cbf44f84698c78a3daa013c25759b1e9526bd2e6c4) |
+| step 400 → 0 | [`5f26ba03e13ce017ded181ce742a2540a2985a08f4d234374f1d3caa69020a95`](https://whatsonchain.com/tx/5f26ba03e13ce017ded181ce742a2540a2985a08f4d234374f1d3caa69020a95) |
+
 ## What this does and does not show
 
 It shows that these scripts are **relayable and spendable on mainnet today**: the

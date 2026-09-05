@@ -28,6 +28,8 @@
 | `tx.hashOutputs` | OP_PUSH_TX + the output commitment | 394 | 209 |
 | `tx.transition` | a coin that recreates itself | 441 | 239 |
 | `state.counter` | the successor is one higher | 16 | 11 |
+| `tx.transitionPaying` | recreate itself and pay one output | 473 | 255 |
+| `state.limit` | the allowance falls by what was paid | 23 | 17 |
 | `ec.add` | secp256k1, witnessed inverse | 167 | 65 |
 | `ec.double` | secp256k1, witnessed inverse | 153 | 58 |
 | `ec.mulG` | k·G, 256-bit, base fixed | 39,833 | 15,553 |

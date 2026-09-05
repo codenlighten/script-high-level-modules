@@ -78,7 +78,10 @@ const factories = {
   'recipes.timelockedTotp': recipes.timelockedTotp,
   'recipes.counterCoin': recipes.counterCoin,
   'tx.transition': txmod.transition,
-  'state.counter': stateMod.counter
+  'tx.transitionPaying': txmod.transitionPaying,
+  'state.counter': stateMod.counter,
+  'state.limit': stateMod.limit,
+  'recipes.budgetCoin': recipes.budgetCoin
 }
 
 /** What a consumer needs to decide whether a module fits. */

@@ -41,7 +41,10 @@
 | `recipes.timelockedTotp(…)` | *built per key or width* | | | |
 | `recipes.counterCoin(…)` | *built per key or width* | | | |
 | `tx.transition(…)` | *built per key or width* | | | |
+| `tx.transitionPaying(…)` | *built per key or width* | | | |
 | `state.counter(…)` | *built per key or width* | | | |
+| `state.limit(…)` | *built per key or width* | | | |
+| `recipes.budgetCoin(…)` | *built per key or width* | | | |
 
 A module with **no outputs** is a predicate: it asserts and returns nothing, and
 `predicate(module, params, { owner })` turns it straight into a locking script

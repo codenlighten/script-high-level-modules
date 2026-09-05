@@ -84,7 +84,10 @@ const { failures } = proveAll([
   [schnorr.verifier([], { cases: schnorr.bip340Cases() }), {}],
   [txmod.transition({ stateWidth: 8, fee: 200 }), {}],
   [stateMod.counter({ stateWidth: 8 }), {}],
-  [recipes.counterCoin({ from: 41n }), {}]
+  [recipes.counterCoin({ from: 41n }), {}],
+  [txmod.transitionPaying({ stateWidth: 8, fee: 300 }), {}],
+  [stateMod.limit({ stateWidth: 8 }), {}],
+  [recipes.budgetCoin({ allowance: 1000n }), {}]
 ])
 
 process.exit(failures.length ? 1 : 0)

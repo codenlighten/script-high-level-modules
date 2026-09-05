@@ -55,6 +55,8 @@ const ROWS = [
   ['tx.hashOutputs', txmod.hashOutputs, {}, 'OP_PUSH_TX + the output commitment'],
   ['tx.transition', txmod.transition({ stateWidth: 8, fee: 200 }), { state: Buffer.alloc(8) }, 'a coin that recreates itself'],
   ['state.counter', stateMod.counter({ stateWidth: 8 }), {}, 'the successor is one higher'],
+  ['tx.transitionPaying', txmod.transitionPaying({ stateWidth: 8, fee: 300 }), { state: Buffer.alloc(8) }, 'recreate itself and pay one output'],
+  ['state.limit', stateMod.limit({ stateWidth: 8 }), {}, 'the allowance falls by what was paid'],
   ['ec.add', ec.add, {}, 'secp256k1, witnessed inverse'],
   ['ec.double', ec.double, {}, 'secp256k1, witnessed inverse'],
   ['ec.mulG', ec.mulG(256, [1n]), {}, 'k·G, 256-bit, base fixed'],

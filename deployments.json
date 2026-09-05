@@ -126,6 +126,35 @@
         }
       ],
       "at": "2026-09-05T22:24:21.409Z"
+    },
+    {
+      "target": "tx.transitionPaying ▸ state.limit",
+      "key": "budget",
+      "claim": "a coin stepped 3 times on chain, each spend paying the coin the next spend consumed",
+      "deploy": "3226e448dc8a5c5194a4fc2e4168e702ebde36eed2ec14652b05e1a243a0523a",
+      "spend": "5f26ba03e13ce017ded181ce742a2540a2985a08f4d234374f1d3caa69020a95",
+      "lockBytes": 510,
+      "lockHex": "5379aa517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e209817f8165b81f259d928ce2ddbfc9b02070b87ce9562a055acbbdcf97e66be799321414136d08c5ed2bf3ba048afe6dcaebafeffffffffffffffffffffffffffffff0097012080517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e2079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179876527c7e6b04304402207c7e0202207e7c7e01417e6cac69537954b5044100000088537901687f77820134947f758258947f7855797e56790134b558b401007e8102fa009455799458807c7e547954797c5880041976a9147e7c7e0288ac7e7c7c7eaa56790128b50120b4887c75547a757c757b7b7b7b7b7651a2697801007e817893537901007e819d7b757c7575516a08dc05000000000000",
+      "value": 2500,
+      "spendFee": 250,
+      "steps": [
+        {
+          "from": "1500",
+          "to": "900",
+          "txid": "f7e607262ae7823d3e9e8a5fe1d0d0ff764917ad1ac63b13fa4cf4ad0ac4c6ad"
+        },
+        {
+          "from": "900",
+          "to": "400",
+          "txid": "cb39e8c6e9dba217fec870cbf44f84698c78a3daa013c25759b1e9526bd2e6c4"
+        },
+        {
+          "from": "400",
+          "to": "0",
+          "txid": "5f26ba03e13ce017ded181ce742a2540a2985a08f4d234374f1d3caa69020a95"
+        }
+      ],
+      "at": "2026-09-05T22:50:00.330Z"
     }
   ]
 }
