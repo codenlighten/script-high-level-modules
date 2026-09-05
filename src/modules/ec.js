@@ -1,21 +1,21 @@
 'use strict'
 
 const { defineModule, apply } = require('../module')
-const int = require('./int')
 const ecJs = require('../ec')
 
 // ELLIPTIC-CURVE POINT ARITHMETIC over a prime field, in affine coordinates.
 //
-// The reason affine coordinates are affordable at all is `int.modinv`: the
-// division in the slope is the expensive operation in Script and the cheap one
-// to CHECK, so the spender supplies the inverse and the module verifies it with
-// one multiplication and two comparisons. Every point operation here therefore
-// takes a witness, and every witness carries the same two obligations —
-// soundness and canonicity — that the test kit attacks.
+// Affine coordinates are affordable here for one reason: the division in the
+// slope is the expensive operation to COMPUTE in Script and a cheap one to
+// CHECK. The spender supplies the inverse; the module verifies it with one
+// multiplication and one OP_WITHIN. Every point operation therefore takes a
+// witness, and every witness carries the same two obligations — soundness and
+// canonicity — that the test kit attacks.
 //
-// The modulus is pushed once per operation and picked thereafter. A 256-bit
-// prime is a 33-byte push and a point addition needs it ten times; the
-// difference between pushing and picking is about 300 bytes per operation.
+// The rest of what makes these small is in docs/optimization.md: reductions
+// deferred to where a value must be canonical, the modulus hoisted out of the
+// loop and referenced by name, and every value rolled at its last use so
+// nothing is left to clean up.
 //
 // PRECONDITIONS, ENFORCED RATHER THAN DOCUMENTED. `add` covers two points with
 // DIFFERENT x. Feed it two points with the same x and dx is zero, no inverse of
@@ -45,13 +45,6 @@ function doubleModulusOf (asm, p, p2) {
   if (typeof p2 === 'string') return { name: p2, pushed: false }
   asm.num(2n * p, '_p2')
   return { name: '_p2', pushed: true }
-}
-
-/** The field operations, as calls into the int modules, over a modulus already
- *  on the stack under `pName`. Each takes copies and names its result. */
-function field (asm, pName) {
-  const bin = (m) => (a, b, out) => { asm.pick(a, '_fa'); asm.pick(b, '_fb'); apply(asm, m, { n: pName }, ['_fa', '_fb'], [out]) }
-  return { sub: bin(int.modsub), mul: bin(int.modmul), add: bin(int.modadd) }
 }
 
 // ── DEFERRED REDUCTION ──────────────────────────────────────────────────────
@@ -236,7 +229,7 @@ const double = defineModule({
   notes: ['a = 0 is baked in: this is secp256k1’s doubling, not the general one']
 })
 
-module.exports = { add, double, field, checkInverseOfTop, reduceSigned, modulusOf, doubleModulusOf, P }
+module.exports = { add, double, checkInverseOfTop, reduceSigned, modulusOf, doubleModulusOf, P }
 
 // ── SCALAR MULTIPLICATION ───────────────────────────────────────────────────
 //

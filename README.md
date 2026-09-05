@@ -79,6 +79,10 @@ tools/                probes, self-tests, the cost report
 fixtures/             a throwaway RSA-2048 key, so the suite is deterministic
 ```
 
+Two of the probes measure a stack-limit fix made in `@smartledger/bsv` while
+building this (see [limits.md](docs/limits.md)) and are skipped, with a note, on
+a library that predates it. Nothing else depends on that fix.
+
 Thirty-two modules, 179 cases, 528 forgery attempts, all green — in twenty seconds.
 
 ## The three claims a module must earn

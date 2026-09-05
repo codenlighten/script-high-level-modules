@@ -104,14 +104,27 @@ function stackOf (n) {
 }
 const PRE_GENESIS = bsv.Script.Interpreter.SCRIPT_VERIFY_P2SH | bsv.Script.Interpreter.SCRIPT_VERIFY_STRICTENC
 
+// The fix that makes the cap era-derived is newer than the published library, so
+// the probe asks the interpreter what it is before asserting what it does. An
+// older one is not a failure here — no module in this repository holds more than
+// a few dozen stack elements — but the measurement genuinely differs, and
+// reporting it as passing would be a lie either way it is written.
+const ERA_DERIVED_STACK = typeof bsv.Script.Interpreter.prototype.maxStackSize === 'function'
+
 probe('999 stack elements', () => stackOf(999))
-probe('1001 stack elements, post-Genesis', () => stackOf(1001))
-probe('5000 stack elements, post-Genesis', () => stackOf(5000))
-probe('…but 1001 is refused under pre-Genesis flags', () => {
-  const unlock = S()
-  for (let i = 0; i < 1001; i++) unlock.add(Op.OP_1)
-  return { unlock, lock: S().add(Op.OP_1), flags: PRE_GENESIS }
-}, false)
+if (ERA_DERIVED_STACK) {
+  probe('1001 stack elements, post-Genesis', () => stackOf(1001))
+  probe('5000 stack elements, post-Genesis', () => stackOf(5000))
+  probe('…but 1001 is refused under pre-Genesis flags', () => {
+    const unlock = S()
+    for (let i = 0; i < 1001; i++) unlock.add(Op.OP_1)
+    return { unlock, lock: S().add(Op.OP_1), flags: PRE_GENESIS }
+  }, false)
+} else {
+  console.log('skip  post-Genesis stack cap — this @smartledger/bsv predates the era-derived')
+  console.log('      limit (see docs/limits.md). Nothing here depends on it; the modules hold')
+  console.log('      a few dozen stack elements, not a thousand.')
+}
 probe('one 100 KB element is fine', () => ({
   unlock: S().add(Buffer.alloc(100000, 7)),
   lock: S().add(Op.OP_SIZE).add(Op.OP_NIP).add(pushNum(100000)).add(Op.OP_NUMEQUAL)
