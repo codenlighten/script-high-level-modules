@@ -97,7 +97,12 @@ function moduleSize (m, params) {
 /** The honest inputs for a case: what the case gives, plus the module's hints. */
 function complete (m, params, caseValues) {
   const values = { ...caseValues }
-  if (m.hint) Object.assign(values, m.hint(values, params))
+  if (m.hint) {
+    // Fill in what the case did not give; never overrule what it did. A case
+    // that pins a witness on purpose must keep the value it pinned.
+    const hinted = m.hint(values, params)
+    for (const k of Object.keys(hinted)) if (!(k in values)) values[k] = hinted[k]
+  }
   return values
 }
 

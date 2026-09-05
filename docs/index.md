@@ -20,6 +20,10 @@ than to compute, so the spender supplies the answer; a module that takes a
 witness owes both soundness *and* canonicity, and the difference between those
 two is where the bugs live. Four worked examples, three of them real bugs.
 
+**[catalog.md](catalog.md)** — every module, generated from the registry: what
+it takes, what it returns, and which of its inputs the *spender* supplies. That
+last column is the one to read first.
+
 **[cost.md](cost.md)** — what every module costs, generated from the code. RSA
 verification is 955 bytes; SHA-256 rebuilt from primitives is 50,765; ECDSA over
 an arbitrary message is 196,778. Reading those three against each other is most
@@ -47,6 +51,8 @@ of what there is to know about lowering an algorithm into Script.
 | `src/asm.js` | the stack-tracking, type-tracking assembler |
 | `src/module.js` | the module contract, and `apply()` |
 | `src/testkit.js` | correctness, stack discipline, refusal, forgery |
+| `src/predicate.js` | a module with no outputs, as a deployable coin |
+| `src/index.js` | the library, and the registry the catalogue is generated from |
 | `src/num.js` | script numbers: little-endian, sign-magnitude, minimal |
 | `src/bigint.js` `src/ec.js` `src/rsa.js` | the reference mathematics |
 
@@ -60,11 +66,13 @@ npm run rfc6238         # the JS reference against RFC 6238's published vectors
 npm run ec              # src/ec.js against the library's own secp256k1
 npm run malleability    # RSA's s + n and ECDSA's n − s, with the rule on and off
 npm run cost            # regenerate cost.md from the code
+npm run catalog         # regenerate catalog.md from the registry
 ```
 
-Two examples, both spending against the real interpreter:
+Three examples, all spending against the real interpreter:
 
 ```bash
+node examples/totp-lock.js     # the whole path in five lines, via predicate()
 node examples/rsa-lock.js      # a coin an RSA authority unlocks
 node examples/oracle-lock.js   # a coin an oracle's ordinary secp256k1 key unlocks
 ```

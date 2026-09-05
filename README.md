@@ -47,6 +47,8 @@ node examples/oracle-lock.js     # a coin an oracle's ordinary secp256k1 key unl
 - **[witnesses.md](docs/witnesses.md)** — soundness *and* canonicity, the
   difference between them, and four worked examples of what happens when the
   second one is skipped.
+- **[catalog.md](docs/catalog.md)** — every module, generated from the registry:
+  inputs, outputs, and which inputs the *spender* supplies.
 - **[cost.md](docs/cost.md)** — what every module costs, generated from the code.
 
 ## What is here
@@ -56,6 +58,8 @@ src/run.js            evaluate a fragment against bsv.Script.Interpreter
 src/asm.js            a stack-tracking, type-tracking assembler
 src/module.js         the module contract, and apply() — how two modules compose
 src/testkit.js        correctness, stack discipline, and forgery
+src/predicate.js      a module with no outputs, as a deployable coin
+src/index.js          the library, and the registry behind the catalogue
 src/num.js            script numbers: little-endian, sign-magnitude, minimal
 src/bigint.js         the reference mathematics
 src/modules/int.js    modadd modsub modmul modexp modinv
@@ -146,6 +150,28 @@ verify with `OP_MUL` and `OP_MOD` in a few hundred bytes. The gap is in the
 opcode, not in Script: 196,778 bytes buys an oracle signing with the secp256k1
 key it already has, over any message at all. Whether that is worth 197 KB is an
 engineering choice, not a technical limit — but it is now a choice.
+
+## Using one
+
+A module that asserts and returns nothing is a predicate, and `predicate()`
+turns it into a coin:
+
+```js
+const { predicate, totp } = require('script-modules')
+
+const coin = predicate(totp.verify,
+  { keyLen: 20, digits: 6, step: 30, algo: 'sha1', keyCommitment },
+  { owner: ownerPublicKey })
+
+coin.lockingScript                                  // 332 bytes
+coin.test({ key: secret, time, code }, ownerKey)    // spend it, against the interpreter
+```
+
+`owner` has no default, on purpose. Every off-chain signature scheme here — RSA,
+TOTP, an oracle's ECDSA — authorises a *message*, never a *transaction*. A coin
+locked to one of them alone is a hashlock whose preimage is published the first
+time it is spent, for anyone reading the block to copy. Passing `owner: null` is
+allowed and says you meant it.
 
 ## Writing a module
 
