@@ -82,6 +82,7 @@ Total cost of the five, at 0.05 sat/byte: about 6,600 satoshis.
 src/run.js            evaluate a fragment against bsv.Script.Interpreter
 src/asm.js            a stack-tracking, type-tracking assembler
 src/module.js         the module contract, and apply() — how two modules compose
+src/facts.js          what is known about a value, and who has to prove it
 src/testkit.js        correctness, stack discipline, and forgery
 src/compose.js        all() conjunction, pipe() chaining
 src/recipes.js        compositions worth a name
@@ -137,6 +138,16 @@ transaction is locked to. What that buys, exactly: the spend cannot be *mined*
 before that time. Not that the time is now. A module that overstates itself is
 worse than one that does less.
 
+**It says what it requires, and the framework places the checks.** Three modules
+here documented a precondition and did not enforce it — all three green, one of
+them returning a non-canonical negative result. A module now states its contract,
+every stack value carries what is known about it, and at each call a requirement
+is discharged from an upstream fact, emitted as a check, or **refused**: some
+obligations, like a preimage being this transaction, cannot be checked in Script
+at all, and emitting something that looks like a check would be worse than
+nothing. Applied to the curve modules it reproduced the hand-placed bounds byte
+for byte and added one I had missed.
+
 **It refuses everything else.** Some operations are far cheaper to *check* than
 to *compute* — modular inverse is one multiplication to verify and the extended
 Euclidean algorithm to derive — so a module may declare an input `witness: true`
@@ -180,7 +191,7 @@ Full table in [docs/cost.md](docs/cost.md), generated from the code.
 | `ec.add` | secp256k1, witnessed inverse | 167 |
 | `u32.add` | one addition mod 2³² | 58 |
 | `sha256.block` | one block, no `OP_SHA256` | 49,181 |
-| `ec.mul` | k·P, 256-bit, both runtime | 42,086 |
+| `ec.mul` | k·P, 256-bit, both runtime | 42,112 |
 | `ecdsa.verify` | arbitrary message, secp256k1 | 59,155 |
 <!-- /cost:table -->
 

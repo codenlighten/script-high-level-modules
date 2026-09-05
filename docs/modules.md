@@ -114,6 +114,68 @@ A precondition stated in a comment is a hope. `ec.add` covers points with
 distinct x; the case above is what makes that a property rather than a note,
 because `dx = 0` has no inverse and no witness can invent one.
 
+## What a module requires, and what it promises
+
+Three modules here documented a precondition and did not enforce it, and all
+three were green. The fix each time was a bound; the interesting question was
+*where to put it*, and for a while the answer was a hand-written `if` in
+`ec.add` deciding which callers could be trusted.
+
+A module can now state its contract instead:
+
+```js
+requires: ({ pn }) => ({ x1: range(0, pn), y1: range(0, pn) }),
+ensures:  ({ pn }) => ({ x3: range(0, pn), y3: range(0, pn) })
+```
+
+Every value on the stack carries **facts** — what is known about it. At each
+call, each requirement is one of three things:
+
+- **discharged** — an upstream fact already implies it, and nothing is emitted;
+- **emitted** — the framework knows a check for it and inserts one;
+- **refused** — neither, and the build fails naming the obligation.
+
+The third is the point. Some obligations cannot be checked in Script at all:
+that a preimage *is* this spending transaction is established by `OP_PUSH_TX` or
+not established, and no bound substitutes for it. A module that requires
+`authenticated` and is handed an ordinary byte string does not compile.
+
+### Facts are derived, not asserted
+
+A range is only useful if it survives arithmetic, so the assembler propagates
+intervals through `OP_ADD`, `OP_SUB`, `OP_MUL` and `OP_MOD`, and refuses to
+guess: where a bound cannot be justified the result carries **no** fact, and a
+module that needs one has to say so.
+
+Two of those rules are load-bearing. A literal knows its own range exactly, which
+is what lets the framework find a modulus already on the stack and copy it — two
+bytes instead of a thirty-four-byte push, four times per point operation. And
+`OP_MOD` truncates, so it bounds the *magnitude* whatever the sign: that is what
+makes the two-step reduction `((v mod p) + p) mod p` derivable rather than
+claimed, because the first step lands in (−p, p), the addition makes it positive,
+and the second is then the non-negative case.
+
+Where the framework genuinely cannot derive something, `asm.assert(name, facts,
+why)` records it — and **requires a reason**, because an unchecked claim with no
+argument for it is how the bounds went missing in the first place.
+`asm.bound(name, lo, hi)` is the other half: it *emits* the check and records
+the result, so the fact is established rather than claimed.
+
+### An `ensures` is checked
+
+A module's promise about its outputs is a claim that nothing in the build can
+verify. The test kit therefore checks it against the model, on every case: a
+module that promises `[0, p)` and returns `p − 3 + p` has said something false,
+and the case that shows it is one that was already being run.
+
+### What it cost
+
+Nothing, and it found something. `ec.add` and `ec.double` come out **byte for
+byte** what the hand-placed checks produced, and `ecdsa.verify` is unchanged at
+59,155. `ec.mul` is 26 bytes larger — a bound on the input point that the
+hand-written version did not have, and without which `px + p` was a second
+encoding of the same point.
+
 ## Conjunction
 
 `compose.all(name, parts)` builds one module out of several predicates:

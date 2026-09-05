@@ -34,6 +34,13 @@
 // that names a witness without a `hint()` that produces the honest one cannot be
 // tested and is rejected at definition time.
 
+const F = require('./facts')
+
+/** `requires`/`ensures` may be a plain object or a function of the params. */
+function factsFor (spec, params) {
+  return typeof spec === 'function' ? spec(params || {}) : (spec || {})
+}
+
 function defineModule (spec) {
   const m = {
     name: spec.name,
@@ -42,6 +49,9 @@ function defineModule (spec) {
     inputs: (spec.inputs || []).map(normSlot),
     outputs: (spec.outputs || []).map(normSlot),
     model: spec.model,
+    prologue: spec.prologue || null,
+    requires: spec.requires || null,
+    ensures: spec.ensures || null,
     emit: spec.emit,
     hint: spec.hint || null,
     cases: spec.cases || [],
@@ -69,7 +79,58 @@ function defineModule (spec) {
     throw new Error(`${m.name}: declares witnessed input(s) ${witnessed.map((w) => w.name).join(', ')} but no hint() to produce the honest value`)
   }
   m.witnessed = witnessed
+
+  // Every call goes through here, whoever makes it. A requirement stated in
+  // `requires` is discharged from what is already known about the value,
+  // emitted as a check, or refused — and the third is not an inconvenience, it
+  // is the whole reason the mechanism exists.
+  const rawEmit = m.emit
+  m.emit = (asm, params = {}) => {
+    // A module may put its own constants on the stack before its requirements
+    // are checked: the bounds are usually among them, and a bound that is
+    // already live costs two bytes to reference instead of thirty-four to push.
+    const beforePrologue = asm.stack.length
+    if (typeof m.prologue === 'function') m.prologue(asm, params)
+    enforceRequires(asm, m, params, beforePrologue)
+    rawEmit(asm, params)
+    attachEnsures(asm, m, params)
+  }
   return m
+}
+
+/** Check the module's inputs, which the calling convention puts on top. */
+function enforceRequires (asm, m, params, depthBeforePrologue) {
+  const need = factsFor(m.requires, params)
+  if (!Object.keys(need).length) return
+  // The inputs sit where the calling convention put them, which is BELOW
+  // anything the prologue has since pushed on top of them.
+  const top = depthBeforePrologue === undefined ? asm.stack.length : depthBeforePrologue
+  const base = top - m.inputs.length
+  m.inputs.forEach((slot, i) => {
+    const want = need[slot.name]
+    if (!want) return
+    const live = asm.stack[base + i]
+    if (!live) throw new Error(`${m.name}: '${slot.name}' is not on the stack where the calling convention says it is`)
+    if (F.implies(live.facts, want)) return                      // already known
+    const why = F.discharge(asm, live.name, want)                // emit the check
+    if (why) {
+      throw new Error(`${m.name} requires '${slot.name}' to be ${F.describe(want)}; ` +
+        `what is known of '${live.name}' is ${F.describe(live.facts)}. ${why}`)
+    }
+    live.facts = F.meet(live.facts, want)
+  })
+}
+
+/** Record what the module says its outputs are, for whoever consumes them. */
+function attachEnsures (asm, m, params) {
+  const gives = factsFor(m.ensures, params)
+  if (!Object.keys(gives).length) return
+  const base = asm.stack.length - m.outputs.length
+  m.outputs.forEach((slot, i) => {
+    const f = gives[slot.name]
+    const live = asm.stack[base + i]
+    if (f && live) live.facts = F.meet(live.facts, f)
+  })
 }
 
 function normSlot (s) {
@@ -155,4 +216,4 @@ function apply (asm, m, params, args, outs) {
   return asm
 }
 
-module.exports = { defineModule, instantiate, apply }
+module.exports = { defineModule, instantiate, apply, factsFor, enforceRequires, attachEnsures }

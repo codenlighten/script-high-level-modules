@@ -103,9 +103,9 @@ function verifier (cases, { lowS = true } = {}) {
       //    other curve, where the discrete logarithm may be easy and the
       //    arithmetic below would carry on regardless.
       asm.num(P, '_P')
-      for (const v of ['qx', 'qy']) {
-        asm.pick(v, '_q0'); asm.num(0, '_qz'); asm.pick('_P', '_qp'); asm.withinVerify()
-      }
+      // Checked here once, and RECORDED — so every point operation downstream
+      // inherits the bound instead of re-establishing it 512 times.
+      for (const v of ['qx', 'qy']) asm.bound(v, 0n, P, '_q' + v)
       asm.pick('qy', '_qy1'); asm.pick('qy', '_qy2')
       apply(asm, int.modmul, { n: '_P' }, ['_qy1', '_qy2'], ['_y2'])
       asm.pick('qx', '_qx1'); asm.pick('qx', '_qx2')

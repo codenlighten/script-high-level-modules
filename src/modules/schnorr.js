@@ -58,6 +58,7 @@ const liftX = defineModule({
     { name: 'py', witness: true }
   ],
   outputs: ['qx', 'qy'],
+  ensures: () => ({ qx: { range: { lo: 0n, hi: P } }, qy: { range: { lo: 0n, hi: P } } }),
   hint: ({ pubkey }) => {
     const p = schnorrJs.liftX(schnorrJs.toInt(pubkey))
     return p ? { py: p.y } : {}
@@ -71,10 +72,11 @@ const liftX = defineModule({
     asm.num(P, '_P')
     apply(asm, bytes.beToNum, { width: 32 }, ['pubkey'], ['qx'])
 
-    // x < p. Without this, x and x + p are two encodings of one key.
-    asm.pick('qx', '_x0'); asm.num(0, '_z0'); asm.pick('_P', '_p0'); asm.withinVerify()
+    // x < p. Without this, x and x + p are two encodings of one key. Recorded
+    // as well as checked, so the ladder downstream inherits it.
+    asm.bound('qx', 0n, P, '_bx')
     // 0 ≤ y < p, and y is the EVEN one
-    asm.pick('py', '_y0'); asm.num(0, '_z1'); asm.pick('_P', '_p1'); asm.withinVerify()
+    asm.bound('py', 0n, P, '_by')
     asm.pick('py', '_y1'); asm.num(2, '_two'); asm.mod('_par')
     asm.num(0, '_z2'); asm.numEqualVerify()
     // y² = x³ + 7

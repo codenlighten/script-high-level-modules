@@ -25,6 +25,15 @@ const ecJs = require('../ec')
 // a caller that needs it must branch around it.
 
 const P = ecJs.P
+const F = require('../facts')
+
+// What a point operation needs of its coordinates, and what it gives back. This
+// used to be a sentence in a docblock and a hand-written `if (N.pushed)` deciding
+// which callers could be trusted to have honoured it. Stated here, the framework
+// decides: a caller that can prove the bound pays nothing, one that cannot has
+// the check emitted for it, and one that could not have it checked at all is
+// refused. See src/facts.js.
+const coordinatesIn = (pn) => ({ range: { lo: 0n, hi: pn } })
 
 /**
  * Where the modulus lives for one point operation.
@@ -127,6 +136,9 @@ const add = defineModule({
   doc: 'P₁ + P₂ on a short Weierstrass curve, for points with distinct x',
   inputs: ['x1', 'y1', 'x2', 'y2', { name: 'invdx', witness: true }],
   outputs: ['x3', 'y3'],
+  prologue: (asm, { p = P, p2 = null }) => { modulusOf(asm, p); doubleModulusOf(asm, p, p2) },
+  requires: ({ pn = P }) => ({ x1: coordinatesIn(pn), y1: coordinatesIn(pn), x2: coordinatesIn(pn), y2: coordinatesIn(pn) }),
+  ensures: ({ pn = P }) => ({ x3: coordinatesIn(pn), y3: coordinatesIn(pn) }),
   hint: ({ x1, x2 }, { p = P }) => ({ invdx: ecJs.inv(ecJs.mod(x2 - x1, p), p) }),
   model: ({ x1, y1, x2, y2 }) => {
     const r = ecJs.add({ x: x1, y: y1 }, { x: x2, y: y2 })
@@ -138,12 +150,9 @@ const add = defineModule({
   // same code with picks throughout needed eleven bytes of altstack and
   // OP_2DROP to clear what it had left lying about.
   emit: (asm, { p = P, p2 = null }) => {
-    const floor = asm.mark(5)
-    const N = modulusOf(asm, p)
-    const N2 = doubleModulusOf(asm, p, p2)
-    // Only the standalone form pays for this — see boundCoordinates.
-    if (N.pushed) boundCoordinates(asm, N.name, ['x1', 'y1', 'x2', 'y2'])
-
+    const floor = asm.mark(5 + (typeof p === 'string' ? 0 : 2))
+    const N = { name: typeof p === 'string' ? p : '_p', pushed: typeof p !== 'string' }
+    const N2 = { name: typeof p2 === 'string' ? p2 : '_p2' }
     // dx is never named: it is built on top, checked, and consumed there
     asm.pick('x2', '_a'); asm.pick('x1', '_b'); asm.sub('_dx')
     checkInverseOfTop(asm, N.name, 'invdx')
@@ -210,17 +219,18 @@ const double = defineModule({
   doc: '2P on a short Weierstrass curve with a = 0 (secp256k1), for y ≠ 0',
   inputs: ['x1', 'y1', { name: 'inv2y', witness: true }],
   outputs: ['x3', 'y3'],
+  prologue: (asm, { p = P, p2 = null }) => { modulusOf(asm, p); doubleModulusOf(asm, p, p2) },
+  requires: ({ pn = P }) => ({ x1: coordinatesIn(pn), y1: coordinatesIn(pn) }),
+  ensures: ({ pn = P }) => ({ x3: coordinatesIn(pn), y3: coordinatesIn(pn) }),
   hint: ({ y1 }, { p = P }) => ({ inv2y: ecJs.inv(ecJs.mod(2n * y1, p), p) }),
   model: ({ x1, y1 }) => {
     const r = ecJs.double({ x: x1, y: y1 })
     return { x3: r.x, y3: r.y }
   },
   emit: (asm, { p = P, p2 = null }) => {
-    const floor = asm.mark(3)
-    const N = modulusOf(asm, p)
-    const N2 = doubleModulusOf(asm, p, p2)
-    if (N.pushed) boundCoordinates(asm, N.name, ['x1', 'y1'])
-
+    const floor = asm.mark(3 + (typeof p === 'string' ? 0 : 2))
+    const N = { name: typeof p === 'string' ? p : '_p', pushed: typeof p !== 'string' }
+    const N2 = { name: typeof p2 === 'string' ? p2 : '_p2' }
     asm.pick('y1', '_a'); asm.op('OP_DUP', 0, ['_b']); asm.add('_2y')  // 2y, unnamed
     checkInverseOfTop(asm, N.name, 'inv2y')
 
@@ -431,7 +441,7 @@ function emitLadder (asm, { prefix, bits, p = P, point }, scalar, out) {
   // operations that is 34 KB of constants that never had to be there.
   asm.num(p, PN)
   asm.num(2n * p, PN2)
-  const pp = { p: PN, p2: PN2 }
+  const pp = { p: PN, p2: PN2, pn: p }
 
   // The scalar, spread into bytes the bits are read out of. This also bounds it
   // to [0, 2^bits) — see spreadScalar.
@@ -541,7 +551,16 @@ function mul (bits, scalars, { p = P } = {}) {
       asm.roll('rx'); asm.roll('ry')
     },
     attacks: (honest, params, name) => ladderAttacks(honest, name, p),
-    cases: scalars.map((k) => ({ name: `k = ${k}`, inputs: { k, px: ecJs.G.x, py: ecJs.G.y } })),
+    cases: [
+      ...scalars.map((k) => ({ name: `k = ${k}`, inputs: { k, px: ecJs.G.x, py: ecJs.G.y } })),
+      // The bound on the input point is placed by the framework, from the
+      // contract ec.add declares — not by hand, and it is one I had missed.
+      {
+        name: 'a point coordinate above the field size',
+        refuse: 'a second encoding of the same point',
+        inputs: { k: scalars[0], px: ecJs.G.x + p, py: ecJs.G.y }
+      }
+    ],
     notes: [
       'sound but not complete: an intermediate at infinity refuses the spend rather than mis-answering',
       'the unused inverse of a skipped step is pinned to zero, so the witness is canonical'
@@ -684,7 +703,7 @@ function emitShamir (asm, { prefix = 'sh', bits = 256, p = P, base = ecJs.G }, s
   const nbytes = bits / 8
 
   asm.num(p, PN); asm.num(2n * p, PN2)
-  const pp = { p: PN, p2: PN2 }
+  const pp = { p: PN, p2: PN2, pn: p }
 
   // G lives on the stack, not in every step's instruction stream
   asm.num(base.x, GX); asm.num(base.y, GY)

@@ -62,7 +62,8 @@ of what there is to know about lowering an algorithm into Script.
 | --- | --- |
 | `src/run.js` | evaluate a fragment, or a spend that has to sign, against the interpreter |
 | `src/asm.js` | the stack-tracking, type-tracking assembler |
-| `src/module.js` | the module contract, and `apply()` |
+| `src/module.js` | the module contract, `requires`/`ensures`, and `apply()` |
+| `src/facts.js` | what is known about a value: discharged, emitted, or refused |
 | `src/testkit.js` | correctness, stack discipline, refusal, forgery |
 | `src/compose.js` | `all()` conjunction, `pipe()` chaining |
 | `src/recipes.js` | compositions worth a name |

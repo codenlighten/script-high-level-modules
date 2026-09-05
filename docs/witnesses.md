@@ -192,6 +192,14 @@ checking it 512 times would cost 7 KB to learn nothing.
 Two of the three are now deliberate bugs in `npm run selftest`, where the module
 with its bound removed accepts what the standard refuses.
 
+And the class is closed rather than patched. A module states what it requires of
+each input and promises of each output; every value carries what is known about
+it; and at each call the framework discharges the requirement from an upstream
+fact, emits the check, or refuses to build. See
+[modules.md](modules.md#what-a-module-requires-and-what-it-promises). Applying it
+to `ec.add` reproduced the hand-placed checks byte for byte — and put one more in
+`ec.mul`, on the input point, which I had missed by hand.
+
 ## Sound but not complete
 
 One more distinction worth keeping separate from the two above.

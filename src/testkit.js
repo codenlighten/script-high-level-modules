@@ -3,6 +3,8 @@
 const bsv = require('@smartledger/bsv')
 const { Asm } = require('./asm')
 const { evaluate, countOps, buildSpend, evaluatePrepared } = require('./run')
+const F = require('./facts')
+const { factsFor } = require('./module')
 const { pushNum, pushData, toNum } = require('./num')
 
 // Proving a module. Three questions, in order of how often they are skipped:
@@ -200,6 +202,31 @@ function unlockFor (m, values) {
   return s
 }
 
+/**
+ * A module's `ensures` is a claim about its outputs that nothing in the build
+ * can check — the framework derives what it can from the arithmetic, and where
+ * it cannot, the author states it and downstream modules rely on it.
+ *
+ * So it is checked here, against the model, on every case. A module that
+ * promises its result is in [0, p) and returns p − 3 + p has said something
+ * false, and the case that shows it is the same case that was already being run.
+ */
+function checkEnsures (m, params, expected) {
+  const gives = factsFor(m.ensures, params)
+  const bad = []
+  for (const [name, need] of Object.entries(gives)) {
+    const v = expected[name]
+    if (v === undefined) { bad.push(`${name}: the model produced no such output`); continue }
+    if (!need.range) continue
+    const n = typeof v === 'bigint' ? v : (Buffer.isBuffer(v) ? null : BigInt(v))
+    if (n === null) continue
+    if (n < need.range.lo || n >= need.range.hi) {
+      bad.push(`${name} = ${n} is not ${F.describe(need)}, which the module promises`)
+    }
+  }
+  return bad
+}
+
 /** The honest inputs for a case: what the case gives, plus the module's hints. */
 function complete (m, params, caseValues) {
   const values = { ...caseValues }
@@ -266,6 +293,8 @@ function proveModule (m, { params = {}, quiet = false } = {}) {
           r = evaluatePrepared(probe.prepared, () => unlockFor(m, probe.values))
         } else {
           const built = buildContextual(m, p, c)
+          const broken = checkEnsures(m, p, built.expected)
+          if (broken.length) throw new Error(`${m.name}: its own promise does not hold — ${broken[0]}`)
           own = moduleSize(m, p)
           r = evaluatePrepared(built.prepared, () => unlockFor(m, built.values))
         }
@@ -303,6 +332,8 @@ function proveModule (m, { params = {}, quiet = false } = {}) {
     let built, r
     try {
       built = build(m, p, complete(m, p, c.inputs))
+      const broken = checkEnsures(m, p, built.expected)
+      if (broken.length) throw new Error(`${m.name}: its own promise does not hold — ${broken[0]}`)
       r = evaluate(built.unlock, built.lock)
       r.own = moduleSize(m, p)
     } catch (err) {
@@ -417,4 +448,4 @@ function proveAll (entries) {
   return { reports, failures }
 }
 
-module.exports = { sameValue, sampleWitnesses, buildContextual, onePass, unlockFor, build, buildAccept, moduleSize, proveModule, proveAll, complete, SENTINEL, defaultAttacks }
+module.exports = { sameValue, checkEnsures, sampleWitnesses, buildContextual, onePass, unlockFor, build, buildAccept, moduleSize, proveModule, proveAll, complete, SENTINEL, defaultAttacks }

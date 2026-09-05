@@ -29,7 +29,7 @@
 | `ec.add` | secp256k1, witnessed inverse | 167 | 65 |
 | `ec.double` | secp256k1, witnessed inverse | 153 | 58 |
 | `ec.mulG` | k·G, 256-bit, base fixed | 39,833 | 15,553 |
-| `ec.mul` | k·P, 256-bit, both runtime | 42,086 | 29,331 |
+| `ec.mul` | k·P, 256-bit, both runtime | 42,112 | 29,347 |
 | `ecdsa.verify` | arbitrary message, secp256k1 | 59,155 | 38,409 |
 | `schnorr.liftX` | x-only key to a point | 208 | 126 |
 | `schnorr.verify` | BIP-340, x-only key | 59,653 | 38,753 |

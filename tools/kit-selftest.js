@@ -17,6 +17,7 @@ const { right, left } = require('../src/modules/tx')
 const { apply } = require('../src/module')
 const bytesMod = require('../src/modules/bytes')
 const schnorrJs = require('../src/schnorr')
+const F = require('../src/facts')
 
 const N = 11n
 
@@ -159,6 +160,24 @@ const unbounded = defineModule({
   })()
 })
 
+// The eighth. Some obligations cannot be checked in Script at all: that a
+// preimage IS this transaction is established by OP_PUSH_TX or not established.
+// A module that requires it and is handed an ordinary value must fail to BUILD,
+// with the reason — because emitting something that looks like a check and is
+// not one would be worse than emitting nothing.
+const needsAuthentic = defineModule({
+  name: 'broken.unauthenticated',
+  doc: 'reads a transaction field from a preimage nobody proved',
+  inputs: [{ name: 'preimage', kind: 'bytes', witness: true }],
+  outputs: [{ name: 'locktime', kind: 'num' }],
+  requires: { preimage: F.authenticated() },
+  hint: () => ({ preimage: Buffer.alloc(200) }),
+  model: () => ({ locktime: 0n }),
+  emit: (asm) => { asm.roll('preimage'); right(asm, 8, '_t'); left(asm, 4, '_l'); asm.bin2num('locktime') },
+  attacks: () => [{ label: 'any other bytes', value: Buffer.alloc(200, 1) }],
+  cases: [{ name: 'an ordinary byte string', inputs: { preimage: Buffer.alloc(200) } }]
+})
+
 const expected = [
   [offByOne, 'a wrong value'],
   [leaky, 'a leaked stack slot'],
@@ -166,7 +185,8 @@ const expected = [
   [congruent, 'a non-canonical witness'],
   [unattackable, 'a witness it cannot attack'],
   [selfDependent, 'an answer its own script moves'],
-  [unbounded, 'an x above the field size']
+  [unbounded, 'an x above the field size'],
+  [needsAuthentic, 'a requirement no check can establish']
 ]
 
 let missed = 0

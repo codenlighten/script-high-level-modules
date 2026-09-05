@@ -29,8 +29,14 @@ class Asm {
   // ── introducing values ────────────────────────────────────────────────────
   /** Declare what the unlocking script (or a caller) has already left, bottom→top. */
   given (slots) { for (const v of slots) this.stack.push(norm(v)); return this }
-  num (value, name) { this.s.add(pushNum(value)); this.stack.push({ name, kind: 'num' }); return this }
-  data (buf, name) { this.s.add(pushData(buf)); this.stack.push({ name, kind: 'bytes', width: buf.length }); return this }
+  /** A literal's range is known exactly, so it is recorded. */
+  num (value, name, facts) {
+    this.s.add(pushNum(value))
+    const v = typeof value === 'bigint' ? value : BigInt(value)
+    this.stack.push({ name, kind: 'num', facts: facts || { range: { lo: v, hi: v + 1n } } })
+    return this
+  }
+  data (buf, name, facts) { this.s.add(pushData(buf)); this.stack.push({ name, kind: 'bytes', width: buf.length, facts }); return this }
 
   // ── inspecting the model ──────────────────────────────────────────────────
   top () { return this.stack[this.stack.length - 1] }
@@ -74,6 +80,24 @@ class Asm {
     }
     return this
   }
+  /**
+   * Record what is known about a live value, and say why.
+   *
+   * The framework derives what it can; this is for what it cannot. The reason
+   * is required because an asserted fact is a claim nothing checks, and a claim
+   * nothing checks should at least be one somebody wrote down.
+   */
+  assert (name, facts, why) {
+    if (!why) throw new Error(`asm: assert('${name}') needs a reason — an unchecked claim with no argument for it is how the bounds went missing in the first place`)
+    const slot = this.slot(name)
+    slot.facts = require('./facts').meet(slot.facts, facts)
+    slot.claimed = [...(slot.claimed || []), why]
+    return this
+  }
+
+  /** What is known about a live value. */
+  factsOf (name) { return this.slot(name).facts || {} }
+
   rename (name, kind, width) {
     const t = this.top()
     t.name = name
@@ -149,17 +173,30 @@ class Asm {
   }
 
   // ── arithmetic (all consume their operands) ───────────────────────────────
-  _bin (opcode, out, kind = 'num') {
+  _bin (opcode, out, kind = 'num', derive) {
+    const b = this.stack[this.stack.length - 1]
+    const a = this.stack[this.stack.length - 2]
     this.s.add(opcode)
     this.stack.pop()
-    this.stack[this.stack.length - 1] = { name: out, kind }
+    this.stack[this.stack.length - 1] = { name: out, kind, facts: derive ? derive(a.facts, b.facts) : undefined }
     return this
   }
-  add (out) { this._checkTop2Num(); return this._bin(Op.OP_ADD, out) }
-  sub (out) { this._checkTop2Num(); return this._bin(Op.OP_SUB, out) }
-  mul (out) { this._checkTop2Num(); return this._bin(Op.OP_MUL, out) }
+
+  // ── deriving what is known, rather than being told ────────────────────────
+  //
+  // A range on a value is only useful if it survives arithmetic. These are the
+  // interval rules for the four operations the modules actually reason about,
+  // and they are deliberately conservative: where a bound cannot be derived
+  // soundly the result carries NO fact, and a module that needs one has to
+  // assert it with a reason. Silence is the safe direction.
+  //
+  // `hi` is exclusive throughout, which is why the arithmetic below is off by
+  // one in the places it is.
+  add (out) { this._checkTop2Num(); return this._bin(Op.OP_ADD, out, 'num', ivAdd) }
+  sub (out) { this._checkTop2Num(); return this._bin(Op.OP_SUB, out, 'num', ivSub) }
+  mul (out) { this._checkTop2Num(); return this._bin(Op.OP_MUL, out, 'num', ivMul) }
   div (out) { this._checkTop2Num(); return this._bin(Op.OP_DIV, out) }
-  mod (out) { this._checkTop2Num(); return this._bin(Op.OP_MOD, out) }
+  mod (out) { this._checkTop2Num(); return this._bin(Op.OP_MOD, out, 'num', ivMod) }
   min (out) { return this._bin(Op.OP_MIN, out) }
   max (out) { return this._bin(Op.OP_MAX, out) }
   _checkTop2Num () {
@@ -234,7 +271,10 @@ class Asm {
 
   // ── assertions (consume) ──────────────────────────────────────────────────
   equalVerify () { this.s.add(Op.OP_EQUALVERIFY); this.stack.pop(); this.stack.pop(); return this }
-  equal (out) { this.s.add(Op.OP_EQUAL); this.stack.pop(); this.stack[this.stack.length - 1] = { name: out || 'eq', kind: 'num' }; return this }
+  // A comparison yields 0 or 1, always. That is the framework's own knowledge,
+  // not a module's claim, and it is what lets a selector built from bits be
+  // reduced without a bound check at every step.
+  equal (out) { this.s.add(Op.OP_EQUAL); this.stack.pop(); this.stack[this.stack.length - 1] = { name: out || 'eq', kind: 'num', facts: BOOL }; return this }
   numEqualVerify () { this.s.add(Op.OP_NUMEQUALVERIFY); this.stack.pop(); this.stack.pop(); return this }
   numEqual (out) { this.s.add(Op.OP_NUMEQUAL); this.stack.pop(); this.stack[this.stack.length - 1] = { name: out || 'eq', kind: 'num' }; return this }
   verify () { this.s.add(Op.OP_VERIFY); this.stack.pop(); return this }
@@ -246,6 +286,22 @@ class Asm {
    * them in an elliptic-curve ladder.
    */
   withinVerify () { this.s.add(Op.OP_WITHIN).add(Op.OP_VERIFY); this.stack.pop(); this.stack.pop(); this.stack.pop(); return this }
+  /**
+   * Assert min ≤ name < max IN SCRIPT, and record it as known.
+   *
+   * The difference between this and `assert()` is the whole point: this one
+   * emits the check, so the fact it records is established rather than claimed.
+   */
+  bound (name, lo, hi, temp = '_b') {
+    const F = require('./facts')
+    this.pick(name, temp + 'v')
+    F.pushBound(this, BigInt(lo), temp + 'lo')
+    F.pushBound(this, BigInt(hi), temp + 'hi')
+    this.withinVerify()
+    this.slot(name).facts = F.meet(this.slot(name).facts, F.range(lo, hi))
+    return this
+  }
+
   /** 2nd < top, consuming both. */
   ltVerify () { this.s.add(Op.OP_LESSTHAN).add(Op.OP_VERIFY); this.stack.pop(); this.stack.pop(); return this }
   geVerify () { this.s.add(Op.OP_GREATERTHANOREQUAL).add(Op.OP_VERIFY); this.stack.pop(); this.stack.pop(); return this }
@@ -315,6 +371,46 @@ class Asm {
     const show = (xs) => xs.map((v) => `${v.name}:${v.kind}${v.width !== undefined ? '[' + v.width + ']' : ''}`).join(' ')
     return show(this.stack) + (this.alt.length ? ` | alt: ${show(this.alt)}` : '')
   }
+}
+
+// Interval rules. Each returns undefined — "nothing is known" — rather than a
+// bound it cannot justify.
+const iv = (f) => (f && f.range) || null
+const BOOL = { range: { lo: 0n, hi: 2n } }
+
+function ivAdd (a, b) {
+  const x = iv(a); const y = iv(b)
+  if (!x || !y) return undefined
+  return { range: { lo: x.lo + y.lo, hi: x.hi + y.hi - 1n } }
+}
+function ivSub (a, b) {
+  const x = iv(a); const y = iv(b)
+  if (!x || !y) return undefined
+  return { range: { lo: x.lo - (y.hi - 1n), hi: x.hi - y.lo } }
+}
+function ivMul (a, b) {
+  const x = iv(a); const y = iv(b)
+  if (!x || !y) return undefined
+  if (x.lo < 0n || y.lo < 0n) return undefined            // sign flips, so the corners are not the extremes
+  return { range: { lo: x.lo * y.lo, hi: (x.hi - 1n) * (y.hi - 1n) + 1n } }
+}
+/**
+ * OP_MOD is TRUNCATED, so it keeps the sign of the dividend. A non-negative
+ * dividend and a positive, exactly-known divisor give [0, divisor) — which is
+ * the one case worth deriving, and the one every canonical reduction in this
+ * repository is.
+ */
+function ivMod (a, b) {
+  const x = iv(a); const y = iv(b)
+  if (!y) return undefined
+  if (y.hi - y.lo !== 1n) return undefined               // the divisor must be exactly known
+  if (y.lo <= 0n) return undefined
+  // Truncation bounds the MAGNITUDE whatever the sign, which is what makes the
+  // two-step reduction ((v mod p) + p) mod p derivable rather than asserted: the
+  // first step lands in (−p, p), the addition makes it positive, and the second
+  // step is then the non-negative case.
+  if (!x || x.lo < 0n) return { range: { lo: -(y.lo - 1n), hi: y.lo } }
+  return { range: { lo: 0n, hi: y.lo } }
 }
 
 function norm (v) {
