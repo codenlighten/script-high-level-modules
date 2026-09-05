@@ -9,9 +9,9 @@ and know immediately whether it still refuses what it used to.
 | --- | ---: | ---: | ---: |
 | `ec.add` | 191 | 144 | −25% |
 | `ec.double` | 191 | 143 | −25% |
-| `ec.mul` (256-bit) | 116,127 | 55,790 | −52% |
-| `ec.mulG` (256-bit) | 80,216 | 50,224 | −37% |
-| `ecdsa.verify` | 196,778 | 106,403 | −46% |
+| `ec.mul` (256-bit) | 116,127 | 52,083 | −55% |
+| `ec.mulG` (256-bit) | 80,216 | 46,515 | −42% |
+| `ecdsa.verify` | 196,778 | 98,986 | −50% |
 
 ## 1. Reduce only where it must be canonical
 
@@ -98,6 +98,29 @@ along in the unlocking script to change the txid without changing what it does.
 This was originally forced by a 1000-element stack cap that turned out to be an
 interpreter bug (see [limits.md](limits.md)). The constraint went away; the
 design stayed, because it was the better one for three other reasons.
+
+## 6. A witness that can be derived is not a witness
+
+The ladder used to take the scalar's bits as a witness and then spend about
+twenty-five bytes a step pinning them: `Σ bᵢ2ⁱ = k` to tie them to the scalar,
+and `bᵢ² = bᵢ` so a 2 could not stand in for the next bit's 1.
+
+All of that was constraining a value that was never free. The scalar already
+determines its own bits. `OP_NUM2BIN` spreads it into a byte string, and each
+bit is a mask and a comparison — seven bytes, with nothing to pin because
+nothing was supplied.
+
+The range check came free with it. `OP_NUM2BIN` writes a *signed* number, so
+asking for one byte more than the scalar needs puts the sign in that extra byte;
+requiring it to be `0x00` says both that the scalar is not negative and that it
+does not reach into the byte above. `0 ≤ k < 2^bits` in three bytes and no
+comparison.
+
+One subtlety is load-bearing. `mask AND` alone would nearly work — the result is
+either zero or the mask, and `OP_IF` takes any non-zero value for true. Nearly:
+a lone `0x80` is negative zero to `CastToBool` and reads FALSE, so bit 7 of every
+byte would be silently skipped. Comparing against the mask costs two bytes and is
+the same shape for all eight.
 
 ## What was tried and rejected
 

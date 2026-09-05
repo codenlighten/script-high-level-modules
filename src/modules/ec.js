@@ -268,10 +268,20 @@ const H = ecJs.numsPoint('script-modules/secp256k1/offset/v1')
 
 const FIELD = 33          // a 256-bit inverse, little-endian, plus the sign byte
 
-/** The three witness values one ladder takes. */
+/**
+ * The two witness values one ladder takes.
+ *
+ * There used to be three. The bits of the scalar were witnessed and then pinned
+ * by Σ bᵢ2ⁱ = k and bᵢ² = bᵢ — about twenty-five bytes a step to constrain a
+ * value that was never free in the first place. The scalar already determines
+ * its own bits; the script derives them with OP_NUM2BIN and a mask, and the
+ * range check 0 ≤ k < 2^bits falls out of requiring the sign byte to be zero.
+ *
+ * A witness that can be derived is not a witness. It is a second copy of
+ * something, and every second copy has to be pinned to the first.
+ */
 function ladderInputs (prefix, bits, fixedBase) {
   return [
-    { name: `${prefix}bits`, kind: 'bytes', witness: true },
     { name: `${prefix}tape`, kind: 'bytes', witness: true },
     { name: `${prefix}fi`, witness: true }
   ]
@@ -299,7 +309,6 @@ function ladderWitness (prefix, bits, k, point, { fixedBase = false, p = P } = {
   let D = point
   for (let i = 0; i < bits; i++) {
     const bit = (k >> BigInt(i)) & 1n
-    bitBytes[i] = Number(bit)
     tape.push(record(bit ? ecJs.inv(ecJs.mod(D.x - acc.x, p), p) : 0n))
     if (bit) acc = ecJs.add(acc, D)
     if (i < bits - 1) {
@@ -308,7 +317,6 @@ function ladderWitness (prefix, bits, k, point, { fixedBase = false, p = P } = {
     }
   }
   return {
-    [`${prefix}bits`]: bitBytes,
     [`${prefix}tape`]: Buffer.concat(tape),
     [`${prefix}fi`]: ecJs.inv(ecJs.mod(H.x - acc.x, p), p)
   }
@@ -322,16 +330,38 @@ function takeInverse (asm, tapeName, out) {
   asm.roll('_rec'); asm.bin2num(out)
 }
 
-/** Split one byte off the front of the bit string and read it as 0 or 1. */
-function takeBit (asm, bitsName, out) {
-  asm.roll(bitsName)
-  asm.splitAt(1, '_bb', '_brest')
-  asm.rename(bitsName)
-  asm.roll('_bb'); asm.bin2num(out)
-  // A byte is not a bit until it is one. b² = b admits only 0 and 1, and
-  // without it the sum below would accept a 2 in place of the next bit's 1.
-  asm.pick(out, '_bv'); asm.op('OP_DUP', 0, ['_bv2']); asm.mul('_bsq')
-  asm.pick(out, '_bc'); asm.numEqualVerify()
+/**
+ * Spread the scalar into a byte string the bits can be read out of, and bound it
+ * to [0, 2^bits) on the way.
+ *
+ * OP_NUM2BIN writes a SIGNED number, so asking for one byte more than the
+ * scalar needs puts the sign in that extra byte. Requiring it to be 0x00 says
+ * both things at once: the scalar is not negative, and it does not reach into
+ * the byte above. The range check costs three bytes and no separate comparison.
+ */
+function spreadScalar (asm, scalar, bits, out) {
+  if (bits % 8 !== 0) throw new Error('ec: the ladder wants a bit width that is a whole number of bytes')
+  const nbytes = bits / 8
+  asm.pick(scalar, '_kc')
+  asm.num2bin(nbytes + 1, '_kb')
+  asm.splitAt(nbytes, out, '_ksign')
+  asm.data(Buffer.from([0]), '_zb'); asm.equalVerify()
+}
+
+/**
+ * Bit `t` of the byte named `byteName`, as a clean 0 or 1.
+ *
+ * `mask AND` alone would nearly do it — the result is either zero or the mask,
+ * and OP_IF takes any non-zero value for true. Nearly: a lone 0x80 is negative
+ * zero to CastToBool and reads FALSE, so bit 7 of every byte would silently be
+ * skipped. Comparing against the mask costs two bytes and is the same shape for
+ * all eight, which is worth more here than the two bytes.
+ */
+function takeBitOfByte (asm, byteName, t, out) {
+  const mask = Buffer.from([1 << t])
+  asm.pick(byteName, '_bb')
+  asm.data(mask, '_mask'); asm.and('_m')
+  asm.data(mask, '_mask2'); asm.equal(out)
 }
 
 /**
@@ -346,8 +376,8 @@ function takeBit (asm, bitsName, out) {
  */
 function emitLadder (asm, { prefix, bits, p = P, point }, scalar, out) {
   const fixedBase = !Array.isArray(point)
-  const BITS = `${prefix}bits`; const TAPE = `${prefix}tape`
-  const SUM = `${prefix}_sum`; const POW = `${prefix}_pow`
+  const TAPE = `${prefix}tape`
+  const KB = `${prefix}_kb`; const BYTE = `${prefix}_byte`
   const AX = `${prefix}accx`; const AY = `${prefix}accy`
   const DX = `${prefix}_dx`; const DY = `${prefix}_dy`
   const PN = `${prefix}_p`; const PN2 = `${prefix}_p2`
@@ -361,20 +391,18 @@ function emitLadder (asm, { prefix, bits, p = P, point }, scalar, out) {
   asm.num(2n * p, PN2)
   const pp = { p: PN, p2: PN2 }
 
-  // The scalar is checked against its bits as they are consumed, least
-  // significant first: sum += bᵢ·2ⁱ. One pass, so the bits are never all on the
-  // stack at once.
-  asm.num(0, SUM); asm.num(1, POW)
+  // The scalar, spread into bytes the bits are read out of. This also bounds it
+  // to [0, 2^bits) — see spreadScalar.
+  spreadScalar(asm, scalar, bits, KB)
 
   let D = fixedBase ? point : null
   if (!fixedBase) { asm.roll(point[0]); asm.rename(DX); asm.roll(point[1]); asm.rename(DY) }
   asm.num(H.x, AX); asm.num(H.y, AY)
 
   for (let i = 0; i < bits; i++) {
-    takeBit(asm, BITS, '_b')
-    asm.pick('_b', '_bs'); asm.pick(POW, '_pw'); asm.mul('_term')
-    asm.roll(SUM); asm.add(SUM)
-    if (i < bits - 1) { asm.roll(POW); asm.op('OP_DUP', 0, ['_p2']); asm.add(POW) }
+    // one byte at a time, least significant first
+    if (i % 8 === 0) { asm.roll(KB); asm.splitAt(1, BYTE, KB); }
+    takeBitOfByte(asm, BYTE, i % 8, '_b')
 
     takeInverse(asm, TAPE, '_ai')
 
@@ -392,6 +420,8 @@ function emitLadder (asm, { prefix, bits, p = P, point }, scalar, out) {
     asm.roll('_ai'); asm.num(0, '_z'); asm.numEqualVerify()      // pin the unused record
     asm.endIf()
 
+    if (i % 8 === 7) asm.discard(BYTE)
+
     if (i < bits - 1) {
       if (fixedBase) { D = ecJs.double(D) } else {
         takeInverse(asm, TAPE, '_di')
@@ -401,11 +431,9 @@ function emitLadder (asm, { prefix, bits, p = P, point }, scalar, out) {
     }
   }
 
-  // the tape must be exactly used up, and the bits must be exactly the scalar
-  asm.roll(BITS); asm.num(0, '_empty1'); asm.equalVerify()
+  // the tape must be exactly used up: no unread bytes riding along
   asm.roll(TAPE); asm.num(0, '_empty2'); asm.equalVerify()
-  asm.discard(POW)
-  asm.roll(SUM); asm.pick(scalar, '_kc'); asm.numEqualVerify()
+  asm.discard(KB)
 
   // undo the offset: the result is acc − H
   if (!fixedBase) { asm.discard(DX); asm.discard(DY) }
