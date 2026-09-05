@@ -1,0 +1,486 @@
+'use strict'
+
+// BLS12-381, in plain BigInt, INSTRUMENTED.
+//
+// This exists to answer one question the rest of this repository has been
+// unable to answer honestly: what would a pairing cost in Bitcoin Script?
+//
+// Every other number here is measured. That one has only ever been asserted —
+// "ZK verification is not magic, it reduces to field arithmetic" — which is true
+// and is not a number. So: a real pairing, correct enough to agree with an
+// independent implementation on bilinearity, with a counter on every field
+// operation it performs. Multiply the count by the measured cost of one
+// operation in Script and the answer stops being a claim.
+//
+// The tower is the standard one:
+//
+//     Fp    = GF(p)
+//     Fp2   = Fp[u]  / (u² + 1)
+//     Fp6   = Fp2[v] / (v³ − ξ),   ξ = u + 1
+//     Fp12  = Fp6[w] / (w² − v)
+//
+// Nothing here is optimised for speed in JavaScript. It is written to be
+// countable and to be checkable against @noble/curves, and the operation counts
+// are the product.
+
+const P = 0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaabn
+const R = 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001n
+// The BLS parameter. Negative, which is why the Miller loop conjugates at the end.
+const X = -0xd201000000010000n
+
+// ── the counter ─────────────────────────────────────────────────────────────
+const ops = { mul: 0, add: 0, sub: 0, inv: 0 }
+// The SAME work counted a second time, one level up. Fp is the wrong unit to
+// price a pairing in: src/modules/fp2.js implements Fp2 operations as fused
+// modules, and a fused Fp2 multiply is not three Fp multiplies plus two Fp
+// adds bolted together — it shares reductions and skips a correction term the
+// separate pieces would each need. So both counters run, the Fp2 one gives the
+// number, and the Fp one is there to check it against.
+const ops2 = { mul: 0, sqr: 0, add: 0, sub: 0, neg: 0, conj: 0, mulFp: 0, mulXi: 0, inv: 0 }
+const reset = () => {
+  for (const k of Object.keys(ops)) ops[k] = 0
+  for (const k of Object.keys(ops2)) ops2[k] = 0
+}
+const count = () => ({ ...ops })
+const count2 = () => ({ ...ops2 })
+
+const mod = (a) => { const r = a % P; return r < 0n ? r + P : r }
+const fpMul = (a, b) => { ops.mul++; return mod(a * b) }
+const fpAdd = (a, b) => { ops.add++; const s = a + b; return s >= P ? s - P : s }
+const fpSub = (a, b) => { ops.sub++; const d = a - b; return d < 0n ? d + P : d }
+const fpNeg = (a) => (a === 0n ? 0n : fpSub(0n, a))
+function fpPow (a, e) { let r = 1n; let b = a; let x = e; while (x > 0n) { if (x & 1n) r = fpMul(r, b); b = fpMul(b, b); x >>= 1n } return r }
+// Inversion counts as ONE operation, not as the 610 multiplications this
+// exponentiation happens to take, because Script does not invert by
+// exponentiating. `int.modinv` takes the inverse as a WITNESS and checks
+// a·a⁻¹ ≡ 1 (mod p) — one multiply and one comparison, at any width. The
+// exponentiation below is an implementation detail of the JavaScript model, so
+// its operations are rolled back out of the count deliberately.
+const fpInv = (a) => {
+  const m = ops.mul; const ad = ops.add; const sb = ops.sub
+  const r = fpPow(a, P - 2n)
+  ops.mul = m; ops.add = ad; ops.sub = sb; ops.inv++
+  return r
+}
+
+// ── Fp2 = Fp[u]/(u² + 1) ────────────────────────────────────────────────────
+const f2 = (c0 = 0n, c1 = 0n) => [c0, c1]
+const F2_ZERO = f2(0n, 0n)
+const F2_ONE = f2(1n, 0n)
+const f2add = (a, b) => { ops2.add++; return [fpAdd(a[0], b[0]), fpAdd(a[1], b[1])] }
+const f2sub = (a, b) => { ops2.sub++; return [fpSub(a[0], b[0]), fpSub(a[1], b[1])] }
+const f2neg = (a) => { ops2.neg++; return [fpNeg(a[0]), fpNeg(a[1])] }
+const f2conj = (a) => { ops2.conj++; return [a[0], fpNeg(a[1])] }
+const f2eq = (a, b) => a[0] === b[0] && a[1] === b[1]
+const f2isZero = (a) => a[0] === 0n && a[1] === 0n
+
+/** Karatsuba: three Fp multiplications rather than four. */
+function f2mul (a, b) {
+  ops2.mul++
+  const t0 = fpMul(a[0], b[0])
+  const t1 = fpMul(a[1], b[1])
+  const t2 = fpMul(fpAdd(a[0], a[1]), fpAdd(b[0], b[1]))
+  return [fpSub(t0, t1), fpSub(fpSub(t2, t0), t1)]
+}
+/** (a0 + a1u)² = (a0 + a1)(a0 − a1) + 2a0a1·u — two multiplications. */
+function f2sqr (a) {
+  ops2.sqr++
+  const t = fpMul(fpAdd(a[0], a[1]), fpSub(a[0], a[1]))
+  const s = fpMul(a[0], a[1])
+  return [t, fpAdd(s, s)]
+}
+function f2inv (a) {
+  ops2.inv++
+  const n = fpAdd(fpMul(a[0], a[0]), fpMul(a[1], a[1]))
+  const i = fpInv(n)
+  return [fpMul(a[0], i), fpNeg(fpMul(a[1], i))]
+}
+const f2mulFp = (a, k) => { ops2.mulFp++; return [fpMul(a[0], k), fpMul(a[1], k)] }
+/** Multiply by ξ = u + 1. */
+const f2mulXi = (a) => { ops2.mulXi++; return [fpSub(a[0], a[1]), fpAdd(a[0], a[1])] }
+function f2pow (a, e) { let r = F2_ONE; let b = a; let x = e; while (x > 0n) { if (x & 1n) r = f2mul(r, b); b = f2sqr(b); x >>= 1n } return r }
+
+// ── Fp6 = Fp2[v]/(v³ − ξ) ───────────────────────────────────────────────────
+const f6 = (c0 = F2_ZERO, c1 = F2_ZERO, c2 = F2_ZERO) => [c0, c1, c2]
+const F6_ZERO = f6()
+const F6_ONE = f6(F2_ONE, F2_ZERO, F2_ZERO)
+const f6add = (a, b) => [f2add(a[0], b[0]), f2add(a[1], b[1]), f2add(a[2], b[2])]
+const f6sub = (a, b) => [f2sub(a[0], b[0]), f2sub(a[1], b[1]), f2sub(a[2], b[2])]
+const f6neg = (a) => [f2neg(a[0]), f2neg(a[1]), f2neg(a[2])]
+const f6eq = (a, b) => f2eq(a[0], b[0]) && f2eq(a[1], b[1]) && f2eq(a[2], b[2])
+/** Multiply by v: (a0, a1, a2) → (ξa2, a0, a1). */
+const f6mulV = (a) => [f2mulXi(a[2]), a[0], a[1]]
+
+/** Karatsuba over Fp2: six Fp2 multiplications. */
+function f6mul (a, b) {
+  const t0 = f2mul(a[0], b[0])
+  const t1 = f2mul(a[1], b[1])
+  const t2 = f2mul(a[2], b[2])
+  const c0 = f2add(t0, f2mulXi(f2sub(f2sub(f2mul(f2add(a[1], a[2]), f2add(b[1], b[2])), t1), t2)))
+  const c1 = f2add(f2sub(f2sub(f2mul(f2add(a[0], a[1]), f2add(b[0], b[1])), t0), t1), f2mulXi(t2))
+  const c2 = f2add(f2sub(f2sub(f2mul(f2add(a[0], a[2]), f2add(b[0], b[2])), t0), t2), t1)
+  return [c0, c1, c2]
+}
+/** Chung–Hasan SQR3: three Fp2 squarings and two multiplications. */
+function f6sqr (a) {
+  const s0 = f2sqr(a[0])
+  const ab = f2mul(a[0], a[1]); const s1 = f2add(ab, ab)
+  const s2 = f2sqr(f2add(f2sub(a[0], a[1]), a[2]))
+  const bc = f2mul(a[1], a[2]); const s3 = f2add(bc, bc)
+  const s4 = f2sqr(a[2])
+  return [
+    f2add(s0, f2mulXi(s3)),
+    f2add(s1, f2mulXi(s4)),
+    f2sub(f2sub(f2add(f2add(s1, s2), s3), s0), s4)
+  ]
+}
+function f6inv (a) {
+  const c0 = f2sub(f2sqr(a[0]), f2mulXi(f2mul(a[1], a[2])))
+  const c1 = f2sub(f2mulXi(f2sqr(a[2])), f2mul(a[0], a[1]))
+  const c2 = f2sub(f2sqr(a[1]), f2mul(a[0], a[2]))
+  const t = f2add(f2mulXi(f2add(f2mul(a[2], c1), f2mul(a[1], c2))), f2mul(a[0], c0))
+  const ti = f2inv(t)
+  return [f2mul(c0, ti), f2mul(c1, ti), f2mul(c2, ti)]
+}
+
+// ── Fp12 = Fp6[w]/(w² − v) ──────────────────────────────────────────────────
+const f12 = (c0 = F6_ZERO, c1 = F6_ZERO) => [c0, c1]
+const F12_ONE = f12(F6_ONE, F6_ZERO)
+const f12mulRaw = (a, b) => {
+  const t0 = f6mul(a[0], b[0])
+  const t1 = f6mul(a[1], b[1])
+  const c0 = f6add(t0, f6mulV(t1))
+  const c1 = f6sub(f6sub(f6mul(f6add(a[0], a[1]), f6add(b[0], b[1])), t0), t1)
+  return [c0, c1]
+}
+/** Karatsuba squaring: two Fp6 multiplications rather than three. */
+function f12sqr (a) {
+  const t = f6mul(a[0], a[1])
+  const c0 = f6sub(f6sub(f6mul(f6add(a[0], a[1]), f6add(a[0], f6mulV(a[1]))), t), f6mulV(t))
+  return [c0, f6add(t, t)]
+}
+const f12conj = (a) => [a[0], f6neg(a[1])]
+const f12eq = (a, b) => f6eq(a[0], b[0]) && f6eq(a[1], b[1])
+function f12inv (a) {
+  const t = f6sub(f6sqr(a[0]), f6mulV(f6sqr(a[1])))
+  const ti = f6inv(t)
+  return [f6mul(a[0], ti), f6neg(f6mul(a[1], ti))]
+}
+function f12pow (a, e) { let r = F12_ONE; let b = a; let x = e; while (x > 0n) { if (x & 1n) r = f12mulRaw(r, b); b = f12sqr(b); x >>= 1n } return r }
+
+// ── Frobenius ───────────────────────────────────────────────────────────────
+// The coefficients are DERIVED rather than transcribed: γ_{1,i} = ξ^(i(p−1)/6),
+// computed once with the same Fp2 arithmetic everything else uses. A table of
+// hex constants copied from somewhere is a table that can be copied wrongly.
+const XI = f2(1n, 1n)
+const FROB = []
+for (let i = 1; i < 6; i++) FROB.push(f2pow(XI, (BigInt(i) * (P - 1n)) / 6n))
+const G1_ = FROB[0]; const G2_ = FROB[1]; const G3_ = FROB[2]; const G4_ = FROB[3]; const G5_ = FROB[4]
+
+// v^p = v·ξ^((p−1)/3) and v^2p = v²·ξ^(2(p−1)/3); the Fp2 Frobenius is conjugation
+// because p ≡ 3 (mod 4).
+const f6frob = (a) => [f2conj(a[0]), f2mul(f2conj(a[1]), G2_), f2mul(f2conj(a[2]), G4_)]
+// w^p = w·ξ^((p−1)/6). In a NESTED tower the Fp6 part has already taken its own
+// constants, and what remains is one Fp2 scalar applied to the whole of it —
+// not a different constant per coefficient, which is what a flat Fp2[w]/(w⁶−ξ)
+// presentation would want and is the shape this had first.
+const f12frob = (a) => {
+  const hi = f6frob(a[1])
+  return [f6frob(a[0]), [f2mul(hi[0], G1_), f2mul(hi[1], G1_), f2mul(hi[2], G1_)]]
+}
+function f12frobN (a, n) { let r = a; for (let i = 0; i < n; i++) r = f12frob(r); return r }
+
+// ── the curve ───────────────────────────────────────────────────────────────
+const B = 4n
+const B2 = f2mulXi(f2(B, 0n))                                  // 4(u + 1)
+const G1 = {
+  x: 0x17f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bbn,
+  y: 0x08b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e1n
+}
+const G2 = {
+  x: f2(0x024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8n,
+    0x13e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7en),
+  y: f2(0x0ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801n,
+    0x0606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79ben)
+}
+
+/** k·P in G1, affine, double-and-add. */
+function g1mul (k, p = G1) {
+  let acc = null; let cur = p; let e = ((k % R) + R) % R
+  while (e > 0n) {
+    if (e & 1n) acc = g1add(acc, cur)
+    cur = g1add(cur, cur)
+    e >>= 1n
+  }
+  return acc
+}
+function g1add (a, b) {
+  if (!a) return b
+  if (!b) return a
+  if (a.x === b.x) {
+    if (a.y !== b.y || a.y === 0n) return null
+    const l = fpMul(fpMul(3n, fpMul(a.x, a.x)), fpInv(fpAdd(a.y, a.y)))
+    const x = fpSub(fpMul(l, l), fpAdd(a.x, a.x))
+    return { x, y: fpSub(fpMul(l, fpSub(a.x, x)), a.y) }
+  }
+  const l = fpMul(fpSub(b.y, a.y), fpInv(fpSub(b.x, a.x)))
+  const x = fpSub(fpSub(fpMul(l, l), a.x), b.x)
+  return { x, y: fpSub(fpMul(l, fpSub(a.x, x)), a.y) }
+}
+function g2add (a, b) {
+  if (!a) return b
+  if (!b) return a
+  if (f2eq(a.x, b.x)) {
+    if (!f2eq(a.y, b.y) || f2isZero(a.y)) return null
+    const l = f2mul(f2mulFp(f2sqr(a.x), 3n), f2inv(f2add(a.y, a.y)))
+    const x = f2sub(f2sqr(l), f2add(a.x, a.x))
+    return { x, y: f2sub(f2mul(l, f2sub(a.x, x)), a.y) }
+  }
+  const l = f2mul(f2sub(b.y, a.y), f2inv(f2sub(b.x, a.x)))
+  const x = f2sub(f2sub(f2sqr(l), a.x), b.x)
+  return { x, y: f2sub(f2mul(l, f2sub(a.x, x)), a.y) }
+}
+function g2mul (k, q = G2) {
+  let acc = null; let cur = q; let e = ((k % R) + R) % R
+  while (e > 0n) {
+    if (e & 1n) acc = g2add(acc, cur)
+    cur = g2add(cur, cur)
+    e >>= 1n
+  }
+  return acc
+}
+const g1neg = (p) => (p ? { x: p.x, y: fpNeg(p.y) } : null)
+const g2neg = (q) => (q ? { x: q.x, y: f2neg(q.y) } : null)
+
+// ── the Miller loop ─────────────────────────────────────────────────────────
+//
+// Affine, with the line evaluated as a full Fp12 element rather than a sparse
+// one. A production implementation uses projective coordinates and sparse
+// multiplication and is perhaps twice as cheap; this one is written to be
+// obviously correct, and tools/pairing-cost.js says plainly which it counted.
+
+// The line, untwisted, in the basis this tower actually uses.
+//
+// Fp12 = Fp6[w]/(w² − v) over Fp6 = Fp2[v]/(v³ − ξ), so w⁶ = ξ and the twelve
+// coefficients sit at
+//
+//     w⁰ → c0[0]   w² → c0[1]   w⁴ → c0[2]
+//     w¹ → c1[0]   w³ → c1[1]   w⁵ → c1[2]
+//
+// BLS12-381's twist is D-TYPE, which decides everything below and is worth
+// deriving rather than recalling. If a point of E'(Fp2) untwisted by
+// MULTIPLICATION — ψ(x, y) = (x·w², y·w³) — then y²w⁶ = x³w⁶ + 4 would put the
+// twist at y² = x³ + 4/ξ. BLS12-381's twist is y² = x³ + 4ξ, which comes out of
+// DIVISION: ψ(x, y) = (x/w², y/w³) gives y² = x³ + 4w⁶ = x³ + 4ξ. So the map is
+// division, the slope of the untwisted curve at ψ(T) is λ·w⁻¹, and
+//
+//     l(P) = y_P − λ·x_P·w⁻¹ + (λ·x_T − y_T)·w⁻³
+//
+// Scaled through by ξ — a constant in Fp2, which the final exponentiation kills,
+// since (p⁶ − 1) annihilates anything whose order divides p² − 1 — and using
+// w⁻¹ = w⁵/ξ, w⁻³ = w³/ξ:
+//
+//     ξ·l(P) = ξ·y_P + (λ·x_T − y_T)·w³ − λ·x_P·w⁵
+//
+// The first version of this assumed multiplication and put −λx_P at w¹. It was
+// non-degenerate, it produced values of order r, and it was not bilinear —
+// every component test passed and the whole thing was wrong, which is the only
+// interesting kind of bug.
+//
+// Only THREE of the twelve Fp2 coefficients are ever non-zero, so the line is
+// carried as those three and multiplied in sparsely — 14 Fp2 multiplications
+// instead of the 18 a general Fp12 product costs. f12mulLine is checked against
+// f12mulRaw on the dense form in tools/bls-crosscheck.js.
+function lineAt (lambda, T, P, next) {
+  return {
+    l0: f2mulXi(f2(P.y, 0n)),                                  // ξ·y_P          at w⁰
+    l1: f2sub(f2mul(lambda, T.x), T.y),                        // λx_T − y_T     at w³
+    l2: f2neg(f2mulFp(lambda, P.x)),                           // −λx_P          at w⁵
+    next
+  }
+}
+/** The dense Fp12 the three coefficients stand for — for checking, not for use. */
+const lineDense = (l) => f12(f6(l.l0, F2_ZERO, F2_ZERO), f6(F2_ZERO, l.l1, l.l2))
+
+/** (a0, a1, a2) · (b, 0, 0) — three Fp2 multiplications. */
+const f6mulC0 = (a, b) => [f2mul(a[0], b), f2mul(a[1], b), f2mul(a[2], b)]
+/** (a0, a1, a2) · (0, b1, b2) — five, with Karatsuba on the cross term. */
+function f6mulC12 (a, b1, b2) {
+  const t1 = f2mul(a[1], b1)
+  const t2 = f2mul(a[2], b2)
+  const cross = f2sub(f2sub(f2mul(f2add(a[1], a[2]), f2add(b1, b2)), t1), t2)   // a1b2 + a2b1
+  return [
+    f2mulXi(cross),
+    f2add(f2mul(a[0], b1), f2mulXi(t2)),
+    f2add(f2mul(a[0], b2), t1)
+  ]
+}
+/** f · (l0 + l1w³ + l2w⁵), by Karatsuba over Fp6: 3 + 5 + 6 = 14 Fp2 muls. */
+function f12mulLine (f, l) {
+  const t0 = f6mulC0(f[0], l.l0)
+  const t1 = f6mulC12(f[1], l.l1, l.l2)
+  const t2 = f6mul(f6add(f[0], f[1]), f6(l.l0, l.l1, l.l2))
+  return [f6add(t0, f6mulV(t1)), f6sub(f6sub(t2, t0), t1)]
+}
+/** The tangent at T, evaluated at P. */
+function lineDouble (T, P) {
+  const l = f2mul(f2mulFp(f2sqr(T.x), 3n), f2inv(f2add(T.y, T.y)))
+  return lineAt(l, T, P, g2add(T, T))
+}
+/** The line through T and Q, evaluated at P. */
+function lineAdd (T, Q, P) {
+  const l = f2mul(f2sub(Q.y, T.y), f2inv(f2sub(Q.x, T.x)))
+  return lineAt(l, T, P, g2add(T, Q))
+}
+
+function millerLoop (P, Q) {
+  const n = X < 0n ? -X : X
+  const bits = n.toString(2)
+  let f = F12_ONE
+  let T = Q
+  for (let i = 1; i < bits.length; i++) {
+    f = f12sqr(f)
+    const d = lineDouble(T, P); T = d.next
+    f = f12mulLine(f, d)
+    if (bits[i] === '1') {
+      const a = lineAdd(T, Q, P); T = a.next
+      f = f12mulLine(f, a)
+    }
+  }
+  return X < 0n ? f12conj(f) : f
+}
+
+// ── the final exponentiation ────────────────────────────────────────────────
+// SQUARING IN THE CYCLOTOMIC SUBGROUP.
+//
+// After the easy part the value lies in G_Φ6(Fp2), where a square costs half a
+// general one. Two earlier attempts at this formula disagreed with general
+// squaring and were thrown away rather than published; what makes this one work
+// is presenting the tower FLAT instead of nested.
+//
+// Fp12 is written here as Fp6[w]/(w² − v) over Fp2[v]/(v³ − ξ), so w² = v and
+// w⁶ = ξ — which means it is equally Fp2[w]/(w⁶ − ξ), with basis 1, w, …, w⁵:
+//
+//     f = g0 + g1w + g2w² + g3w³ + g4w⁴ + g5w⁵
+//
+// and (w³)² = ξ, so s = w³ generates an Fp4 = Fp2[s]/(s² − ξ). In THAT basis f
+// is three Fp4 coefficients — (g0,g3), (g1,g4), (g2,g5) — and the Granger–Scott
+// identities apply directly. Those pairs are what the nested indexing hides,
+// and having them wrong is what sank both earlier attempts.
+//
+// Three Fp4 squarings, nine Fp2 SQUARINGS in all, against the twelve Fp2
+// MULTIPLICATIONS a general Fp12 squaring costs. That is the whole saving, and
+// tools/bls-crosscheck.js checks it against f12sqr on a genuine cyclotomic
+// element rather than assuming it.
+//
+// Inversion in the subgroup is conjugation, and that is checked too.
+
+/** Flat w-basis coefficients g0…g5, and back. */
+const flat6 = (f) => [f[0][0], f[1][0], f[0][1], f[1][1], f[0][2], f[1][2]]
+const nest6 = (g) => [[g[0], g[2], g[4]], [g[1], g[3], g[5]]]
+const f2x2 = (a) => f2add(a, a)
+const f2x3 = (a) => f2add(f2add(a, a), a)
+/** (x + ys)² in Fp4 = Fp2[s]/(s² − ξ) — three Fp2 squarings, no multiplications. */
+function f4sqr (x, y) {
+  const t0 = f2sqr(x); const t1 = f2sqr(y)
+  return [f2add(t0, f2mulXi(t1)), f2sub(f2sub(f2sqr(f2add(x, y)), t0), t1)]
+}
+function cyclotomicSqr (f) {
+  const g = flat6(f)
+  const [t0, t1] = f4sqr(g[0], g[3])
+  const [t2, t3] = f4sqr(g[1], g[4])
+  const [t4, t5] = f4sqr(g[2], g[5])
+  return nest6([
+    f2sub(f2x3(t0), f2x2(g[0])),
+    f2add(f2x3(f2mulXi(t5)), f2x2(g[1])),
+    f2sub(f2x3(t2), f2x2(g[2])),
+    f2add(f2x3(t1), f2x2(g[3])),
+    f2sub(f2x3(t4), f2x2(g[4])),
+    f2add(f2x3(t3), f2x2(g[5]))
+  ])
+}
+function cyclotomicPow (a, e) {
+  let r = F12_ONE; let b = a; let x = e < 0n ? -e : e
+  while (x > 0n) { if (x & 1n) r = f12mulRaw(r, b); b = cyclotomicSqr(b); x >>= 1n }
+  return e < 0n ? f12conj(r) : r
+}
+
+// The hard part's exponent, as an ADDITION CHAIN in the curve parameter.
+//
+// λ = 3(p⁴ − p² + 1)/r is 1,270 bits, and exponentiating by it directly is
+// 1,270 squarings. It does not have to be. Two structural facts collapse it:
+//
+//   · p is a Frobenius map, not an exponentiation. So write λ in base p and the
+//     four digits are applied by φ, which costs five Fp2 multiplications.
+//   · every one of those digits is a small polynomial in the 63-bit curve
+//     parameter y = |x|. So write each digit in base y and what is left is five
+//     exponentiations by y — shared across all four digits — and a handful of
+//     multiplications by coefficients no larger than 3.
+//
+// Both expansions are BALANCED (digits in (−m/2, m/2]), which is free here:
+// after the easy part the value lies in the cyclotomic subgroup, where
+// inversion is conjugation. That is checked rather than assumed.
+//
+// The result is 5 × 63 = 315 squarings where the naive chain took 1,270 and the
+// base-p-only chain this replaced took 887. Nothing is transcribed: the digits
+// are derived at load time by the same arithmetic everything else here uses, so
+// a wrong constant is not a thing that can happen.
+//
+// The exponent carries a factor of 3. The plain hard part is (p⁴ − p² + 1)/r;
+// every optimized BLS12 chain (Scott et al., Fuentes-Castañeda) computes
+// 3·(p⁴ − p² + 1)/r instead, because the 3 falls out of the chain for free and
+// gcd(3, r) = 1 makes cubing a bijection on μ_r — so the result is still a
+// pairing. @noble/curves computes the ×3 form; taking it here too makes the
+// cross-check an exact equality rather than an equality up to a cube.
+const Y = X < 0n ? -X : X
+
+/** Balanced digits of v in base m: each in (−m/2, m/2], least significant first. */
+function balanced (v, m) {
+  const out = []
+  while (v !== 0n) {
+    let r = v % m
+    if (r < 0n) r += m
+    if (r > m / 2n) r -= m
+    out.push(r)
+    v = (v - r) / m
+  }
+  return out
+}
+
+// { i: power of p, j: power of y, a: coefficient } — λ = Σ a·y^j·p^i
+const HARD_TERMS = (() => {
+  const terms = []
+  balanced(3n * (P ** 4n - P ** 2n + 1n) / R, P)
+    .forEach((c, i) => balanced(c, Y).forEach((a, j) => { if (a !== 0n) terms.push({ i, j, a }) }))
+  return terms
+})()
+const HARD_MAX_J = HARD_TERMS.reduce((m, t) => Math.max(m, t.j), 0)
+
+function finalExponentiate (f) {
+  // easy part: f^(p⁶ − 1)(p² + 1), after which conjugation is inversion
+  let r = f12mulRaw(f12conj(f), f12inv(f))
+  r = f12mulRaw(f12frobN(r, 2), r)
+
+  // the shared ladder r^(y^j) — the only expensive thing in here
+  const pow = [r]
+  for (let j = 1; j <= HARD_MAX_J; j++) pow.push(cyclotomicPow(pow[j - 1], Y))
+
+  let acc = F12_ONE
+  for (const t of HARD_TERMS) acc = f12mulRaw(acc, cyclotomicPow(f12frobN(pow[t.j], t.i), t.a))
+  return acc
+}
+
+/** The optimal ate pairing. */
+function pairing (P, Q) { return finalExponentiate(millerLoop(P, Q)) }
+
+module.exports = {
+  P, R, X, B, B2, G1, G2, ops, ops2, reset, count, count2,
+  mod, fpMul, fpAdd, fpSub, fpInv, fpPow,
+  f2, f2add, f2sub, f2mul, f2sqr, f2inv, f2conj, f2mulXi, f2pow, f2eq, F2_ONE, F2_ZERO,
+  f6, f6mul, f6sqr, f6inv, F6_ONE,
+  f12, f12mulRaw, f12sqr, f12inv, f12conj, f12frob, f12frobN, f12pow, f12eq, F12_ONE,
+  cyclotomicPow, cyclotomicSqr,
+  g1add, g1mul, g1neg, g2add, g2mul, g2neg,
+  lineDouble, lineAdd, lineDense, f12mulLine,
+  millerLoop, finalExponentiate, pairing
+}
