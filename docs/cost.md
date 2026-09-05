@@ -26,8 +26,8 @@
 | `merkle.verify` | depth 32 (4 billion leaves) | 905 | 678 |
 | `tx.locktime` | OP_PUSH_TX + nLockTime | 410 | 217 |
 | `tx.hashOutputs` | OP_PUSH_TX + the output commitment | 394 | 209 |
-| `ec.add` | secp256k1, witnessed inverse | 139 | 49 |
-| `ec.double` | secp256k1, witnessed inverse | 139 | 50 |
+| `ec.add` | secp256k1, witnessed inverse | 167 | 65 |
+| `ec.double` | secp256k1, witnessed inverse | 153 | 58 |
 | `ec.mulG` | k·G, 256-bit, base fixed | 39,833 | 15,553 |
 | `ec.mul` | k·P, 256-bit, both runtime | 42,086 | 29,331 |
 | `ecdsa.verify` | arbitrary message, secp256k1 | 59,155 | 38,409 |

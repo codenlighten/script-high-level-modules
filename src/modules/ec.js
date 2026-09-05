@@ -40,6 +40,27 @@ function modulusOf (asm, p) {
   return { name: '_p', pushed: true }
 }
 
+/**
+ * Assert every named coordinate is in [0, p).
+ *
+ * The formulas here defer reduction, and x₃ = λ² − x₁ − x₂ + 2p is non-negative
+ * only because x₁ + x₂ < 2p. Feed the module coordinates above the field size
+ * and that stops holding: with λ = 0 and both x above p, x₃ comes out NEGATIVE,
+ * and OP_MOD's truncation leaves it negative — a result that is congruent to the
+ * right one and is not the canonical representative.
+ *
+ * Inside a ladder every coordinate is either a reduction this module produced or
+ * a constant the ladder pushed, so the bound is already proven and checking it
+ * 512 times would cost 7 KB to learn nothing. Standalone, the caller is whoever
+ * wrote the unlocking script, and 28 bytes is the price of the module meaning
+ * what its documentation says.
+ */
+function boundCoordinates (asm, pName, names) {
+  for (const n of names) {
+    asm.pick(n, '_bc'); asm.num(0, '_bz'); asm.pick(pName, '_bp'); asm.withinVerify()
+  }
+}
+
 /** 2p, in whichever form the caller has it: a name, or pushed here. */
 function doubleModulusOf (asm, p, p2) {
   if (typeof p2 === 'string') return { name: p2, pushed: false }
@@ -120,6 +141,8 @@ const add = defineModule({
     const floor = asm.mark(5)
     const N = modulusOf(asm, p)
     const N2 = doubleModulusOf(asm, p, p2)
+    // Only the standalone form pays for this — see boundCoordinates.
+    if (N.pushed) boundCoordinates(asm, N.name, ['x1', 'y1', 'x2', 'y2'])
 
     // dx is never named: it is built on top, checked, and consumed there
     asm.pick('x2', '_a'); asm.pick('x1', '_b'); asm.sub('_dx')
@@ -169,7 +192,14 @@ const add = defineModule({
       { name: 'P + (−P)', refuse: 'dx = 0 has no inverse',
         inputs: { x1: pts[2].x, y1: pts[2].y, x2: pts[2].x, y2: ecJs.mod(-pts[2].y), invdx: 0n } },
       { name: 'P + P, witness = p−1', refuse: 'no witness inverts zero',
-        inputs: { x1: pts[2].x, y1: pts[2].y, x2: pts[2].x, y2: pts[2].y, invdx: P - 1n } }
+        inputs: { x1: pts[2].x, y1: pts[2].y, x2: pts[2].x, y2: pts[2].y, invdx: P - 1n } },
+      // Coordinates above the field size are congruent to real ones and, with a
+      // small λ, drive x₃ negative — congruent to the right answer and not the
+      // canonical representative of it. The bound is what refuses them.
+      { name: 'coordinates above the field size', refuse: 'x₃ would come out negative rather than canonical',
+        inputs: { x1: 1n + P, y1: 5n, x2: 2n + P, y2: 5n, invdx: 1n } },
+      { name: 'one coordinate shifted by p', refuse: 'a second encoding of the same point',
+        inputs: { x1: pts[0].x + P, y1: pts[0].y, x2: pts[1].x, y2: pts[1].y, invdx: ecJs.inv(ecJs.mod(pts[1].x - pts[0].x, P), P) } }
     ]
   })(),
   notes: ['refuses two points with the same x — dx is zero and has no inverse']
@@ -189,6 +219,7 @@ const double = defineModule({
     const floor = asm.mark(3)
     const N = modulusOf(asm, p)
     const N2 = doubleModulusOf(asm, p, p2)
+    if (N.pushed) boundCoordinates(asm, N.name, ['x1', 'y1'])
 
     asm.pick('y1', '_a'); asm.op('OP_DUP', 0, ['_b']); asm.add('_2y')  // 2y, unnamed
     checkInverseOfTop(asm, N.name, 'inv2y')
@@ -224,7 +255,9 @@ const double = defineModule({
       return { name: `2·(${k}G)`, inputs: { x1: pt.x, y1: pt.y } }
     }),
     { name: 'y = 0 (not a point on secp256k1)', refuse: '2y = 0 has no inverse',
-      inputs: { x1: ecJs.G.x, y1: 0n, inv2y: 1n } }
+      inputs: { x1: ecJs.G.x, y1: 0n, inv2y: 1n } },
+    { name: 'a coordinate above the field size', refuse: 'a second encoding of the same point',
+      inputs: { x1: ecJs.G.x + P, y1: ecJs.G.y, inv2y: ecJs.inv(ecJs.mod(2n * ecJs.G.y, P), P) } }
   ],
   notes: ['a = 0 is baked in: this is secp256k1’s doubling, not the general one']
 })

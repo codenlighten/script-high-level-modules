@@ -177,7 +177,7 @@ Full table in [docs/cost.md](docs/cost.md), generated from the code.
 | `totp.verify` | RFC 6238, 6 digits | 269 |
 | `tx.locktime` | OP_PUSH_TX + nLockTime | 410 |
 | `merkle.verify` | depth 32 (4 billion leaves) | 905 |
-| `ec.add` | secp256k1, witnessed inverse | 139 |
+| `ec.add` | secp256k1, witnessed inverse | 167 |
 | `u32.add` | one addition mod 2³² | 58 |
 | `sha256.block` | one block, no `OP_SHA256` | 49,181 |
 | `ec.mul` | k·P, 256-bit, both runtime | 42,086 |

@@ -25,8 +25,8 @@
 | `hmac.sha256` | `key` `msg` | `mac` | — | 12 |
 | `hmac.sha1` | `key` `msg` | `mac` | — | 12 |
 | `totp.verify` | `key` `time` `code` | — | `key` `code` | 10 |
-| `ec.add` | `x1` `y1` `x2` `y2` `invdx` | `x3` `y3` | `invdx` | 6 |
-| `ec.double` | `x1` `y1` `inv2y` | `x3` `y3` | `inv2y` | 4 |
+| `ec.add` | `x1` `y1` `x2` `y2` `invdx` | `x3` `y3` | `invdx` | 8 |
+| `ec.double` | `x1` `y1` `inv2y` | `x3` `y3` | `inv2y` | 5 |
 | `tx.locktime` † | `preimage` | `locktime` | `preimage` | 4 |
 | `tx.hashOutputs` † | `preimage` | `hashOutputs` | `preimage` | 2 |
 | `schnorr.liftX` | `pubkey` `py` | `qx` `qy` | `pubkey` `py` | 5 |

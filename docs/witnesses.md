@@ -154,6 +154,44 @@ or the harness refuses it before the script is reached and the case proves
 nothing; where no honest witness can exist, a zero-filled one of the right shape
 is supplied so the script refuses it at the point it should.
 
+## The audit that found three of these
+
+Everything above was written before the modules were audited for it. Going back
+over them with one question — *what values can a spender choose, and is each of
+them pinned to exactly one?* — found the same defect three times, in three
+modules, none of which any test had caught.
+
+**`schnorr.liftX` did not bound x below the field size.** BIP-340 says it must.
+Thirty-two bytes can encode more than the field holds, and `x mod p` is then a
+different valid key. It is reachable: x = 1 is on secp256k1, so `1 + p` fits in
+32 bytes and names the same point. The standard's own vector 14 misses it,
+because the value that vector uses has no y at all — which is why nineteen green
+vectors did not catch it.
+
+**`ecdsa.verify` did not bound the public key's coordinates**, and there the
+encoding is a Script number rather than 32 bytes, so there is no width to run
+out of. Measured before the fix: the key as given, ACCEPTED; the same key as
+`qx + p`, ACCEPTED; as `qy + p`, ACCEPTED. Every public key had infinitely many
+accepted encodings. The curve equation does not catch it because the curve
+equation is checked mod p and holds for all of them.
+
+**`ec.add` documented that its coordinates were in [0, p) and did not check.**
+The formulas defer reduction, and x₃ = λ² − x₁ − x₂ + 2p is non-negative only
+because x₁ + x₂ < 2p. With λ = 0 and both x above p, x₃ comes out negative, and
+`OP_MOD`'s truncation leaves it negative: congruent to the right answer, and not
+the canonical representative of it.
+
+The lesson is not that bounds are important — everyone knows that. It is that
+**a precondition is not enforced by being written down**, and the place these hid
+is the gap between a module that is used correctly by its own ladder and a module
+that is used at all by anybody else. `ec.add` enforces the bound only in its
+standalone form, where the caller is whoever wrote the unlocking script; inside
+the ladder every coordinate is a reduction the module itself produced, and
+checking it 512 times would cost 7 KB to learn nothing.
+
+Two of the three are now deliberate bugs in `npm run selftest`, where the module
+with its bound removed accepts what the standard refuses.
+
 ## Sound but not complete
 
 One more distinction worth keeping separate from the two above.
