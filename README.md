@@ -79,9 +79,11 @@ tools/                probes, self-tests, the cost report
 fixtures/             a throwaway RSA-2048 key, so the suite is deterministic
 ```
 
-Two of the probes measure a stack-limit fix made in `@smartledger/bsv` while
-building this (see [limits.md](docs/limits.md)) and are skipped, with a note, on
-a library that predates it. Nothing else depends on that fix.
+Three of the probes measure a consensus fix this work turned up in
+`@smartledger/bsv` — the stack limits diverged from the node in both directions,
+and are now era-derived and checked after every opcode (released in 9.7.0; see
+[limits.md](docs/limits.md)). They are skipped, with a note, on a library that
+predates it. Nothing else here depends on that fix.
 
 Thirty-two modules, 179 cases, 528 forgery attempts, all green — in twenty seconds.
 

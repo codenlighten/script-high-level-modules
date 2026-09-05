@@ -104,11 +104,12 @@ function stackOf (n) {
 }
 const PRE_GENESIS = bsv.Script.Interpreter.SCRIPT_VERIFY_P2SH | bsv.Script.Interpreter.SCRIPT_VERIFY_STRICTENC
 
-// The fix that makes the cap era-derived is newer than the published library, so
-// the probe asks the interpreter what it is before asserting what it does. An
-// older one is not a failure here — no module in this repository holds more than
-// a few dozen stack elements — but the measurement genuinely differs, and
-// reporting it as passing would be a lie either way it is written.
+// The era-derived cap landed in @smartledger/bsv 9.7.0, which is what this
+// repository depends on. The probe still asks the interpreter what it is before
+// asserting what it does, because someone pinning an older release is not
+// wrong — no module here holds more than a few dozen stack elements — but the
+// measurement genuinely differs, and reporting it as passing either way would
+// be a lie.
 const ERA_DERIVED_STACK = typeof bsv.Script.Interpreter.prototype.maxStackSize === 'function'
 
 probe('999 stack elements', () => stackOf(999))

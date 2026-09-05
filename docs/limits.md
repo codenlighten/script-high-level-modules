@@ -73,9 +73,17 @@ five lines, in opposite directions —
   node's corpus catches that one, because every `STACK_SIZE` vector ends over the
   cap, which is exactly the case an end-of-script check does see.
 
-Both are fixed in `@smartledger/bsv` (`maxStackSize()`, `maxStackMemoryUsage()`,
-`checkStackLimits()` after every opcode). The probes above now measure the
+Both are fixed in **`@smartledger/bsv` 9.7.0** — `maxStackSize()`,
+`maxStackMemoryUsage()`, and `checkStackLimits()` called after every opcode — and
+that is the version this repository depends on. The probes above measure the
 corrected behaviour and go red if it regresses.
+
+The pre-Genesis half is worth a note on how it was tested. The obvious
+regression test — 1,001 pushes and 1,001 `OP_DROP`s — passes for the wrong
+reason: 1,001 drops exceed the pre-Genesis 500-opcode budget, so the script is
+refused by the opcode cap before the stack cap is ever the deciding rule. The
+test that isolates it uses 500 `OP_2DROP`s, which clear two elements apiece and
+land exactly inside the budget.
 
 ### The packed tape stays anyway
 
@@ -92,6 +100,7 @@ along, and it leaves the stack shallow enough that every `OP_PICK` depth stays a
 one-byte push. See `emitLadder` in `src/modules/ec.js`.
 
 ### The memory bound
+
 The post-Genesis replacement is a policy limit — the node's
 `-maxstackmemoryusagepolicy`, default 100 MB — and each element is charged the
 footprint of its container as well as its bytes, so a stack of many small

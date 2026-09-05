@@ -15,7 +15,9 @@
   "author": "codenlighten <greg@smartledger.technology>",
   "license": "MIT",
   "dependencies": {
-    "@smartledger/bsv": "^9.6.0"
+    "@smartledger/bsv": "^9.7.0"
   },
-  "engines": { "node": ">=20.19.0" }
+  "engines": {
+    "node": ">=20.19.0"
+  }
 }
