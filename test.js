@@ -9,6 +9,7 @@ const sha256 = require('./src/modules/sha256')
 const hmac = require('./src/modules/hmac')
 const totp = require('./src/modules/totp')
 const ec = require('./src/modules/ec')
+const ecdsa = require('./src/modules/ecdsa')
 
 const { failures } = proveAll([
   [int.modadd, {}],
@@ -35,7 +36,12 @@ const { failures } = proveAll([
   [totp.verify, {}],
   [totp.committed(Buffer.from('12345678901234567890')), {}],
   [ec.add, {}],
-  [ec.double, {}]
+  [ec.double, {}],
+  [ec.mul(8), {}],
+  [ec.mul(32), {}],
+  [ec.mulG(8), {}],
+  [ec.mulG(32), {}],
+  [ecdsa.verifier([ecdsa.signCase('22'.repeat(32), 'the price of gold is 4211 on 2026-09-05')]), {}]
 ])
 
 process.exit(failures.length ? 1 : 0)

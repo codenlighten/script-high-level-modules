@@ -152,3 +152,301 @@ const double = defineModule({
 })
 
 module.exports = { add, double, field, checkInverse, P }
+
+// ── SCALAR MULTIPLICATION ───────────────────────────────────────────────────
+//
+// k·P, for a scalar and a point both known only at spend time. Double-and-add,
+// unrolled, with the scalar's bits supplied as witnesses and pinned by
+// Σ bᵢ2ⁱ = k together with bᵢ² = bᵢ. That pair is what makes the decomposition
+// unique: the sum alone would accept b₀ = 2 in place of b₁ = 1.
+//
+// THE POINT AT INFINITY. Affine coordinates cannot represent it, and a ladder
+// starting from it needs a first-set-bit branch that a runtime scalar does not
+// give you. So the accumulator starts at a nothing-up-my-sleeve point H — a
+// hash treated as an x coordinate, nobody's known multiple of G — and the
+// result is acc − H at the end.
+//
+// This is SOUND but not COMPLETE, and the difference is worth being exact
+// about. If any intermediate addition lands on the point at infinity, dx is
+// zero, no inverse exists, and the spend is REFUSED. It is never accepted with
+// a wrong answer. For a scalar and point that are not chosen adversarially the
+// probability is around 2⁻¹²⁸ per step; an attacker who controls P can force a
+// refusal, which costs them a spend they could have declined to make anyway.
+//
+// UNUSED WITNESSES ARE PINNED TO ZERO. When a bit is zero the step's inverse is
+// never read. Leaving it unconstrained would let anyone rewrite that push and
+// change the transaction's txid without changing what it does; the ELSE branch
+// therefore requires it to be zero. Three bytes per step to keep the spend
+// canonical.
+
+const H = ecJs.numsPoint('script-modules/secp256k1/offset/v1')
+
+// ── THE WITNESS IS A TAPE, NOT A STACK ──────────────────────────────────────
+//
+// A 256-step ladder needs a bit and an inverse at every step, and a second
+// inverse when the base point is not a constant: over seven hundred values. The
+// interpreter caps the stack at 1000 elements (measured — tools/probe-limits.js),
+// so two ladders in one script overflow it long before the fee becomes
+// interesting.
+//
+// The cap is on the COUNT, not the size: a single 100 KB element is fine. So the
+// witness arrives as two packed byte strings and the script splits one field off
+// the front of each as it goes. Three stack elements per ladder instead of
+// seven hundred, a smaller unlocking script (no per-push prefix), and the
+// remaining tape is required to be empty at the end — otherwise trailing junk
+// would ride along and change the transaction's txid without changing what it
+// does.
+
+const FIELD = 33          // a 256-bit inverse, little-endian, plus the sign byte
+
+/** The three witness values one ladder takes. */
+function ladderInputs (prefix, bits, fixedBase) {
+  return [
+    { name: `${prefix}bits`, kind: 'bytes', witness: true },
+    { name: `${prefix}tape`, kind: 'bytes', witness: true },
+    { name: `${prefix}fi`, witness: true }
+  ]
+}
+
+/** A field element as one fixed-width, positive little-endian record. */
+function record (v) {
+  const b = Buffer.alloc(FIELD)
+  let x = v
+  for (let i = 0; i < FIELD && x > 0n; i++) { b[i] = Number(x & 0xffn); x >>= 8n }
+  if (x !== 0n) throw new Error('ec: value does not fit a tape record')
+  return b
+}
+
+/**
+ * The honest witness for one ladder: a byte per bit, and the inverses in the
+ * order the script reads them — the add's inverse at every step, the doubling's
+ * after it when the base is not a constant. A skipped step's inverse is zero,
+ * which the ELSE branch requires, so it is not a free choice.
+ */
+function ladderWitness (prefix, bits, k, point, { fixedBase = false, p = P } = {}) {
+  const bitBytes = Buffer.alloc(bits)
+  const tape = []
+  let acc = H
+  let D = point
+  for (let i = 0; i < bits; i++) {
+    const bit = (k >> BigInt(i)) & 1n
+    bitBytes[i] = Number(bit)
+    tape.push(record(bit ? ecJs.inv(ecJs.mod(D.x - acc.x, p), p) : 0n))
+    if (bit) acc = ecJs.add(acc, D)
+    if (i < bits - 1) {
+      if (!fixedBase) tape.push(record(ecJs.inv(ecJs.mod(2n * D.y, p), p)))
+      D = ecJs.double(D)
+    }
+  }
+  return {
+    [`${prefix}bits`]: bitBytes,
+    [`${prefix}tape`]: Buffer.concat(tape),
+    [`${prefix}fi`]: ecJs.inv(ecJs.mod(H.x - acc.x, p), p)
+  }
+}
+
+/** Split one record off the front of the tape and read it as a number. */
+function takeInverse (asm, tapeName, out) {
+  asm.roll(tapeName)
+  asm.splitAt(FIELD, '_rec', '_rest')
+  asm.rename(tapeName)                      // the remaining tape stays named
+  asm.roll('_rec'); asm.bin2num(out)
+}
+
+/** Split one byte off the front of the bit string and read it as 0 or 1. */
+function takeBit (asm, bitsName, out) {
+  asm.roll(bitsName)
+  asm.splitAt(1, '_bb', '_brest')
+  asm.rename(bitsName)
+  asm.roll('_bb'); asm.bin2num(out)
+  // A byte is not a bit until it is one. b² = b admits only 0 and 1, and
+  // without it the sum below would accept a 2 in place of the next bit's 1.
+  asm.pick(out, '_bv'); asm.op('OP_DUP', 0, ['_bv2']); asm.mul('_bsq')
+  asm.pick(out, '_bc'); asm.numEqualVerify()
+}
+
+/**
+ * Emit one double-and-add ladder, reading its witness off the tape.
+ *
+ * `scalar` names a live value the bits must sum to; it is read by copy, so the
+ * caller still owns it. `point` is either the names of two live coordinates —
+ * doubled on chain, with a doubling inverse per step — or a constant {x, y},
+ * which is materially cheaper: the whole chain 2ⁱ·P is then known at compile
+ * time, so every doubling becomes two pushes instead of a 191-byte operation
+ * and the tape carries half as many records.
+ */
+function emitLadder (asm, { prefix, bits, p = P, point }, scalar, out) {
+  const fixedBase = !Array.isArray(point)
+  const BITS = `${prefix}bits`; const TAPE = `${prefix}tape`
+  const SUM = `${prefix}_sum`; const POW = `${prefix}_pow`
+  const AX = `${prefix}accx`; const AY = `${prefix}accy`
+  const DX = `${prefix}_dx`; const DY = `${prefix}_dy`
+
+  // The scalar is checked against its bits as they are consumed, least
+  // significant first: sum += bᵢ·2ⁱ. One pass, so the bits are never all on the
+  // stack at once.
+  asm.num(0, SUM); asm.num(1, POW)
+
+  let D = fixedBase ? point : null
+  if (!fixedBase) { asm.roll(point[0]); asm.rename(DX); asm.roll(point[1]); asm.rename(DY) }
+  asm.num(H.x, AX); asm.num(H.y, AY)
+
+  for (let i = 0; i < bits; i++) {
+    takeBit(asm, BITS, '_b')
+    asm.pick('_b', '_bs'); asm.pick(POW, '_pw'); asm.mul('_term')
+    asm.roll(SUM); asm.add(SUM)
+    if (i < bits - 1) { asm.roll(POW); asm.op('OP_DUP', 0, ['_p2']); asm.add(POW) }
+
+    takeInverse(asm, TAPE, '_ai')
+
+    // The invariant the branch depends on: both paths must leave the same
+    // values in the same places, so the accumulator and this step's inverse are
+    // rolled to the top FIRST. Everything the branch touches is then inside the
+    // top few slots, and nothing beneath either path moves.
+    asm.roll(AX); asm.roll(AY); asm.roll('_ai'); asm.roll('_b')
+    asm.beginIf()
+    if (fixedBase) { asm.num(D.x, '_ax'); asm.num(D.y, '_ay') } else { asm.pick(DX, '_ax'); asm.pick(DY, '_ay') }
+    asm.roll('_ai')
+    apply(asm, add, { p }, [AX, AY, '_ax', '_ay', '_ai'], ['_nx', '_ny'])
+    asm.relabel('_nx', AX); asm.relabel('_ny', AY)
+    asm.elseBranch()
+    asm.roll('_ai'); asm.num(0, '_z'); asm.numEqualVerify()      // pin the unused record
+    asm.endIf()
+
+    if (i < bits - 1) {
+      if (fixedBase) { D = ecJs.double(D) } else {
+        takeInverse(asm, TAPE, '_di')
+        apply(asm, double, { p }, [DX, DY, '_di'], ['_ndx', '_ndy'])
+        asm.relabel('_ndx', DX); asm.relabel('_ndy', DY)
+      }
+    }
+  }
+
+  // the tape must be exactly used up, and the bits must be exactly the scalar
+  asm.roll(BITS); asm.num(0, '_empty1'); asm.equalVerify()
+  asm.roll(TAPE); asm.num(0, '_empty2'); asm.equalVerify()
+  asm.discard(POW)
+  asm.roll(SUM); asm.pick(scalar, '_kc'); asm.numEqualVerify()
+
+  // undo the offset: the result is acc − H
+  if (!fixedBase) { asm.discard(DX); asm.discard(DY) }
+  asm.num(H.x, '_hx'); asm.num(ecJs.mod(-H.y, p), '_hy'); asm.roll(`${prefix}fi`)
+  apply(asm, add, { p }, [AX, AY, '_hx', '_hy', `${prefix}fi`], out)
+  return asm
+}
+
+/** The forgeries to try against a ladder's witness, by name. */
+function ladderAttacks (honest, name, p = P) {
+  const v = honest[name]
+  if (Buffer.isBuffer(v)) {
+    const flipped = Buffer.from(v); flipped[0] ^= 0x01
+    const late = Buffer.from(v); late[v.length - 1] ^= 0x01
+    return [
+      { label: `${name}: first byte changed`, value: flipped },
+      { label: `${name}: last byte changed`, value: late },
+      { label: `${name}: a byte appended`, value: Buffer.concat([v, Buffer.from([0])]) },
+      { label: `${name}: truncated`, value: v.subarray(0, v.length - 1) },
+      { label: `${name}: emptied`, value: Buffer.alloc(0) }
+    ]
+  }
+  return [
+    { label: `${name} off by one`, value: v + 1n },
+    { label: `${name} + p`, value: v + p },
+    { label: `${name} = 0`, value: 0n }
+  ]
+}
+
+/**
+ * k·P by double-and-add, for a scalar and a point both known at spend time.
+ *
+ * SOUND BUT NOT COMPLETE, and the difference is worth being exact about. If an
+ * intermediate addition lands on the point at infinity, dx is zero, no inverse
+ * exists, and the spend is REFUSED — never accepted with a wrong answer. For
+ * inputs that are not chosen adversarially the chance is about 2⁻¹²⁸ per step;
+ * an attacker who controls P can force a refusal, which costs them a spend they
+ * could equally have declined to make.
+ */
+function mul (bits, scalars, { p = P } = {}) {
+  scalars = scalars || defaultScalars(bits)
+  return defineModule({
+    name: `ec.mul${bits}`,
+    doc: `k·P on secp256k1, ${bits}-bit scalar, double-and-add`,
+    inputs: ['k', 'px', 'py', ...ladderInputs('', bits, false)],
+    outputs: ['rx', 'ry'],
+    maxWitnessAttacks: 6,
+    hint: ({ k, px, py }) => ladderWitness('', bits, k, { x: px, y: py }, { p }),
+    model: ({ k, px, py }) => {
+      const r = ecJs.mul(k, { x: px, y: py })
+      if (r === ecJs.INFINITY) throw new Error('ec.mul: k·P is the point at infinity')
+      return { rx: r.x, ry: r.y }
+    },
+    emit: (asm) => {
+      emitLadder(asm, { prefix: '', bits, p, point: ['px', 'py'] }, 'k', ['rx', 'ry'])
+      asm.discard('k')
+      asm.roll('rx'); asm.roll('ry')
+    },
+    attacks: (honest, params, name) => ladderAttacks(honest, name, p),
+    cases: scalars.map((k) => ({ name: `k = ${k}`, inputs: { k, px: ecJs.G.x, py: ecJs.G.y } })),
+    notes: [
+      'sound but not complete: an intermediate at infinity refuses the spend rather than mis-answering',
+      'the unused inverse of a skipped step is pinned to zero, so the witness is canonical'
+    ]
+  })
+}
+
+/**
+ * k·G — the same ladder over a base point fixed at compile time.
+ *
+ * Worth its own module because the saving is structural rather than marginal:
+ * with the base known, the whole doubling chain 2ⁱ·G is known too, so every
+ * doubling becomes two pushes instead of a 191-byte point operation, and the
+ * ladder needs no doubling witnesses at all.
+ *
+ * This is "derive the public key from a secret" as a Script predicate — a coin
+ * that anyone holding the scalar can spend, without OP_CHECKSIG and without
+ * revealing the scalar to the verifier's own signing code.
+ */
+function mulG (bits, scalars, { p = P, base = ecJs.G } = {}) {
+  scalars = scalars || defaultScalars(bits)
+  return defineModule({
+    name: `ec.mulG${bits}`,
+    doc: `k·G on secp256k1, ${bits}-bit scalar, base fixed at compile time`,
+    inputs: ['k', ...ladderInputs('g', bits, true)],
+    outputs: ['rx', 'ry'],
+    maxWitnessAttacks: 6,
+    hint: ({ k }) => ladderWitness('g', bits, k, base, { fixedBase: true, p }),
+    model: ({ k }) => {
+      const r = ecJs.mul(k, base)
+      if (r === ecJs.INFINITY) throw new Error('ec.mulG: k·G is the point at infinity')
+      return { rx: r.x, ry: r.y }
+    },
+    emit: (asm) => {
+      emitLadder(asm, { prefix: 'g', bits, p, point: base }, 'k', ['rx', 'ry'])
+      asm.discard('k')
+      asm.roll('rx'); asm.roll('ry')
+    },
+    attacks: (honest, params, name) => ladderAttacks(honest, name, p),
+    cases: scalars.map((k) => ({ name: `k = ${k}`, inputs: { k } })),
+    notes: ['no doubling witnesses: the doubling chain is a compile-time constant']
+  })
+}
+
+/** 1, all-ones, alternating, and a couple of ordinary values. */
+function defaultScalars (bits) {
+  const all = (1n << BigInt(bits)) - 1n
+  const alt = BigInt('0b' + '10'.repeat(Math.floor(bits / 2)) + (bits % 2 ? '1' : ''))
+  const out = [1n, 2n, 3n, all, alt]
+  if (bits >= 16) out.push(all - 1n)
+  return [...new Set(out)]
+}
+
+module.exports.mul = mul
+module.exports.mulG = mulG
+module.exports.defaultScalars = defaultScalars
+module.exports.emitLadder = emitLadder
+module.exports.ladderInputs = ladderInputs
+module.exports.ladderWitness = ladderWitness
+module.exports.ladderAttacks = ladderAttacks
+module.exports.FIELD = FIELD
+module.exports.record = record
+module.exports.H = H

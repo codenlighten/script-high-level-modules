@@ -24,12 +24,32 @@
 | `totp.verify` | RFC 6238, 6 digits | 269 | 65 |
 | `ec.add` | secp256k1, witnessed inverse | 191 | 118 |
 | `ec.double` | secp256k1, witnessed inverse | 191 | 118 |
+| `ec.mulG` | k·G, 256-bit, base fixed | 80,216 | 39,816 |
+| `ec.mul` | k·P, 256-bit, both runtime | 116,127 | 72,719 |
+| `ecdsa.verify` | arbitrary message, secp256k1 | 196,778 | 112,756 |
 | `sha256.block` | one block, no OP_SHA256 | 50,765 | 33,374 |
 
-Two numbers worth reading together. `rsa.verify` is **955 bytes**: a
-signature scheme Bitcoin has no opcode for, at a size nobody needs to think about.
-`sha256.block` is **50,765 bytes** for one block — **50,765×** the
-single byte `OP_SHA256` costs for the same answer.
+## What to read out of this
 
-Both are the same technique. The difference is only whether the primitive you
-need is already an opcode, and that difference is worth four orders of magnitude.
+**`rsa.verify` is 955 bytes.** A signature scheme Bitcoin has no
+opcode for, at a size nobody needs to think about — because every operation RSA
+needs is one Script opcode at any width.
+
+**`sha256.block` is 50,765 bytes** for one block: **50,765×** what
+`OP_SHA256` costs for the same answer. Same technique, four orders of magnitude
+apart. The difference is only whether the primitive you need is already an
+opcode — and 32-bit modular addition is not, so every one of them pays for two
+endianness conversions.
+
+**`ecdsa.verify` is 196,778 bytes**, the most expensive thing here
+by an order of magnitude, and the one worth justifying before use. It buys
+something nothing else here does: an oracle signs with the secp256k1 key it
+already has, over any message at all. Rabin verification is a few hundred bytes
+and buys the same authenticity — with a key the oracle must hold specifically
+for this purpose. That is the trade, and it is an engineering choice rather than
+a technical limit.
+
+At 1 sat/KB, that most expensive module is about
+197 satoshis of fee. Size stopped being the
+question at Genesis; what it costs, and whether a cheaper construction buys the
+same thing, is the question that replaced it.

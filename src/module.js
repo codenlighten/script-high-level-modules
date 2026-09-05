@@ -46,7 +46,9 @@ function defineModule (spec) {
     hint: spec.hint || null,
     cases: spec.cases || [],
     attacks: spec.attacks || null,
-    notes: spec.notes || []
+    notes: spec.notes || [],
+    maxWitnessAttacks: spec.maxWitnessAttacks || null,
+    alwaysAttack: spec.alwaysAttack || null
   }
   if (!m.name) throw new Error('module: needs a name')
   if (typeof m.model !== 'function') throw new Error(`${m.name}: needs a model()`)

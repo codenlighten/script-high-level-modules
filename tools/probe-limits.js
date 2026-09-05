@@ -87,7 +87,26 @@ probe('OP_LSHIFT by a non-multiple of 8 (bit-level)', () => ({
   lock: S().add(pushNum(4)).add(Op.OP_LSHIFT).add(Buffer.from('f0f0', 'hex')).add(Op.OP_EQUAL)
 }))
 
-// ── 5. how far the op budget really goes ────────────────────────────────────
+// ── 5. the stack is capped at 1000 elements, and that cap is not the fee ────
+// The one limit here that bites in practice. It is a count, not a size: a
+// thousand one-byte values is refused and a single 100 KB value is not. Any
+// construction whose witness runs to hundreds of values has to arrive as a
+// packed tape rather than as pushes — see the ladder in src/modules/ec.js.
+function stackOf (n) {
+  const unlock = S()
+  for (let i = 0; i < n; i++) unlock.add(Op.OP_1)
+  const lock = S()
+  for (let i = 0; i < n - 1; i++) lock.add(Op.OP_DROP)
+  return { unlock, lock }
+}
+probe('999 stack elements', () => stackOf(999))
+probe('1001 stack elements is refused', () => stackOf(1001), false)
+probe('one 100 KB element is fine', () => ({
+  unlock: S().add(Buffer.alloc(100000, 7)),
+  lock: S().add(Op.OP_SIZE).add(Op.OP_NIP).add(pushNum(100000)).add(Op.OP_NUMEQUAL)
+}))
+
+// ── 6. how far the op budget really goes ────────────────────────────────────
 function chain (n) {
   const lock = S().add(Op.OP_1)
   for (let i = 0; i < n; i++) lock.add(Op.OP_1).add(Op.OP_ADD)

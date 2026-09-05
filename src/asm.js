@@ -218,6 +218,16 @@ class Asm {
     if (other.length !== this.stack.length) {
       throw new Error(`asm: IF/ELSE branches leave different depths (${other.length} vs ${this.stack.length})`)
     }
+    // Equal depth is not enough. If the two branches leave the same values in
+    // different NAMES, the model after the branch describes only one of them,
+    // and every depth computed from it afterwards is wrong on the other path.
+    // Both branches must agree on what is where.
+    for (let i = 0; i < other.length; i++) {
+      if (other[i].name !== this.stack[i].name) {
+        throw new Error(`asm: IF/ELSE branches disagree at depth ${this.stack.length - 1 - i}: ` +
+          `'${other[i].name}' vs '${this.stack[i].name}' — relabel both to the same name before OP_ENDIF`)
+      }
+    }
     return this
   }
 

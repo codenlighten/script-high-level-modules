@@ -188,7 +188,11 @@ function proveModule (m, { params = {}, quiet = false } = {}) {
     const p = { ...params, ...(c.params || {}) }
     let honest
     try { honest = complete(m, p, c.inputs) } catch { continue }
-    for (const w of m.witnessed) {
+    // A module with hundreds of witnessed inputs (a 256-step ladder has one per
+    // step) cannot be attacked exhaustively in a test suite. Sampling is
+    // honest as long as it is SAID: the report carries how many of how many.
+    const witnesses = sampleWitnesses(m, c)
+    for (const w of witnesses) {
       let attacks = (m.attacks ? m.attacks(honest, p, w.name) : null) || defaultAttacks(honest[w.name], p)
       // An "attack" that reproduces the honest value tests nothing, and being
       // accepted is the correct behaviour — counting it as a refusal, or as a
@@ -222,7 +226,13 @@ function proveModule (m, { params = {}, quiet = false } = {}) {
     }
   }
   const atk = report.attacks.length
-  if (atk) say(`  ok    refused all ${atk} forged witnesses`)
+  if (atk) {
+    const total = m.witnessed.length
+    const tried = new Set(report.attacks.map((a) => a.witness)).size
+    const how = tried < total ? ` (a sample of ${tried} of the ${total} witnessed inputs)` : ''
+    say(`  ok    refused all ${atk} forged witnesses${how}`)
+    report.sampled = tried < total ? { tried, total } : null
+  }
   return report
 }
 
@@ -230,6 +240,28 @@ function describeParams (p) {
   return '{' + Object.entries(p).map(([k, v]) => `${k}=${typeof v === 'bigint' ? (v > 0xffffffffn ? bits(v) + 'b' : v) : v}`).join(' ') + '}'
 }
 function bits (v) { return v.toString(2).length }
+
+/**
+ * Which witnessed inputs to attack. All of them, unless the module declares
+ * `maxWitnessAttacks` — then a deterministic spread across the list, so the
+ * first, the last and the middle are always covered rather than a prefix.
+ */
+function sampleWitnesses (m, c) {
+  const all = m.witnessed
+  const cap = c.maxWitnessAttacks || m.maxWitnessAttacks
+  if (!cap || all.length <= cap) return all
+  // Some witnesses are the point of the module — a signature's own r and s —
+  // and must never be left to a sample. Those are always attacked; the budget
+  // that remains is spread evenly across the rest, so the first, the last and
+  // the middle are covered rather than a prefix.
+  const always = new Set(m.alwaysAttack || [])
+  const must = all.filter((w) => always.has(w.name))
+  const rest = all.filter((w) => !always.has(w.name))
+  const budget = Math.max(0, cap - must.length)
+  const picked = []
+  for (let i = 0; i < budget && rest.length; i++) picked.push(rest[Math.round((i * (rest.length - 1)) / Math.max(1, budget - 1))])
+  return [...new Set([...must, ...picked])]
+}
 
 /** Run many modules and exit non-zero if any failed. */
 function proveAll (entries) {
@@ -242,4 +274,4 @@ function proveAll (entries) {
   return { reports, failures }
 }
 
-module.exports = { sameValue, build, buildAccept, moduleSize, proveModule, proveAll, complete, SENTINEL, defaultAttacks }
+module.exports = { sameValue, sampleWitnesses, build, buildAccept, moduleSize, proveModule, proveAll, complete, SENTINEL, defaultAttacks }

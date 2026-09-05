@@ -1,6 +1,9 @@
 'use strict'
 
-// Why the range check in rsa.verify is not decoration.
+// Two signature schemes, one lesson: verifying the equation is not the same as
+// pinning the witness.
+//
+// Part one — why the range check in rsa.verify is not decoration.
 //
 // s and s + n are different numbers with the same residue mod n, so both satisfy
 // s^e ≡ EM. A verifier that checks only the equation accepts both — and a
@@ -53,5 +56,41 @@ const without = rows.filter((r) => !r.check.startsWith('with '))
 const ok = withCheck.filter((r) => r.accepted).length === 1 && without.filter((r) => r.accepted).length === 3
 console.log(`\n  ${withCheck.filter((r) => r.accepted).length} of 3 spends accepted with the check, ${without.filter((r) => r.accepted).length} of 3 without it.`)
 console.log(`  ${ok ? 'The check is the only thing making the signature unique.' : 'UNEXPECTED — the demonstration did not reproduce.'}`)
-console.log(`  Cost of the check: ${lock(true).toBuffer().length - lock(false).toBuffer().length} bytes.\n`)
-process.exit(ok ? 0 : 1)
+console.log(`  Cost of the check: ${lock(true).toBuffer().length - lock(false).toBuffer().length} bytes.`)
+
+// ── Part two: ECDSA is malleable by construction ────────────────────────────
+//
+// If (r, s) verifies then so does (r, n − s): R and −R share an x coordinate,
+// and x is all the equation looks at. Both are genuine signatures over the same
+// message by the same key. Bitcoin's answer for OP_CHECKSIG is the mandatory
+// LOW_S policy rule, and the same rule belongs in a verifier built out of
+// arithmetic — this shows what happens without it.
+
+const { build, complete } = require('../src/testkit')
+const ecdsaMod = require('../src/modules/ecdsa')
+const ecJs = require('../src/ec')
+
+const sigCase = ecdsaMod.signCase('22'.repeat(32), 'the reference rate is 3.75%')
+const rows2 = []
+for (const lowS of [true, false]) {
+  const m = ecdsaMod.verifier([sigCase], { lowS })
+  const honest = complete(m, { lowS }, sigCase.inputs)
+  for (const [label, s] of [['s, as signed', honest.s], ['n − s', ecJs.N - honest.s]]) {
+    // The witness follows the signature: u₁ and u₂ change with s, so the
+    // malleated spend is a properly built one, not a corrupted push.
+    const forged = { ...sigCase.inputs, s }
+    const w = ecdsaMod.witness({ z: forged.z, r: forged.r, s, q: { x: forged.qx, y: forged.qy } })
+    const b = build(m, { lowS }, { ...forged, ...w })
+    rows2.push({ lowS, label, accepted: evaluate(b.unlock, b.lock).ok })
+  }
+}
+
+console.log('\n  low-S rule          signature               verdict')
+console.log('  ─────────────────────────────────────────────────────────')
+for (const r of rows2) console.log(`  ${(r.lowS ? 'enforced' : 'NOT enforced').padEnd(19)} ${r.label.padEnd(23)} ${r.accepted ? 'ACCEPTED' : 'refused'}`)
+
+const ecdsaOk = rows2.filter((r) => r.lowS && r.accepted).length === 1 &&
+  rows2.filter((r) => !r.lowS && r.accepted).length === 2
+console.log(`\n  ${ecdsaOk ? 'Both are valid signatures. Only the low-S rule makes one of them the only one.' : 'UNEXPECTED — the demonstration did not reproduce.'}\n`)
+
+process.exit(ok && ecdsaOk ? 0 : 1)

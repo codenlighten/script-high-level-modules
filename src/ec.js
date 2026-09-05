@@ -56,10 +56,32 @@ function mul (k, p1 = G) {
   return acc
 }
 
+/**
+ * A nothing-up-my-sleeve point: hash a tag, treat it as an x coordinate, walk
+ * forward until one is on the curve. Nobody knows its discrete logarithm, which
+ * is what makes it safe to use as the accumulator's starting offset in a
+ * double-and-add ladder that has no representation for the point at infinity.
+ */
+function numsPoint (tag) {
+  const crypto = require('crypto')
+  let x = BigInt('0x' + crypto.createHash('sha256').update(tag).digest('hex')) % P
+  for (let i = 0; i < 1000; i++, x = (x + 1n) % P) {
+    const y2 = mod(x * x % P * x + B)
+    const y = powmod(y2, (P + 1n) / 4n, P)                 // p ≡ 3 (mod 4)
+    if (mod(y * y) === y2) return { x, y: y % 2n === 0n ? y : P - y }
+  }
+  throw new Error('numsPoint: no point found')
+}
+
+function powmod (b, e, m) { let r = 1n; b = mod(b, m); while (e > 0n) { if (e & 1n) r = r * b % m; b = b * b % m; e >>= 1n } return r }
+
+/** The negation of a point — subtraction is addition of this. */
+function neg (p1) { return p1 === INFINITY ? INFINITY : { x: p1.x, y: mod(-p1.y) } }
+
 /** The library's point, for cross-checking. */
 function toBsv (p1) {
   return new bsv.crypto.Point(new bsv.crypto.BN(p1.x.toString(16), 16), new bsv.crypto.BN(p1.y.toString(16), 16))
 }
 function fromBsv (pt) { return { x: BigInt('0x' + pt.getX().toString(16)), y: BigInt('0x' + pt.getY().toString(16)) } }
 
-module.exports = { P, N, A, B, G, INFINITY, mod, inv, add, double, mul, isOnCurve, toBsv, fromBsv }
+module.exports = { P, N, A, B, G, INFINITY, mod, inv, add, double, mul, neg, numsPoint, powmod, isOnCurve, toBsv, fromBsv }
