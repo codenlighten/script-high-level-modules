@@ -140,6 +140,7 @@ non-canonical witness, an unattackable one — and fails if any is missed.
 
 Full table in [docs/cost.md](docs/cost.md), generated from the code.
 
+<!-- cost:table -->
 | module | configuration | Script bytes |
 | --- | --- | ---: |
 | `int.modmul` | 2048-bit modulus | 262 |
@@ -151,13 +152,14 @@ Full table in [docs/cost.md](docs/cost.md), generated from the code.
 | `merkle.verify` | depth 32 (4 billion leaves) | 905 |
 | `ec.add` | secp256k1, witnessed inverse | 139 |
 | `u32.add` | one addition mod 2³² | 58 |
-| `sha256.block` | one block, no `OP_SHA256` | 50,765 |
+| `sha256.block` | one block, no `OP_SHA256` | 49,181 |
 | `ec.mul` | k·P, 256-bit, both runtime | 42,086 |
 | `ecdsa.verify` | arbitrary message, secp256k1 | 59,141 |
+<!-- /cost:table -->
 
 RSA verification — a scheme Bitcoin has no opcode for — costs under a kilobyte,
 because every operation it needs is one Script opcode at any width. SHA-256
-rebuilt from those same primitives costs **50,765×** what `OP_SHA256` costs for
+rebuilt from those same primitives costs **49,181×** what `OP_SHA256` costs for
 the same answer, because 32-bit modular addition is *not* one opcode and pays for
 two endianness conversions every time.
 

@@ -9,7 +9,7 @@ const { defineModule } = require('../module')
 //     HMAC(K, m) = H( (K ⊕ opad) ‖ H( (K ⊕ ipad) ‖ m ) )
 //
 // Two hashes, two XORs, three concatenations. Against `sha256.block` — the same
-// hash function rebuilt from primitives at 50,765 bytes — this is the whole
+// hash function rebuilt from primitives at 49,181 bytes — this is the whole
 // argument for looking at what the interpreter already provides before lowering
 // anything: the identical construction costs about a hundred bytes here.
 //

@@ -104,6 +104,46 @@ question at Genesis; what it costs, and whether a cheaper construction buys the
 same thing, is the question that replaced it.
 `
 
+// The README quotes a handful of these figures. It quoted them by hand until one
+// of them went stale — sha256.block shrank when u32.add was fixed, and the
+// README kept the old number through several commits. A number that is
+// transcribed is a number that will eventually be wrong, so the README's table
+// is generated between markers and checked with the rest.
+const HEADLINE = [
+  ['int.modmul', '2048-bit modulus'],
+  ['int.modexp', 'e = 65537, 2048-bit'],
+  ['rsa.verify', 'RSA-2048, PKCS#1 v1.5'],
+  ['hmac.sha256', 'a 32-byte key'],
+  ['totp.verify', 'RFC 6238, 6 digits'],
+  ['tx.locktime', 'OP_PUSH_TX + nLockTime'],
+  ['merkle.verify', 'depth 32 (4 billion leaves)'],
+  ['ec.add', 'secp256k1, witnessed inverse'],
+  ['u32.add', 'one addition mod 2³²'],
+  ['sha256.block', 'one block, no OP_SHA256'],
+  ['ec.mul', 'k·P, 256-bit, both runtime'],
+  ['ecdsa.verify', 'arbitrary message, secp256k1']
+]
+
+function readmeTable () {
+  const rows = HEADLINE.map(([name, note]) => {
+    const r = measured.find((x) => x.name === name && x.note === note)
+    if (!r) throw new Error(`cost-report: the README wants ${name} / ${note}, which is not measured here`)
+    return `| \`${r.name}\` | ${r.note.replace('OP_SHA256', '`OP_SHA256`')} | ${r.bytes.toLocaleString()} |`
+  })
+  return ['<!-- cost:table -->', '| module | configuration | Script bytes |', '| --- | --- | ---: |', ...rows, '<!-- /cost:table -->'].join('\n')
+}
+
+function syncReadme (check) {
+  const file = path.join(__dirname, '..', 'README.md')
+  const text = fs.readFileSync(file, 'utf8')
+  const block = /<!-- cost:table -->[\s\S]*?<!-- \/cost:table -->/
+  if (!block.test(text)) throw new Error('cost-report: the README has no <!-- cost:table --> markers')
+  const next = text.replace(block, readmeTable())
+  if (check) return next === text
+  fs.writeFileSync(file, next)
+  return true
+}
+
 const out = path.join(__dirname, '..', 'docs', 'cost.md')
 const check = process.argv.includes('--check')
 const existing = fs.existsSync(out) ? fs.readFileSync(out, 'utf8') : ''
@@ -114,8 +154,13 @@ if (check) {
     console.log('cost-report: docs/cost.md is out of date — run `npm run cost`')
     process.exit(1)
   }
-  console.log(`cost-report: docs/cost.md matches the code (${measured.length} modules)`)
+  if (!syncReadme(true)) {
+    console.log('cost-report: the README table is out of date — run `npm run cost`')
+    process.exit(1)
+  }
+  console.log(`cost-report: docs/cost.md and the README match the code (${measured.length} modules)`)
 } else {
   fs.writeFileSync(out, doc)
+  syncReadme(false)
   console.log(doc)
 }

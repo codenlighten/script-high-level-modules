@@ -11,7 +11,7 @@ const { defineModule } = require('../module')
 // OP_CAT and one OP_HASH256, both of which Bitcoin does natively, so a proof of
 // depth 32 — a tree of four billion leaves — is about a kilobyte.
 //
-// Compare `sha256.block`, which pays 50,765 bytes to compute one hash the
+// Compare `sha256.block`, which pays 49,181 bytes to compute one hash the
 // interpreter would have done in a single byte. Same repository, same
 // technique, opposite conclusion. Reach for what is already there.
 //

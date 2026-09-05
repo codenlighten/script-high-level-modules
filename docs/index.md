@@ -31,8 +31,8 @@ it takes, what it returns, and which of its inputs the *spender* supplies. That
 last column is the one to read first.
 
 **[cost.md](cost.md)** — what every module costs, generated from the code. RSA
-verification is 955 bytes; SHA-256 rebuilt from primitives is 50,765; ECDSA over
-an arbitrary message is 196,778. Reading those three against each other is most
+verification is 955 bytes; SHA-256 rebuilt from primitives is 49,181; ECDSA over
+an arbitrary message is 59,141. Reading those three against each other is most
 of what there is to know about lowering an algorithm into Script.
 
 ## The modules
