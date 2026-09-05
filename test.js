@@ -16,6 +16,7 @@ const merkle = require('./src/modules/merkle')
 const compose = require('./src/compose')
 const txmod = require('./src/modules/tx')
 const recipes = require('./src/recipes')
+const schnorr = require('./src/modules/schnorr')
 const rsaFixture = rsa.fixtureKey()
 const payee = bsv.PrivateKey.fromBuffer(Buffer.from('55'.repeat(32), 'hex')).toAddress()
 const elsewhereAddr = bsv.PrivateKey.fromBuffer(Buffer.from('66'.repeat(32), 'hex')).toAddress()
@@ -77,7 +78,8 @@ const { failures } = proveAll([
   [recipes.timelockedTotp(Buffer.from('12345678901234567890'), { digits: 6, step: 30, at: 1600000020 }), {}],
   [txmod.hashOutputs, {}],
   [txmod.requireOutputs([recipes.instructedOutput(payee, 42)]), {}],
-  [recipes.authorityPays(rsaFixture, { cases: recipes.authorityPaysCases(payee, 700, elsewhereAddr) }), {}]
+  [recipes.authorityPays(rsaFixture, { cases: recipes.authorityPaysCases(payee, 700, elsewhereAddr) }), {}],
+  [schnorr.verifier([], { cases: schnorr.bip340Cases() }), {}]
 ])
 
 process.exit(failures.length ? 1 : 0)

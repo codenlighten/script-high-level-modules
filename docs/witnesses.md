@@ -107,6 +107,23 @@ This is the same rule Bitcoin applies to `OP_CHECKSIG`, where `LOW_S` is
 mandatory policy, for the same reason. A verifier built out of arithmetic
 inherits the problem and should inherit the answer.
 
+### `schnorr.verify` — the scheme that needed no rule
+
+Worth putting beside the ECDSA case, because it is the same problem answered by
+the design rather than by policy. A BIP-340 signature over a message under a key
+is **unique**: there is no second representation to choose between, so there is
+no low-S rule to impose and no 267 bytes to spend imposing it. Canonicity can be
+a property of the cryptography instead of a property of the covenant, and when
+it is, the covenant is smaller and the argument is shorter.
+
+Its x-only public key is a witnessed value of exactly the kind this document is
+about. Thirty-two bytes name the x coordinate and imply the even-y point; y is
+recovered with a square root, which is expensive to compute and cheap to check,
+so the spender supplies it. Both obligations are attacked: a wrong y fails
+y² = x³ + 7, and the *other* y of the same x — the odd one, which satisfies the
+equation perfectly — fails the parity check. Soundness and canonicity, in two
+comparisons.
+
 ### `ec.mul` — the witness that is never read
 
 In a double-and-add ladder, a step whose bit is zero never reads its inverse.
@@ -117,6 +134,25 @@ to be zero. Three bytes per step.
 The same reasoning applies to the packed witness tape: after the last step, the
 script requires what remains of the tape to be **empty**. Trailing junk would
 otherwise ride along in the unlocking script, unread and unconstrained.
+
+## Testing against the standard, not against yourself
+
+Three modules here are checked against vectors published with the specification
+rather than against a second implementation: `totp` against RFC 6238's,
+`sha256.block` against OpenSSL's digest, and `schnorr` against BIP-340's.
+
+The BIP-340 set is the one worth describing, because ten of its nineteen vectors
+are **negative** — and those are run through the Script module, on the
+interpreter, as spends that must be refused. A public key that is not on the
+curve. An r past the field size. An s equal to the group order. An odd R.y. A
+negated message. A negated s. Two where sG − eP is the point at infinity.
+
+Every one of them is a way to be wrong that verifying honest signatures would
+never reveal, and none of them is a way a second implementation by the same
+author would think to be wrong either. A refused vector still needs a witness,
+or the harness refuses it before the script is reached and the case proves
+nothing; where no honest witness can exist, a zero-filled one of the right shape
+is supplied so the script refuses it at the point it should.
 
 ## Sound but not complete
 

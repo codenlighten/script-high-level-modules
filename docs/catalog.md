@@ -33,6 +33,7 @@
 | `ec.mul(…)` | *built per key or width* | | | |
 | `ec.mulG(…)` | *built per key or width* | | | |
 | `ecdsa.verify(…)` | *built per key or width* | | | |
+| `schnorr.verify(…)` | *built per key or width* | | | |
 | `merkle.verify(…)` | *built per key or width* | | | |
 | `tx.requireOutputs(…)` | *built per key or width* | | | |
 | `recipes.authorityPays(…)` | *built per key or width* | | | |

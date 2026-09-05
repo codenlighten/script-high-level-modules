@@ -98,6 +98,7 @@ src/modules/hmac.js   HMAC-SHA256 and HMAC-SHA1 over the native hash opcodes
 src/modules/totp.js   RFC 6238 authenticator codes
 src/modules/ec.js     secp256k1 point arithmetic and two scalar ladders
 src/modules/ecdsa.js  ECDSA verification over an arbitrary message
+src/modules/schnorr.js BIP-340 Schnorr, x-only keys
 src/modules/merkle.js membership in a committed tree
 src/modules/tx.js     reading the spending transaction: locktime, output binding
 tools/                probes, self-tests, the cost report
@@ -110,7 +111,7 @@ and are now era-derived and checked after every opcode (released in 9.7.0; see
 [limits.md](docs/limits.md)). They are skipped, with a note, on a library that
 predates it. Nothing else here depends on that fix.
 
-Thirty-seven modules, 195 cases, 571 forgery attempts, all green.
+Thirty-eight modules, 214 cases, 586 forgery attempts, all green.
 
 ## The three claims a module must earn
 
@@ -118,7 +119,9 @@ Thirty-seven modules, 195 cases, 571 forgery attempts, all green.
 the evaluator that validates blocks, under the flags a node relays with
 (MINIMALDATA, CLEANSTACK, SIGPUSHONLY, LOW_S, NULLFAIL, DISCOURAGE_UPGRADABLE_NOPS,
 NULLDUMMY). `sha256.block` is checked against OpenSSL's digest rather than against
-a second implementation of the same misreading.
+a second implementation of the same misreading, `totp` against RFC 6238's
+published vectors, and `schnorr` against BIP-340's — including its ten
+**negative** vectors, run through the Script as spends that must be refused.
 
 **It leaves the stack as promised.** A sentinel sits beneath every module during
 its suite. A module that leaks a scratch value fails, because the next module

@@ -17,6 +17,7 @@ const hmac = require('./modules/hmac')
 const totp = require('./modules/totp')
 const ec = require('./modules/ec')
 const ecdsa = require('./modules/ecdsa')
+const schnorrMod = require('./modules/schnorr')
 const merkle = require('./modules/merkle')
 const txmod = require('./modules/tx')
 
@@ -30,6 +31,7 @@ const { proveModule, proveAll, moduleSize, build } = require('./testkit')
 const num = require('./num')
 const bigint = require('./bigint')
 const ecMath = require('./ec')
+const schnorrMath = require('./schnorr')
 const rsaMath = require('./rsa')
 
 /** Every module that is ready to use, by name. */
@@ -67,6 +69,7 @@ const factories = {
   'ec.mul': ec.mul,
   'ec.mulG': ec.mulG,
   'ecdsa.verify': ecdsa.verifier,
+  'schnorr.verify': schnorrMod.verifier,
   'merkle.verify': merkle.verify,
   'tx.requireOutputs': txmod.requireOutputs,
   'recipes.authorityPays': recipes.authorityPays,
@@ -96,10 +99,10 @@ function catalog () {
 }
 
 module.exports = {
-  int, bytes, u32, sha256, rsa, hmac, totp, ec, ecdsa, merkle, tx: txmod,
+  int, bytes, u32, sha256, rsa, hmac, totp, ec, ecdsa, schnorr: schnorrMod, merkle, tx: txmod,
   modules, factories, catalog, describe,
   defineModule, apply, instantiate, predicate, compose, recipes, Asm,
   evaluate, evaluateSpend, policyFlags,
   proveModule, proveAll, moduleSize, build,
-  num, bigint, math: { ec: ecMath, rsa: rsaMath }
+  num, bigint, math: { ec: ecMath, rsa: rsaMath, schnorr: schnorrMath }
 }

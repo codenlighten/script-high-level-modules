@@ -4,7 +4,7 @@
   "description": "High-level math and cryptography compiled to reusable, tested BSV Script modules.",
   "main": "src/index.js",
   "scripts": {
-    "test": "node test.js && node tools/kit-selftest.js && node tools/rfc6238-check.js && node tools/ec-crosscheck.js && node tools/merkle-crosscheck.js && node tools/probe-limits.js && node tools/malleability-demo.js && node tools/cost-report.js --check && node tools/catalog.js --check && node examples/rsa-lock.js && node examples/totp-lock.js && node examples/oracle-lock.js && node examples/vault-lock.js && node examples/totp-timelock.js && node examples/authority-pays.js",
+    "test": "node test.js && node tools/kit-selftest.js && node tools/rfc6238-check.js && node tools/bip340-check.js && node tools/ec-crosscheck.js && node tools/merkle-crosscheck.js && node tools/probe-limits.js && node tools/malleability-demo.js && node tools/cost-report.js --check && node tools/catalog.js --check && node examples/rsa-lock.js && node examples/totp-lock.js && node examples/oracle-lock.js && node examples/vault-lock.js && node examples/totp-timelock.js && node examples/authority-pays.js",
     "probe": "node tools/probe-limits.js",
     "selftest": "node tools/kit-selftest.js",
     "malleability": "node tools/malleability-demo.js",
@@ -13,7 +13,7 @@
     "verify:chain": "node tools/verify-chain.js",
     "mainnet:log": "node tools/verify-chain.js --write",
     "deploy": "node bin/deploy.js",
-    "rfc6238": "node tools/rfc6238-check.js && node tools/ec-crosscheck.js && node tools/merkle-crosscheck.js"
+    "rfc6238": "node tools/rfc6238-check.js && node tools/bip340-check.js && node tools/ec-crosscheck.js && node tools/merkle-crosscheck.js"
   },
   "author": "codenlighten <greg@smartledger.technology>",
   "license": "MIT",

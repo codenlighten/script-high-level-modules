@@ -16,6 +16,7 @@ const hmac = require('../src/modules/hmac')
 const totp = require('../src/modules/totp')
 const ec = require('../src/modules/ec')
 const ecdsa = require('../src/modules/ecdsa')
+const schnorrMod = require('../src/modules/schnorr')
 const merkle = require('../src/modules/merkle')
 const txmod = require('../src/modules/tx')
 const crypto = require('crypto')
@@ -55,6 +56,7 @@ const ROWS = [
   ['ec.mulG', ec.mulG(256, [1n]), {}, 'k·G, 256-bit, base fixed'],
   ['ec.mul', ec.mul(256, [1n]), {}, 'k·P, 256-bit, both runtime'],
   ['ecdsa.verify', ecdsa.verifier([ecdsa.signCase('22'.repeat(32), 'x')]), {}, 'arbitrary message, secp256k1'],
+  ['schnorr.verify', schnorrMod.verifier(['x']), {}, 'BIP-340, x-only key'],
   ['sha256.block', sha256.block, {}, 'one block, no OP_SHA256']
 ]
 
