@@ -139,6 +139,16 @@ a coin stepped 3 times on chain, each spend paying the coin the next spend consu
 | step 900 → 400 | [`cb39e8c6e9dba217fec870cbf44f84698c78a3daa013c25759b1e9526bd2e6c4`](https://whatsonchain.com/tx/cb39e8c6e9dba217fec870cbf44f84698c78a3daa013c25759b1e9526bd2e6c4) |
 | step 400 → 0 | [`5f26ba03e13ce017ded181ce742a2540a2985a08f4d234374f1d3caa69020a95`](https://whatsonchain.com/tx/5f26ba03e13ce017ded181ce742a2540a2985a08f4d234374f1d3caa69020a95) |
 
+### fp12.sqr ▸ fp12.mulLine
+
+one step of a BLS12-381 Miller loop, in a field Bitcoin has no opcode for
+
+| | |
+| --- | --- |
+| locking script | 5,269 bytes |
+| deploy | [`1bf828187c39d0b5de9856c7b2a6290b2cba6be4062947f86420eb9287b63de5`](https://whatsonchain.com/tx/1bf828187c39d0b5de9856c7b2a6290b2cba6be4062947f86420eb9287b63de5) |
+| spend | [`4ef8a7a70f477b118ffda82e689df0ffd8951ac0176b997c1db446f7132dc16d`](https://whatsonchain.com/tx/4ef8a7a70f477b118ffda82e689df0ffd8951ac0176b997c1db446f7132dc16d) |
+
 ## What this does and does not show
 
 It shows that these scripts are **relayable and spendable on mainnet today**: the

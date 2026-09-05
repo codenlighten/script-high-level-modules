@@ -36,8 +36,10 @@ node examples/oracle-lock.js     # a coin an oracle's ordinary secp256k1 key unl
 
 ## On chain
 
-Ten of these are deployed and spent on BSV mainnet, and the first five are
-**confirmed in block 965487**. Two are not single spends but **sequences** — a
+Eleven of these are deployed and spent on BSV mainnet, and the first five are
+**confirmed in block 965487** — including **one step of a BLS12-381 Miller
+loop**, an Fp12 squaring and a sparse line product in a field Bitcoin has no
+opcode for. Two are not single spends but **sequences** — a
 coin advancing its own counter 0 → 1 → 2 → 3, and a coin paying three different
 people out of an allowance that falls 1500 → 900 → 400 → 0. In each, every
 transaction pays the output the next one consumes, so the state is not recorded

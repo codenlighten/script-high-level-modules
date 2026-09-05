@@ -16,6 +16,8 @@ const totp = require('../src/modules/totp')
 const recipes = require('../src/recipes')
 const txMod = require('../src/modules/tx')
 const ecJs = require('../src/ec')
+const bls = require('../src/bls12381')
+const fp12 = require('../src/modules/fp12')
 
 // WHAT GOES ON CHAIN.
 //
@@ -238,6 +240,63 @@ targets.authority = (() => {
     unlock: ({ tx, lockingScript, satoshis, shape }) => {
       const produced = m.witnessFor({ tx, lockingScript, satoshis, spend: shape })
       return coin.unlock({ ...produced, msg })
+    }
+  }
+})()
+
+// ── 8. One step of a BLS12-381 Miller loop ──────────────────────────────────
+//
+// The loop body is two operations: square the accumulator, then multiply in the
+// tangent line. Both are here, on real values — a genuine Fp12 accumulator and
+// the tangent at G2 evaluated at G1 — and the result is compared against all
+// twelve coefficients the reference implementation produces.
+//
+// A whole pairing is 978 KB and past relay policy. One step is four kilobytes,
+// and it is the same arithmetic: sixty-three of these and sixty-eight line
+// products ARE the Miller loop. What the network accepts here it would accept
+// four hundred times over if policy let it.
+//
+// Every one of the eighteen inputs is spender-supplied, so every one of them
+// gets an OP_WITHIN placed by the contract system rather than by hand. Without
+// it a coefficient and that coefficient plus p are two encodings of the same
+// field element, and the comparison at the end would be comparing numbers that
+// are congruent rather than equal.
+targets.pairing = (() => {
+  const f = bls.millerLoop(bls.G1, bls.G2)
+  const line = bls.lineDouble(bls.G2, bls.G1)
+  const expected = bls.f12mulLine(bls.f12sqr(f), line)
+
+  const F = fp12.twelve('f')
+  const L = ['l00', 'l01', 'l10', 'l11', 'l20', 'l21']
+  const values = { ...fp12.spread(f, 'f'), l00: line.l0[0], l01: line.l0[1], l10: line.l1[0], l11: line.l1[1], l20: line.l2[0], l21: line.l2[1] }
+  const want = fp12.spread(expected, 'r')
+  const p = { n: '_p', nn: bls.P }
+
+  const asm = new Asm()
+  asm.given([
+    ...[...F, ...L].map((name) => ({ name, kind: 'num' })),
+    { name: 'sig', kind: 'bytes' }, { name: 'pubkey', kind: 'bytes' }
+  ])
+  ownedBy(asm)
+  asm.num(bls.P, '_p')                        // pushed once, picked thereafter
+  apply(asm, fp12.sqr, p, F, fp12.twelve('s'))
+  apply(asm, fp12.mulLine, p, [...fp12.twelve('s'), ...L], fp12.twelve('r'))
+  for (const name of fp12.twelve('r')) {
+    asm.roll(name)
+    asm.num(want[name.replace(/^r/, 'r')], '_want')
+    asm.numEqualVerify()
+  }
+  asm.discard('_p')
+  asm.num(1, 'ok')
+
+  return {
+    name: 'fp12.sqr ▸ fp12.mulLine',
+    claim: 'one step of a BLS12-381 Miller loop, in a field Bitcoin has no opcode for',
+    lock: asm.script(),
+    unlock: ({ sign }) => {
+      const u = new bsv.Script()
+      for (const name of [...F, ...L]) u.add(pushNum(values[name]))
+      return u.add(sign(owner)).add(owner.publicKey.toBuffer())
     }
   }
 })()
