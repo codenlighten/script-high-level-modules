@@ -206,6 +206,40 @@ fact, emits the check, or refuses to build. See
 to `ec.add` reproduced the hand-placed checks byte for byte — and put one more in
 `ec.mul`, on the input point, which I had missed by hand.
 
+## Inputs nobody chose
+
+Every module is checked against its own cases, and the cases are the ones
+somebody thought of. All four bugs above lived in exactly that gap: each was a
+value outside the range anybody had written a case for.
+
+`npm run fuzz` generates inputs instead of choosing them, and asks the two
+questions the suite otherwise asks only where a case exists — does the Script
+compute what the model says, and does the module's own `ensures` hold of what
+the model returned. Eighteen modules, forty rounds each, sampled toward the edges
+of the domain where the bugs were found.
+
+**The domains come from `requires`.** That is the second dividend of stating
+them: the declaration that decides where a bound is emitted also says what the
+module is defined on, so the fuzzer samples the domain rather than guessing at
+it. A module that states nothing and offers no generator is skipped **and said to
+be skipped**, because a fuzzer that quietly tests nothing is worse than none.
+
+Which witnesses to generate is answered by the module rather than by a rule about
+them. `schnorr.liftX` takes an x-only key *and* the y for it, both marked
+`witness`, and only the second is derived — so the fuzzer generates candidates
+for all of them, asks `hint()` what it works out for itself, and drops those. A
+generated value for a derived witness would be a wrong one, and would take
+precedence over the honest answer.
+
+The fuzzer checks itself first. A module whose promise is true of the cases a
+careful author would write and false of the domain it claims runs before
+anything else, and if generated inputs do not catch it, the run stops there.
+
+```
+selfcheck  its own cases pass, generated inputs catch it
+           r = 192215 is not in [0, 100), which the module promises
+```
+
 ## Sound but not complete
 
 One more distinction worth keeping separate from the two above.

@@ -79,7 +79,8 @@ of what there is to know about lowering an algorithm into Script.
 ```bash
 npm test                # everything below, in order
 npm run probe           # what the interpreter does          (24 probes)
-npm run selftest        # five deliberate bugs the kit must catch
+npm run selftest        # eight deliberate bugs the kit must catch
+npm run fuzz            # the model against the Script, on inputs nobody chose
 npm run rfc6238         # the JS reference against RFC 6238's published vectors
 npm run bip340          # the JS reference against BIP-340's published vectors
 npm run ec              # src/ec.js against the library's own secp256k1

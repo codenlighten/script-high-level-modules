@@ -160,6 +160,13 @@ the kit attacks every witnessed input on two properties:
   congruence is a function of the spender's choice, and the covenant built on it
   is malleable.
 
+And the cases are the ones somebody thought of, which is where all four of those
+bugs lived. `npm run fuzz` generates inputs instead — eighteen modules, sampled
+toward the edges — and checks both that the Script agrees with the model and that
+the module's own promise about its output holds. The domains come from
+`requires`, so the declaration that places the bounds also says what the module
+is defined on.
+
 A witnessed module the kit cannot attack is reported as unproven rather than
 green. The kit is itself held to this: `npm run selftest` writes five bugs
 deliberately — a wrong value, a leaked stack slot, bytes read as a number, a
