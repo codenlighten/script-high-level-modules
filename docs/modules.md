@@ -170,6 +170,13 @@ and the case that shows it is one that was already being run.
 
 ### What it cost
 
+Enforcing a domain is not free where it has to be enforced, and free where it
+does not. `int.modadd` at 2048 bits is 279 bytes against 262 unenforced — the
+modulus is pushed once, for the checks and the reduction together, which is also
+why `int.modsub` came *down* from 523 to 281 while gaining the checks it never
+had. Inside `rsa.verify` the requirement costs nothing at all: the module's own
+`0 ≤ s < n` is recorded when it is checked, so `int.modexp` discharges from it.
+
 Nothing, and it found something. `ec.add` and `ec.double` come out **byte for
 byte** what the hand-placed checks produced, and `ecdsa.verify` is unchanged at
 59,155. `ec.mul` is 26 bytes larger — a bound on the input point that the

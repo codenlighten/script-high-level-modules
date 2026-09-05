@@ -192,6 +192,12 @@ checking it 512 times would cost 7 KB to learn nothing.
 Two of the three are now deliberate bugs in `npm run selftest`, where the module
 with its bound removed accepts what the standard refuses.
 
+There was a fourth, one layer down, and the same question found it: `int.modadd`
+had documented "for a, b already in [0, n)" since the first week and enforced
+nothing. Measured — `modadd(−3, 1) mod 11` is **−2**, `modmul(−3, 4) mod 11` is
+**−1**. `OP_MOD` truncates, so a negative anywhere upstream stays negative, and a
+result congruent to the right answer is not the right answer.
+
 And the class is closed rather than patched. A module states what it requires of
 each input and promises of each output; every value carries what is known about
 it; and at each call the framework discharges the requirement from an upstream

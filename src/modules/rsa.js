@@ -37,12 +37,23 @@ const { fromBE } = require('../num')
  * run the REAL code path with the range check removed, rather than a copy of it
  * that might not be the same code any more.
  */
-function emitVerify (asm, { n, e, emLen }, { bounded = true } = {}) {
-  // canonicity: exactly one signature value is accepted, not a residue class
-  if (bounded) {
-    asm.pick('sig', '_s1'); asm.num(0, '_zero'); asm.geVerify()
-    asm.pick('sig', '_s2'); asm.num(n, '_n'); asm.ltVerify()
-  }
+function emitVerify (asm, { n, e, emLen }, { bounded = true, mode } = {}) {
+  // Canonicity: exactly one signature value is accepted, not a residue class.
+  //
+  // One OP_WITHIN rather than two comparisons, and it RECORDS what it checked —
+  // so int.modexp, which requires its base to be reduced, discharges that
+  // requirement from this instead of the framework emitting the 257-byte
+  // modulus again a few lines later.
+  // Three states, and tools/malleability-demo.js walks all of them:
+  //   'checked'  — the bound is emitted and the fact recorded;
+  //   'omitted'  — the line is deleted, and the framework puts it back, because
+  //                int.modexp REQUIRES a reduced base and says so;
+  //   'asserted' — the fact is claimed without being checked, which is the only
+  //                way to actually lose the property, and is why assert() will
+  //                not take a claim without a written reason.
+  const how = mode || (bounded ? 'checked' : 'omitted')
+  if (how === 'checked') asm.bound('sig', 0n, n, '_sb')
+  else if (how === 'asserted') asm.assert('sig', { range: { lo: 0n, hi: n } }, 'claimed and never checked — this is the demonstration')
 
   // the right-hand side: EM, assembled little-endian so no 256-byte reversal is
   // needed — only the 32-byte digest is reversed, and the rest is constant.

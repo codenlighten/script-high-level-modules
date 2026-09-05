@@ -90,13 +90,25 @@ function discharge (asm, name, need) {
  * own exact range, so a slot whose range is [v, v+1) IS v.
  */
 function pushBound (asm, v, temp) {
+  const found = findExact(asm, v)
+  return found ? asm.pick(found, temp) : asm.num(v, temp)
+}
+
+/** How many bytes it takes to push this value as a literal. */
+function pushCost (v) {
+  const { pushNum } = require('./num')
+  const p = pushNum(v)
+  if (typeof p === 'number') return 1                    // a dedicated opcode
+  return p.length + (p.length < 76 ? 1 : p.length < 256 ? 2 : 3)
+}
+
+/** The name of a live value known to be exactly `v`, if there is one. */
+function findExact (asm, v) {
   for (let i = asm.stack.length - 1; i >= 0; i--) {
     const f = asm.stack[i].facts
-    if (f && f.range && f.range.lo === v && f.range.hi === v + 1n) {
-      return asm.pick(asm.stack[i].name, temp)
-    }
+    if (f && f.range && f.range.lo === v && f.range.hi === v + 1n) return asm.stack[i].name
   }
-  return asm.num(v, temp)
+  return null
 }
 
 /** A short, readable form, for an error that has to explain itself. */
@@ -108,4 +120,4 @@ function describe (f = {}) {
 }
 const short = (v) => (v > 0xffffffffn ? '2^' + (v.toString(2).length - 1) + '…' : v.toString())
 
-module.exports = { range, authenticated, implies, meet, discharge, pushBound, describe, Op }
+module.exports = { range, authenticated, implies, meet, discharge, pushBound, findExact, pushCost, describe, Op }

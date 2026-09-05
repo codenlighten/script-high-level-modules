@@ -3,6 +3,40 @@
 const { defineModule } = require('../module')
 const { mod, powmod, invmod, bitsOf } = require('../bigint')
 
+/**
+ * The domain these modules are correct on, as a fact rather than a sentence.
+ *
+ * Every one of them documented "for a, b already in [0, n)" and enforced
+ * nothing, and every one of them returns a NON-CANONICAL NEGATIVE outside it —
+ * measured, not supposed: modadd(−3, 1) mod 11 is −2, modmul(−3, 4) mod 11 is
+ * −1. OP_MOD truncates, so a negative anywhere upstream stays negative, and a
+ * result congruent to the right answer is not the same as the right answer.
+ *
+ * The modulus may be a literal or the NAME of a live value, and a name carries
+ * no number — so a module whose contract is stated in terms of the modulus has
+ * to be told what it is. `nn` is that, and it is required rather than assumed,
+ * because assuming it would mean silently having no contract at all.
+ */
+function numericModulus (params, who) {
+  const nn = params.nn !== undefined ? params.nn : params.n
+  if (typeof nn === 'bigint' || typeof nn === 'number') return BigInt(nn)
+  throw new Error(`${who}: the modulus is '${params.n}', a value on the stack, so its number is not known here — ` +
+    'pass nn: <the modulus> alongside it, or the contract this module states would quietly mean nothing')
+}
+
+function residues (params, who) {
+  const nn = params.nn !== undefined ? params.nn : params.n
+  if (typeof nn === 'bigint' || typeof nn === 'number') {
+    return { range: { lo: 0n, hi: BigInt(nn) } }
+  }
+  throw new Error(`${who}: the modulus is '${params.n}', a value on the stack, so its number is not known here — ` +
+    'pass nn: <the modulus> alongside it, or the contract this module states would quietly mean nothing')
+}
+const reduced = (who) => (params) => {
+  const r = residues(params, who)
+  return { a: r, b: r }
+}
+
 // MODULAR ARITHMETIC — the floor everything else stands on.
 //
 // Script's OP_MOD is TRUNCATED, not Euclidean: (−3) MOD 5 is −3, measured, not
@@ -30,18 +64,45 @@ function withModulus (asm, n, name = '_n') {
   return name
 }
 
+/**
+ * Put a literal modulus on the stack BEFORE the requirement checks run, so they
+ * can copy it instead of pushing it again — and so the module's own reduction
+ * can copy it too.
+ *
+ * A 2048-bit modulus is a 259-byte push. Bounding two inputs and then reducing
+ * with it costs three of those pushed separately and one pushed once: 797 bytes
+ * against 285. The prologue exists for exactly that, and for nothing else.
+ */
+const PN = '_pn'
+function pushModulus (asm, n) { if (typeof n !== 'string') asm.num(n, PN) }
+const modulusName = (n) => (typeof n === 'string' ? n : PN)
+const pushedItself = (n) => typeof n !== 'string'
+
+/** Bring the inputs back above whatever the prologue pushed. */
+function liftInputs (asm, n, names) {
+  if (!pushedItself(n)) return
+  for (const x of names) asm.roll(x)
+}
+/** Drop the modulus the prologue pushed, leaving the result on top. */
+function dropModulus (asm, n) { if (pushedItself(n)) asm.nip() }
+
 const modadd = defineModule({
   name: 'int.modadd',
   doc: 'r = (a + b) mod n, for a, b already in [0, n)',
   inputs: ['a', 'b'],
   outputs: ['r'],
+  requires: reduced('int.modadd'),
+  ensures: (p) => ({ r: residues(p, 'int.modadd') }),
   model: ({ a, b }, { n }) => ({ r: mod(a + b, n) }),
+  prologue: (asm, { n }) => pushModulus(asm, n),
   emit: (asm, { n }) => {
-    asm.add('sum')                       // a + b ≥ 0 given the precondition
-    withModulus(asm, n)
+    liftInputs(asm, n, ['a', 'b'])
+    asm.add('sum')                       // a + b ≥ 0 given the requirement
+    asm.pick(modulusName(n), '_n')
     asm.mod('r')
+    dropModulus(asm, n)
   },
-  notes: ['sound only for inputs already reduced into [0, n) — the caller owes that'],
+  notes: ['correct only for inputs already reduced into [0, n) — now stated as a requirement, so the caller either proves it or the check is emitted'],
   cases: [
     { name: 'small', inputs: { a: 7n, b: 9n }, params: { n: 11n } },
     { name: 'wraps', inputs: { a: 10n, b: 10n }, params: { n: 11n } },
@@ -55,13 +116,18 @@ const modsub = defineModule({
   doc: 'r = (a − b) mod n, non-negative — the module that exists because OP_MOD is truncated',
   inputs: ['a', 'b'],
   outputs: ['r'],
+  requires: reduced('int.modsub'),
+  ensures: (p) => ({ r: residues(p, 'int.modsub') }),
   model: ({ a, b }, { n }) => ({ r: mod(a - b, n) }),
+  prologue: (asm, { n }) => pushModulus(asm, n),
   emit: (asm, { n }) => {
+    liftInputs(asm, n, ['a', 'b'])
     asm.sub('diff')                      // may be negative: OP_MOD would keep the sign
-    withModulus(asm, n)
+    asm.pick(modulusName(n), '_n')
     asm.add('shifted')                   // + n lands it in (0, 2n)
-    withModulus(asm, n, '_n2')
+    asm.pick(modulusName(n), '_n2')
     asm.mod('r')
+    dropModulus(asm, n)
   },
   cases: [
     { name: 'positive', inputs: { a: 9n, b: 7n }, params: { n: 11n } },
@@ -76,11 +142,16 @@ const modmul = defineModule({
   doc: 'r = (a · b) mod n',
   inputs: ['a', 'b'],
   outputs: ['r'],
+  requires: reduced('int.modmul'),
+  ensures: (p) => ({ r: residues(p, 'int.modmul') }),
   model: ({ a, b }, { n }) => ({ r: mod(a * b, n) }),
+  prologue: (asm, { n }) => pushModulus(asm, n),
   emit: (asm, { n }) => {
+    liftInputs(asm, n, ['a', 'b'])
     asm.mul('prod')
-    withModulus(asm, n)
+    asm.pick(modulusName(n), '_n')
     asm.mod('r')
+    dropModulus(asm, n)
   },
   cases: [
     { name: 'small', inputs: { a: 7n, b: 9n }, params: { n: 11n } },
@@ -103,10 +174,15 @@ const modexp = defineModule({
   doc: 'r = x^e mod n, e a public compile-time exponent',
   inputs: ['x'],
   outputs: ['r'],
+  requires: (p) => ({ x: residues(p, 'int.modexp') }),
+  ensures: (p) => ({ r: residues(p, 'int.modexp') }),
   model: ({ x }, { n, e }) => ({ r: powmod(x, e, n) }),
+  prologue: (asm, { n }) => pushModulus(asm, n),
   emit: (asm, { n, e }) => {
     const bits = bitsOf(e)                        // MSB first; bits[0] is always 1
-    const N = withModulus(asm, n)                 // pushed once, picked thereafter
+    const N = modulusName(n)                      // pushed once, picked thereafter
+    if (!pushedItself(n)) asm.pick(N, PN)         // a named modulus is copied in
+    liftInputs(asm, n, ['x'])
     asm.pick('x', 'r')                            // r = x, consuming the leading 1 bit
     for (let i = 1; i < bits.length; i++) {
       asm.pick('r', '_r2'); asm.mul('_sq')        // r²
@@ -144,18 +220,27 @@ const modinv = defineModule({
   doc: 'r = a⁻¹ mod n, supplied by the spender and checked (a·r ≡ 1, 0 ≤ r < n)',
   inputs: ['a', { name: 'inv', witness: true }],
   outputs: ['r'],
+  requires: (p) => ({ a: residues(p, 'int.modinv') }),
+  ensures: (p) => ({ r: residues(p, 'int.modinv') }),
   hint: ({ a }, { n }) => ({ inv: invmod(a, n) }),
   model: ({ a }, { n }) => ({ r: invmod(a, n) }),
-  emit: (asm, { n }) => {
-    // canonicity: 0 ≤ inv < n. Drop either bound and the witness is no longer unique.
-    asm.pick('inv', '_i1'); asm.num(0, '_zero'); asm.geVerify()
-    asm.pick('inv', '_i2'); withModulus(asm, n, '_n1'); asm.ltVerify()
+  prologue: (asm, { n }) => pushModulus(asm, n),
+  emit: (asm, params) => {
+    const { n } = params
+    const N = modulusName(n)
+    // canonicity: 0 ≤ inv < n, in one opcode, and RECORDED — so a caller that
+    // consumes the result inherits the bound instead of re-establishing it.
+    // The bound needs the modulus as a NUMBER; where it lives is a separate
+    // question, and pushBound answers it by finding the value already on the
+    // stack when there is one.
+    asm.bound('inv', 0n, numericModulus(params, 'int.modinv'), '_bi')
     // soundness: a · inv ≡ 1 (mod n)
     asm.pick('a', '_a'); asm.pick('inv', '_i3'); asm.mul('_prod')
-    withModulus(asm, n, '_n2'); asm.mod('_res')
+    asm.pick(N, '_n2'); asm.mod('_res')
     asm.num(1, '_one'); asm.numEqualVerify()
     asm.roll('inv'); asm.rename('r')
-    asm.nip()                                     // drop a
+    asm.roll('a'); asm.drop()                     // drop a
+    dropModulus(asm, n)
   },
   cases: [
     { name: '3⁻¹ mod 11', inputs: { a: 3n }, params: { n: 11n } },

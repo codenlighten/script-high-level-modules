@@ -106,19 +106,61 @@ function enforceRequires (asm, m, params, depthBeforePrologue) {
   // anything the prologue has since pushed on top of them.
   const top = depthBeforePrologue === undefined ? asm.stack.length : depthBeforePrologue
   const base = top - m.inputs.length
+
+  // First decide what is still owed. A requirement an upstream fact already
+  // implies costs nothing, and most of them do.
+  const owed = []
   m.inputs.forEach((slot, i) => {
     const want = need[slot.name]
     if (!want) return
     const live = asm.stack[base + i]
     if (!live) throw new Error(`${m.name}: '${slot.name}' is not on the stack where the calling convention says it is`)
-    if (F.implies(live.facts, want)) return                      // already known
-    const why = F.discharge(asm, live.name, want)                // emit the check
-    if (why) {
+    if (F.implies(live.facts, want)) return
+    if (want.authenticated) {
       throw new Error(`${m.name} requires '${slot.name}' to be ${F.describe(want)}; ` +
-        `what is known of '${live.name}' is ${F.describe(live.facts)}. ${why}`)
+        `what is known of '${live.name}' is ${F.describe(live.facts)}. ` +
+        `'${live.name}' must be an authenticated preimage, and no check can establish that here — ` +
+        'it comes from tx.locktime or tx.hashOutputs, or it does not come at all')
     }
-    live.facts = F.meet(live.facts, want)
+    if (!want.range) {
+      throw new Error(`${m.name} requires '${slot.name}' to be ${F.describe(want)}, ` +
+        'which this framework does not know how to check')
+    }
+    owed.push({ live, want })
   })
+  if (!owed.length) return
+
+  // Several inputs usually share one bound — four coordinates and one prime.
+  // Pushing a 256-bit modulus once and picking it four times is 40 bytes to
+  // pushing it four times' 136. A SMALL bound is the other way round: a pick
+  // costs two bytes and OP_0 costs one, so hoisting it would lose. Which is why
+  // this asks how big the push actually is rather than assuming.
+  const hoisted = []
+  const bounds = new Map()
+  const boundFor = (v) => {
+    if (bounds.has(v)) return bounds.get(v)
+    const found = F.findExact(asm, v)
+    if (found) { bounds.set(v, found); return found }
+    if (F.pushCost(v) <= 2) { bounds.set(v, null); return null }   // cheaper inline
+    const temp = `_rq${hoisted.length}`
+    asm.num(v, temp)
+    hoisted.push(temp)
+    bounds.set(v, temp)
+    return temp
+  }
+
+  const place = (v, name, temp) => (name ? asm.pick(name, temp) : asm.num(v, temp))
+
+  for (const { live, want } of owed) {
+    const lo = boundFor(want.range.lo)
+    const hi = boundFor(want.range.hi)
+    asm.pick(live.name, '_rqv')
+    place(want.range.lo, lo, '_rqlo')
+    place(want.range.hi, hi, '_rqhi')
+    asm.withinVerify()
+    live.facts = F.meet(live.facts, want)
+  }
+  for (const t of hoisted.reverse()) asm.discard(t)
 }
 
 /** Record what the module says its outputs are, for whoever consumes them. */

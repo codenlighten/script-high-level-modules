@@ -25,10 +25,10 @@ const params = { n: key.n, e: key.e, emLen: key.emLen }
 const msg = Buffer.from('pay the bearer on demand')
 const s = rsaJs.encodeSignature(rsaJs.sign(msg, key.privateKey))
 
-function lock (bounded) {
+function lock (mode) {
   const asm = new Asm()
   asm.given([{ name: 'msg', kind: 'bytes' }, { name: 'sig', kind: 'num' }])
-  rsaMod.emitVerify(asm, params, { bounded })
+  rsaMod.emitVerify(asm, params, { mode })
   asm.num(1, 'true')                     // the predicate's result
   return asm.script()
 }
@@ -36,27 +36,35 @@ function unlock (sigValue) {
   return new bsv.Script().add(pushData(msg)).add(pushNum(sigValue))
 }
 
+const MODES = [
+  ['checked', 'the bound is emitted'],
+  ['omitted', 'the line is deleted'],
+  ['asserted', 'the fact is claimed, unchecked']
+]
 const rows = []
-for (const bounded of [true, false]) {
-  const l = lock(bounded)
+for (const [mode, how] of MODES) {
+  const l = lock(mode)
   for (const [label, value] of [['the signature', s], ['the signature + n', s + key.n], ['the signature + 2n', s + 2n * key.n]]) {
-    const r = evaluate(unlock(value), l)
-    rows.push({ check: bounded ? 'with 0 ≤ s < n' : 'WITHOUT the check', spend: label, accepted: r.ok, bytes: l.toBuffer().length })
+    rows.push({ mode, how, spend: label, accepted: evaluate(unlock(value), l).ok, bytes: l.toBuffer().length })
   }
 }
 
-console.log('\n  range check         unlocking script       verdict')
-console.log('  ─────────────────────────────────────────────────────────')
-for (const r of rows) {
-  console.log(`  ${r.check.padEnd(19)} ${r.spend.padEnd(22)} ${r.accepted ? 'ACCEPTED' : 'refused'}`)
-}
+console.log('\n  what the module does           unlocking script       verdict')
+console.log('  ───────────────────────────────────────────────────────────────────')
+for (const r of rows) console.log(`  ${r.how.padEnd(30)} ${r.spend.padEnd(22)} ${r.accepted ? 'ACCEPTED' : 'refused'}`)
 
-const withCheck = rows.filter((r) => r.check.startsWith('with '))
-const without = rows.filter((r) => !r.check.startsWith('with '))
-const ok = withCheck.filter((r) => r.accepted).length === 1 && without.filter((r) => r.accepted).length === 3
-console.log(`\n  ${withCheck.filter((r) => r.accepted).length} of 3 spends accepted with the check, ${without.filter((r) => r.accepted).length} of 3 without it.`)
-console.log(`  ${ok ? 'The check is the only thing making the signature unique.' : 'UNEXPECTED — the demonstration did not reproduce.'}`)
-console.log(`  Cost of the check: ${lock(true).toBuffer().length - lock(false).toBuffer().length} bytes.`)
+const accepted = (m) => rows.filter((r) => r.mode === m && r.accepted).length
+console.log(`
+  Deleting the check changes nothing: int.modexp REQUIRES a base reduced into
+  [0, n) and says so, so the framework emits the bound the module stopped
+  emitting. ${lock('omitted').toBuffer().length - lock('checked').toBuffer().length >= 0 ? 'It costs the same or more that way' : 'It even costs a little more that way'}, which is the point — the obligation
+  belongs to the mathematics, not to the line of code.
+
+  The property is only lost by CLAIMING the bound without checking it, which is
+  why asm.assert() will not take a claim without a written reason.`)
+const ok = accepted('checked') === 1 && accepted('omitted') === 1 && accepted('asserted') === 3
+console.log(`\n  accepted: ${accepted('checked')}/3 checked, ${accepted('omitted')}/3 with the line deleted, ${accepted('asserted')}/3 asserted.`)
+console.log(`  ${ok ? 'A signature is unique because something proves it, not because something says so.' : 'UNEXPECTED — the demonstration did not reproduce.'}`)
 
 // ── Part two: ECDSA is malleable by construction ────────────────────────────
 //

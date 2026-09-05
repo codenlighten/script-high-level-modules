@@ -181,9 +181,9 @@ Full table in [docs/cost.md](docs/cost.md), generated from the code.
 <!-- cost:table -->
 | module | configuration | Script bytes |
 | --- | --- | ---: |
-| `int.modmul` | 2048-bit modulus | 262 |
-| `int.modexp` | e = 65537, 2048-bit | 332 |
-| `rsa.verify` | RSA-2048, PKCS#1 v1.5 | 955 |
+| `int.modmul` | 2048-bit modulus | 279 |
+| `int.modexp` | e = 65537, 2048-bit | 355 |
+| `rsa.verify` | RSA-2048, PKCS#1 v1.5 | 969 |
 | `hmac.sha256` | a 32-byte key | 175 |
 | `totp.verify` | RFC 6238, 6 digits | 269 |
 | `tx.locktime` | OP_PUSH_TX + nLockTime | 410 |
@@ -192,7 +192,7 @@ Full table in [docs/cost.md](docs/cost.md), generated from the code.
 | `u32.add` | one addition mod 2³² | 58 |
 | `sha256.block` | one block, no `OP_SHA256` | 49,181 |
 | `ec.mul` | k·P, 256-bit, both runtime | 42,112 |
-| `ecdsa.verify` | arbitrary message, secp256k1 | 59,155 |
+| `ecdsa.verify` | arbitrary message, secp256k1 | 59,191 |
 <!-- /cost:table -->
 
 RSA verification — a scheme Bitcoin has no opcode for — costs under a kilobyte,

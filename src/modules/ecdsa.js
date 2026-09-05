@@ -107,13 +107,13 @@ function verifier (cases, { lowS = true } = {}) {
       // inherits the bound instead of re-establishing it 512 times.
       for (const v of ['qx', 'qy']) asm.bound(v, 0n, P, '_q' + v)
       asm.pick('qy', '_qy1'); asm.pick('qy', '_qy2')
-      apply(asm, int.modmul, { n: '_P' }, ['_qy1', '_qy2'], ['_y2'])
+      apply(asm, int.modmul, { n: '_P', nn: P }, ['_qy1', '_qy2'], ['_y2'])
       asm.pick('qx', '_qx1'); asm.pick('qx', '_qx2')
-      apply(asm, int.modmul, { n: '_P' }, ['_qx1', '_qx2'], ['_x2'])
+      apply(asm, int.modmul, { n: '_P', nn: P }, ['_qx1', '_qx2'], ['_x2'])
       asm.pick('_x2', '_x2c'); asm.pick('qx', '_qx3')
-      apply(asm, int.modmul, { n: '_P' }, ['_x2c', '_qx3'], ['_x3'])
+      apply(asm, int.modmul, { n: '_P', nn: P }, ['_x2c', '_qx3'], ['_x3'])
       asm.num(7, '_b'); asm.pick('_x3', '_x3c')
-      apply(asm, int.modadd, { n: '_P' }, ['_x3c', '_b'], ['_rhs'])
+      apply(asm, int.modadd, { n: '_P', nn: P }, ['_x3c', '_b'], ['_rhs'])
       asm.roll('_y2'); asm.roll('_rhs'); asm.numEqualVerify()
       for (const dead of ['_x2', '_x3', '_P']) asm.discard(dead)
 
@@ -122,14 +122,14 @@ function verifier (cases, { lowS = true } = {}) {
       asm.pick('sinv', '_si1'); asm.num(0, '_zero2'); asm.geVerify()
       asm.pick('sinv', '_si2'); asm.pick('_N', '_n3'); asm.ltVerify()
       asm.pick('s', '_sc'); asm.pick('sinv', '_si3')
-      apply(asm, int.modmul, { n: '_N' }, ['_sc', '_si3'], ['_chk'])
+      apply(asm, int.modmul, { n: '_N', nn: N }, ['_sc', '_si3'], ['_chk'])
       asm.num(1, '_one2'); asm.numEqualVerify()
 
       // 4. u₁ = z·s⁻¹, u₂ = r·s⁻¹ (mod n)
       asm.pick('z', '_zc'); asm.pick('sinv', '_si4')
-      apply(asm, int.modmul, { n: '_N' }, ['_zc', '_si4'], ['u1'])
+      apply(asm, int.modmul, { n: '_N', nn: N }, ['_zc', '_si4'], ['u1'])
       asm.pick('r', '_rc'); asm.pick('sinv', '_si5')
-      apply(asm, int.modmul, { n: '_N' }, ['_rc', '_si5'], ['u2'])
+      apply(asm, int.modmul, { n: '_N', nn: N }, ['_rc', '_si5'], ['u2'])
 
       // 5. R = u₁·G + u₂·Q, interleaved: one accumulator, one doubling chain.
       //    Two separate multiplications would double the chain and cost 23 KB
