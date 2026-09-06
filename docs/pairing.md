@@ -176,23 +176,45 @@ running an easy part.
 
 ## On chain
 
-48 of the 63 rounds are deployed and spent on BSV mainnet: a **257,558-byte
-locking script**, 53 tangents, 5 chords, 106 witnessed Fp2 inverses, 212
-spender-chosen numbers each bounded into [0, p).
+**The whole Miller loop is deployed and spent on BSV mainnet.** All 63 rounds:
+a **333,676-byte locking script** doing 63 tangents, 5 chords, 68 sparse line
+products, 63 Fp12 squarings and 68 witnessed Fp2 inversions — 136 numbers the
+spender chose, every one bounded into [0, p) and checked.
+
+```
+deploy  10c52d6dfb2831ecff79fe40e827695187d1e8453af845e5ab31f17a84684d20
+spend   f90cc1e3d60eecfb4f1a849dc4798db601b3085ca07a4155c4ae2d0890170d40
+```
+
+A 48-round prefix went out first, when that was what the wallet could pay for,
+and is kept:
 
 ```
 deploy  d5395e02a492a7af05e92bb01ee2b0bcc75ba2fda621420f96236e52e87ccdeb
 spend   2b81cc0811029f43c75ed9fcb355e0af4a62fbf47e0f6021ee0288d70af7101f
 ```
 
-`pairing.miller(n)` takes the round count as a parameter, so the affordable
-prefix of the loop is still a real checkable object rather than a demonstration
-— the script that went on chain is the script the test suite proves, truncated,
-and `npm run verify:chain` rebuilds it byte for byte from the code.
+`pairing.miller(n)` takes the round count as a parameter, which is what makes a
+truncated loop a real checkable object rather than a demonstration: the script
+that went on chain is the script the test suite proves, stopped at a bit.
+`npm run verify:chain` rebuilds both byte for byte from the code.
 
-The whole 63-round loop is 332,977 bytes and would cost about 34,000 satoshis
-to deploy and spend; the wallet held 30,687. Both are inside the default 500 KB
-script policy. A whole pairing, at 935,388 bytes, is not.
+Both are inside the default 500 KB script policy. A whole pairing, at 935,388
+bytes, is not — it is proven against the interpreter and cannot be relayed.
+
+### What it took to get 334 KB to relay
+
+The first attempt came back `too-long-mempool-chain`, and the fee was not the
+problem. The wallet took outputs in whatever order the indexer returned them,
+which meant sweeping up the dust left by earlier deployments — and that dust
+sits at the *end* of the unconfirmed chain those deployments built. A single
+fresh 50,000-satoshi output funds this transaction on its own; funded by three
+satoshis of dust first, it inherited fourteen links of ancestry.
+
+It also stopped funding at `satoshis + 5000`, a fine constant for a 400-byte
+covenant and nonsense for a script whose fee alone is 33,389. Both are fixed in
+`src/onchain.js`: largest-first within each confirmation status, and the fee
+sized from the script that is about to be deployed.
 
 ## The honest caveat
 

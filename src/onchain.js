@@ -90,7 +90,7 @@ function noteSpend (inputs, created) {
 
 /**
  * Everything the wallet can spend right now, indexer and local notes combined,
- * CONFIRMED FIRST.
+ * CONFIRMED FIRST and LARGEST FIRST.
  *
  * A node limits how deep an unconfirmed chain may go — deploying several
  * covenants in a row spends change that is still in the mempool, and each
@@ -101,6 +101,15 @@ function noteSpend (inputs, created) {
  *
  * So confirmed outputs are offered first, and `chainDepth()` says how deep the
  * unconfirmed run has become before a broadcast finds out the hard way.
+ *
+ * Within one confirmation status the LARGEST comes first, and that is not a
+ * preference — it is the same mempool-chain problem again. Taking outputs in
+ * whatever order an indexer returns them means sweeping up the dust left by
+ * previous deployments, and that dust sits at the END of the unconfirmed chain
+ * those deployments built. One fresh 50,000-satoshi output funds a 334 KB
+ * transaction on its own; the same transaction funded by three satoshis of dust
+ * and then that output inherits fourteen links of ancestry and comes back
+ * `too-long-mempool-chain`. Measured, on the whole Miller loop.
  */
 async function spendable (address) {
   const c = utxoCache()
@@ -109,7 +118,7 @@ async function spendable (address) {
   const all = [...indexed]
   for (const o of c.created) if (!all.some((x) => outpoint(x) === outpoint(o))) all.push(o)
   const live = all.filter((u) => !c.spent.includes(outpoint(u)))
-  return live.sort((a, b) => (b.height || 0) - (a.height || 0))
+  return live.sort((a, b) => ((b.height || 0) - (a.height || 0)) || (b.value - a.value))
 }
 
 /** How many of these outputs are still unconfirmed. */
@@ -134,8 +143,24 @@ async function buildDeploy (lockingScript, { satoshis = 1000, utxos } = {}) {
   if (!utxos) utxos = await woc.utxos(w.address)
   if (!utxos.length) throw new Error(`${w.address} holds no spendable outputs`)
 
+  // Take inputs until the fee is actually covered, and know what the fee is.
+  //
+  // This used to stop at `satoshis + 5000`, which is a fine constant for a
+  // 400-byte covenant and nonsense for a 334 KB Miller loop whose fee alone is
+  // 33,433 satoshis. It did not underfund — the library's change() would have
+  // thrown — it just kept adding inputs until it had swept the whole wallet,
+  // dust and deep mempool ancestry included. Sizing the fee from the script
+  // that is about to be deployed costs three lines and stops both.
+  const TX_OVERHEAD = 12                                 // version, counts, locktime
+  const INPUT_BYTES = 148                                // outpoint, P2PKH scriptSig, sequence
+  const OUTPUT_BYTES = lockingScript.toBuffer().length + 12
+  const CHANGE_BYTES = 34
+  const feeFor = (n) => Math.max(MIN_FEE,
+    Math.ceil((TX_OVERHEAD + n * INPUT_BYTES + OUTPUT_BYTES + CHANGE_BYTES) * SAT_PER_BYTE))
+
   const tx = new bsv.Transaction()
   let funded = 0
+  let used = 0
   for (const u of utxos) {
     tx.from({
       txId: u.tx_hash,
@@ -144,7 +169,13 @@ async function buildDeploy (lockingScript, { satoshis = 1000, utxos } = {}) {
       satoshis: u.value
     })
     funded += u.value
-    if (funded > satoshis + 5000) break
+    used++
+    if (funded >= satoshis + feeFor(used) + 546) break
+  }
+  if (funded < satoshis + feeFor(used)) {
+    throw new Error(`${w.address} holds ${funded} satoshis across ${used} output(s); ` +
+      `this deployment needs ${satoshis + feeFor(used)} — ${OUTPUT_BYTES} bytes of locking script ` +
+      `at ${SAT_PER_KB} sat/KB is ${feeFor(used)} of fee`)
   }
 
   tx.addOutput(new bsv.Transaction.Output({ script: lockingScript, satoshis }))

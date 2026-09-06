@@ -304,29 +304,30 @@ targets.pairing = (() => {
 
 // ── 9. A Miller loop, on chain ──────────────────────────────────────────────
 //
-// Not one step of one — 48 of the 63 rounds of the optimal ate pairing's Miller
-// loop, run by the Bitcoin network: 53 tangents, 5 chords, 106 witnessed Fp2
-// inverses, and every one of the 212 numbers the spender chooses bounded into
+// Not one step of one — the rounds of the optimal ate pairing's Miller loop
+// themselves, run by the Bitcoin network: tangents, chords, and one witnessed
+// Fp2 inverse per line, with every number the spender chooses bounded into
 // [0, p) before it is used.
 //
-// The whole 63-round loop is 332,977 bytes and would cost about 34,000
-// satoshis to deploy and spend. This is what the wallet could afford, and it is
-// the same script truncated — `pairing.miller(n)` takes the round count as a
-// parameter precisely so that the affordable prefix of it is still a real,
-// checkable object rather than a demonstration.
+// `pairing.miller(n)` takes the round count as a parameter, which is what makes
+// a truncated loop a real checkable object rather than a demonstration: the
+// script that goes on chain is the script the test suite proves, stopped at a
+// bit. The 48-round entry below was what the wallet could afford at the time
+// and is left exactly as deployed; the 63-round one is the whole loop.
 //
-// At 256,865 bytes the locking script is inside the default 500 KB script
-// policy. The full loop is too. A whole pairing, at 935,388, is not.
-const MILLER_ROUNDS = 48
-targets.miller = (() => {
-  const m = pairingMod.miller(MILLER_ROUNDS)
+// At 332,977 bytes the full locking script is inside the default 500 KB script
+// policy. A whole pairing, at 935,388, is not — that one is proven against the
+// interpreter by npm run pairing:prove and cannot be relayed.
+function millerTarget (rounds) {
+  const m = pairingMod.miller(rounds)
   const P = bls.G1
   const Q = bls.G2
   const values = { Px: P.x, Py: P.y, Qx0: Q.x[0], Qx1: Q.x[1], Qy0: Q.y[0], Qy1: Q.y[1] }
-  const { witnesses } = pairingMod.replay(P, Q, MILLER_ROUNDS, bls.P)
+  const { witnesses } = pairingMod.replay(P, Q, rounds, bls.P)
   witnesses.forEach(([a, b], k) => { values[`w${k}a`] = a; values[`w${k}b`] = b })
   const want = m.model(values, { n: bls.P, nn: bls.P })
   const order = m.inputs.map((i) => i.name)
+  const plan = pairingMod.schedule(rounds)
 
   const asm = new Asm()
   asm.given([
@@ -342,9 +343,12 @@ targets.miller = (() => {
   }
   asm.num(1, 'ok')
 
+  const whole = rounds === pairingMod.FULL
   return {
-    name: `pairing.miller${MILLER_ROUNDS}`,
-    claim: `${MILLER_ROUNDS} of the 63 rounds of a BLS12-381 Miller loop, run by the network`,
+    name: `pairing.miller${rounds}`,
+    claim: whole
+      ? `the whole 63-round BLS12-381 Miller loop — ${plan.length} lines, ${plan.length} witnessed inverses — run by the network`
+      : `${rounds} of the 63 rounds of a BLS12-381 Miller loop, run by the network`,
     lock: asm.script(),
     unlock: ({ sign }) => {
       const u = new bsv.Script()
@@ -352,6 +356,9 @@ targets.miller = (() => {
       return u.add(sign(owner)).add(owner.publicKey.toBuffer())
     }
   }
-})()
+}
+
+targets.miller = millerTarget(48)
+targets.millerFull = millerTarget(pairingMod.FULL)
 
 module.exports = { targets, owner, ownerPkh }
