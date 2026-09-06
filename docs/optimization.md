@@ -34,8 +34,9 @@ The pairing tower, built later, is the same techniques at a different scale:
 | three pairings, as a product | 1,346,218 |
 | the same three, separately | 2,806,002 |
 
-§10 to §16 below are what makes the difference between those last two lines, and
-§16 is the one worth reading if you read only one.
+§10 to §16 below are what makes the difference between those last two lines,
+§16 is the one worth reading if you read only one, and §17 is what happens when
+you stop asserting §16 and let the target work it out.
 
 ## 1. Reduce only where it must be canonical
 
@@ -338,6 +339,52 @@ This is the most transferable thing in this document. The cost model of a
 locking script is not the cost model of a CPU, and an optimisation that is
 received wisdom in one is sometimes backwards in the other. The way to find out
 is to emit both and count.
+
+## 17. Let the target decide — instruction selection
+
+Sixteen sections of measured before-and-after, and the honest summary of them is
+that the target's cost model is not the one the literature assumes. `npm run
+select` makes that operational: given several modules that compute the same
+function, it proves they agree and then picks by a stated objective.
+
+```
+  f ↦ f² in Fp12   —   agreement checked on 4 vectors from the cyclotomic subgroup
+    candidate        lock      unlock       total    opcodes   stack   fee
+    fp12.sqr         2,292         588       2,880      1,540      37   288
+    fp12.cycSqr      1,259         588       1,847        968      34   185  ◀
+
+  f ↦ f^|x| in Fp12   —   agreement checked on 2 vectors from the cyclotomic subgroup
+    fp12.powX       98,902         588      99,490     71,954      61 9,949
+    fp12.powXc      73,582       1,175      74,757     54,204      71 7,476  ◀
+```
+
+Nothing there was told that the cyclotomic identities or the compression win.
+It emitted both and counted, and the cost model did the rest — which is the
+difference between hard-coding "affine is better" and a target that discovers
+it. The objective is a flag: `--optimize=bytes`, `total`, `opcodes`, `stack`,
+`witness`. `total` is the one that matters for a fee, and it is the one where a
+witnessed alternative can lose: `fp12.powXc` buys 25,320 bytes of locking script
+with 587 bytes of unlocking script, and a construction with a worse ratio would
+be rejected on the same evidence.
+
+**The agreement step is the part worth stating.** A selector that picks the
+cheaper of two modules without first establishing that they compute the same
+thing is a bug generator with a benchmark attached. And comparing their MODELS
+is not enough — finding that out was the point of trying. `fp12.cycSqr`'s model
+is the general square, correct everywhere; only its emit is confined to the
+cyclotomic subgroup. Two candidates whose models agree can have scripts that do
+not. So every candidate's script is checked against its own model on every
+vector, and the models against each other, which gives
+
+```
+script_i = model_i = model_j = script_j
+```
+
+Run off the subgroup, the same two candidates are refused rather than ranked.
+That refusal is a test: `npm test` fails if it stops happening.
+
+Agreement is always agreement ON A DOMAIN, and every contest names the one its
+vectors came from. "Cheaper" without "and equivalent, here" is not a finding.
 
 ## What was tried and rejected
 

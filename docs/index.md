@@ -100,6 +100,7 @@ RSA verification is 969 bytes; SHA-256 rebuilt from primitives is 49,181; ECDSA 
 | `src/compose.js` | `all()` conjunction, `pipe()` chaining |
 | `src/recipes.js` | compositions worth a name |
 | `src/predicate.js` | a module with no outputs, as a deployable coin |
+| `src/select.js` | prove two implementations agree, then choose by a cost objective |
 | `src/index.js` | the library, and the registry the catalogue is generated from |
 | `src/onchain.js` | fund an output, spend it, verify before broadcasting |
 | `src/woc.js` | the only network this repository touches |
@@ -127,6 +128,7 @@ npm run groth16         # emit a Groth16 verifier and run it, valid proof and tw
 npm run catalog         # regenerate catalog.md from the registry
 npm run results         # measure everything into results.json
 npm run paper           # results.json, then the paper's tables
+npm run select          # prove two implementations agree, then price them
 npm run verify:chain    # every deployed txid, against the chain (needs network)
 npm run deploy          # list the deployable targets; --broadcast to send one
 node bin/sequence.js counter|budget   # run a stateful coin on chain, step by step

@@ -24,6 +24,26 @@ class Asm {
     this.stack = []            // [{ name, kind, width }] bottom -> top
     this.alt = []              // the altstack, modelled the same way
     this._frames = []
+
+    // HOW DEEP IT GOT.
+    //
+    // The interpreter caps the stack at 1000 elements, and that cap decides the
+    // shape of anything with a large witness (docs/limits.md) — so a module's
+    // peak depth is part of its cost, not a curiosity. It is recorded here
+    // because the model is already exact: every emitting method goes through
+    // `s.add`, so sampling there sees the depth after each opcode's effect on
+    // the model has been applied by the previous one. `script()` samples once
+    // more, so a peak reached by the last push is not missed.
+    this.maxStack = 0
+    this.maxAlt = 0
+    const add = this.s.add.bind(this.s)
+    this.s.add = (chunk) => { this._peak(); return add(chunk) }
+  }
+
+  _peak () {
+    if (this.stack.length > this.maxStack) this.maxStack = this.stack.length
+    if (this.alt.length > this.maxAlt) this.maxAlt = this.alt.length
+    return this
   }
 
   // ── introducing values ────────────────────────────────────────────────────
@@ -365,7 +385,7 @@ class Asm {
     return this
   }
 
-  script () { return this.s }
+  script () { this._peak(); return this.s }
   size_ () { return this.s.toBuffer().length }
   toString () {
     const show = (xs) => xs.map((v) => `${v.name}:${v.kind}${v.width !== undefined ? '[' + v.width + ']' : ''}`).join(' ')

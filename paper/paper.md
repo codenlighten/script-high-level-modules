@@ -419,6 +419,53 @@ Table 1). And compressed cyclotomic squaring, whose decompression
 inversion normally confines it to long squaring chains, pays immediately here
 (§6.1) — the same reversal, arrived at independently.
 
+## 9.1 Instruction selection: letting the target decide
+
+Stating "affine beats projective in Script" is a finding about one construction.
+Making it *operational* is a different thing, and the repository does: given
+several modules that compute the same mathematical function, `select()` proves
+they agree and then chooses by a stated objective over the cost vector
+(locking bytes, unlocking bytes, total, opcodes, peak stack depth, fee).
+
+```
+f ↦ f² in Fp12            lock     unlock      total   opcodes  stack
+  fp12.sqr               2,292        588      2,880     1,540     37
+  fp12.cycSqr            1,259        588      1,847       968     34  ◀
+
+f ↦ f^|x| in Fp12
+  fp12.powX             98,902        588     99,490    71,954     61
+  fp12.powXc            73,582      1,175     74,757    54,204     71  ◀
+```
+
+Nothing there was told that the cyclotomic identities or the compression win.
+Both were emitted and counted. This is the smallest honest form of an
+instruction-selection pass over mathematics: the same function, several
+lowerings, and a target-specific cost model choosing among them — which is what
+turns §9's observation from an assertion into a mechanism.
+
+The `total` column is where a witnessed construction can lose. `fp12.powXc`
+buys 25,320 bytes of locking script for 587 bytes of unlocking script; a
+construction with a worse ratio would be rejected on the same evidence, and the
+objective is a flag rather than an assumption.
+
+**The agreement step is the contribution, not the ranking.** A selector that
+picks the cheaper of two implementations without first establishing that they
+compute the same thing is a benchmark attached to a bug. And comparing their
+*models* is insufficient — we found this by trying it. `fp12.cycSqr`'s model is
+the general square, correct on all of Fp12; only its emitted script is confined
+to the cyclotomic subgroup. Two candidates whose models agree can have scripts
+that do not. The check therefore verifies each candidate's script against its
+own model on every vector, and the models against each other:
+
+```
+script_i = model_i = model_j = script_j
+```
+
+Run off the subgroup the same two candidates are refused rather than ranked, and
+that refusal is itself a test case. Agreement is always agreement *on a domain*,
+and each contest records the one its vectors came from; "cheaper" without "and
+equivalent, here" is not a result.
+
 ## 10. Correctness methodology
 
 1. **Independent reference.** The BigInt implementation agrees with
@@ -495,6 +542,16 @@ stages have executed" into "a pairing has executed".
 
 Beyond BLS12-381: BLS signature verification is a two-pairing product; KZG
 opening is likewise. Both land directly on the multi-pairing predicate in §7.1.
+
+Further out, §9.1 is the seed of something larger. If a target-specific cost
+model can choose between two lowerings of a squaring, it can choose between
+lowerings of anything, and the interesting object stops being any particular
+pairing implementation and becomes the compiler: a mathematical predicate in,
+a locking script out, with the choice of representation, the placement of
+witnesses and the stack schedule all decided by measurement against this target
+rather than inherited from a processor's. The results here suggest that such a
+compiler would make materially different choices from a conventional one, and
+that those choices are discoverable rather than needing to be known in advance.
 
 ## 13. Conclusion
 
