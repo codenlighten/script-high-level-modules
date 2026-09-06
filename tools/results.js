@@ -139,10 +139,19 @@ const deployments = (Array.isArray(ledger) ? ledger : ledger.deployments || []).
 //
 // The Miller loop is both: byte-identical to what the current implementation
 // emits, and rebuilt from source against the chain on every check.
+// BOTH STAGES are on chain, as two transactions. What is not is the chaining:
+// a single script that runs the loop and then feeds its twelve outputs to the
+// exponentiation is 817,031 bytes, past the policy, and has only ever run in
+// the interpreter. The gap between the two stages summed and the whole is
+// exactly that plumbing, and it is reported rather than rounded away.
 const onchain = {
   millerComplete: true,
+  finalExpComplete: true,
   millerShare: miller.bytes / e.bytes,
-  pairingShareOnChain: miller.bytes / e.bytes,
+  finalExpShare: finalExp.bytes / e.bytes,
+  stagesShareOnChain: (miller.bytes + finalExp.bytes) / e.bytes,
+  chainingBytesNotOnChain: e.bytes - miller.bytes - finalExp.bytes,
+  wholePairingInOneScript: false,
   supersededOnChain: {
     module: 'fp12.powX',
     bytes: modules['fp12.powX'].bytes,
@@ -150,8 +159,7 @@ const onchain = {
     replacementBytes: modules['fp12.powXc'].bytes,
     note: 'deployed and spent, correct, and no longer on the critical path'
   },
-  finalExpDeployable: finalExp.bytes < 500000,
-  note: 'the Miller-loop stage is complete on chain and is what the implementation still emits; the final exponentiation is now under the script-size policy and has not been deployed'
+  note: 'both stages of a pairing have executed on mainnet as separate transactions; the script that chains them is past the size policy and has run only in the interpreter'
 }
 
 // ── operation counts, from running a real pairing ───────────────────────────

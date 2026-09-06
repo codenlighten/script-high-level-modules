@@ -179,6 +179,16 @@ f ↦ f^|x| in Fp12 — the ladder a final exponentiation runs five times
 | deploy | [`1caac568ad58e9049ce4760d2998c31cef57045f84cb03c170a3243fdb936958`](https://whatsonchain.com/tx/1caac568ad58e9049ce4760d2998c31cef57045f84cb03c170a3243fdb936958) |
 | spend | [`0025ca4c616f9ea2bd5ccbc7a03e12ed3cf434003bc4b490609cae995c8d2cfb`](https://whatsonchain.com/tx/0025ca4c616f9ea2bd5ccbc7a03e12ed3cf434003bc4b490609cae995c8d2cfb) |
 
+### pairing.finalExp
+
+the whole final exponentiation of a BLS12-381 pairing, run by the network
+
+| | |
+| --- | --- |
+| locking script | 474,207 bytes |
+| deploy | [`038dbe94167beee28ad273f3e2d66dcda6098a5cbe0c1613109621352088b5f4`](https://whatsonchain.com/tx/038dbe94167beee28ad273f3e2d66dcda6098a5cbe0c1613109621352088b5f4) |
+| spend | [`1b1d0f042b863cdc9ce33cdac0893db77da9c05a3eac91bb462364073fae3c90`](https://whatsonchain.com/tx/1b1d0f042b863cdc9ce33cdac0893db77da9c05a3eac91bb462364073fae3c90) |
+
 ## What this does and does not show
 
 It shows that these scripts are **relayable and spendable on mainnet today**: the

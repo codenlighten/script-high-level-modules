@@ -31,11 +31,12 @@ inversion is four multiplications and the received wisdom is a CPU's, not a
 locking script's.** With what was tried and rejected, including two failed
 attempts at a formula that were thrown away rather than published.
 
-**[mainnet.md](mainnet.md)** — the thirteen that are deployed and spent on BSV
+**[mainnet.md](mainnet.md)** — the fifteen that are deployed and spent on BSV
 mainnet, generated from `deployments.json` and checked against the chain, and
 the exact limits of what that shows: relayable and spendable today, which is not
-the same as cryptographically sound. The largest is a 333,676-byte locking
-script running the whole Miller loop of a BLS12-381 pairing.
+the same as cryptographically sound. The two largest are both stages of a
+BLS12-381 pairing: a 333,676-byte Miller loop and a 474,207-byte final
+exponentiation.
 
 **[catalog.md](catalog.md)** — every module, generated from the registry: what
 it takes, what it returns, and which of its inputs the *spender* supplies. That
@@ -47,9 +48,9 @@ verification reduces to field arithmetic" is true and is not a number. It is
 817,031 bytes, and it is not arrived at by counting: `npm run pairing:prove`
 emits the whole pairing as one locking script and runs it through the
 interpreter. A Groth16 verifier is 1,240,810 and `npm run groth16` runs that
-too, accepting a valid proof and refusing two forged ones. The Miller loop is on
-mainnet, and compressed squaring has brought the final exponentiation under the
-script-size policy as well.
+too, accepting a valid proof and refusing two forged ones. Both stages are on mainnet — the Miller loop, and
+the final exponentiation, which reached the chain only because compressed
+cyclotomic squaring took it under the script-size policy.
 
 **[../paper/paper.md](../paper/paper.md)** — the preprint draft: what was
 computed, under what assumptions, how correctness was established, what the

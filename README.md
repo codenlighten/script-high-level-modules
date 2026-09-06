@@ -36,21 +36,22 @@ node examples/oracle-lock.js     # a coin an oracle's ordinary secp256k1 key unl
 
 ## On chain
 
-Fourteen of these are deployed and spent on BSV mainnet, and the first five are
-**confirmed in block 965487**. The largest is the **complete 63-round Miller
-loop of a BLS12-381 pairing** — a 333,676-byte locking script doing 63 tangents,
-5 chords, 68 sparse line products and 68 witnessed Fp2 inversions in a field
-Bitcoin has no opcode for. Alongside it is `fp12.powX`, one of the five ladders
-the final exponentiation runs, at 99,631 bytes.
+Fifteen of these are deployed and spent on BSV mainnet, and the first five are
+**confirmed in block 965487**. The two largest are the **complete 63-round
+Miller loop of a BLS12-381 pairing** — 333,676 bytes, 63 tangents, 5 chords, 68
+sparse line products and 68 witnessed Fp2 inversions — and the **complete final
+exponentiation**, 474,207 bytes, in a field Bitcoin has no opcode for.
 
-Precisely: the Miller-loop stage is complete on chain, and **40.8% of a whole
-pairing by bytes has been executed by the network** — measured against the
-emitted pairing, not against the sum of its two stages, which is smaller and
-would have flattered the number. Compressed squaring has since brought the
-final exponentiation to 473,466 bytes, **under the 500 KB script policy**, so
-both stages are now individually relayable; deploying the second is a funding
-question. A whole pairing in one script, at 817,031, is still past it. Two of
-the deployments are not single spends but **sequences** — a
+**Both stages of a BLS12-381 pairing have executed on the network** — the
+complete Miller loop at 333,676 bytes and the complete final exponentiation at
+474,207 — which is 98.7% of a pairing by bytes, in two transactions. The second
+reached the chain only because compressed cyclotomic squaring took it from
+592,008 bytes to 473,466, across the 500 KB policy boundary.
+
+What has *not* run on chain is the chaining: a pairing in one script is 817,031
+bytes, past the policy, and the 10,588 bytes by which the whole exceeds its two
+stages are exactly that plumbing. Two of the deployments are not single spends
+but **sequences** — a
 coin advancing its own counter 0 → 1 → 2 → 3, and a coin paying three different
 people out of an allowance that falls 1500 → 900 → 400 → 0. In each, every
 transaction pays the output the next one consumes, so the state is not recorded

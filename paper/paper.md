@@ -24,18 +24,21 @@ spender and verified algebraically: `z = a⁻¹ (mod p)` becomes the constraint
 `a·z ≡ 1 (mod p)`, with `z` bounded into `[0, p)` so that no second witness
 encodes the same value.
 
-**A complete 63-round BLS12-381 Miller loop was deployed and spent on Bitcoin SV
-mainnet as a 333,676-byte locking script** — 40.8% of a pairing by bytes, and
-the whole of its first stage. A 99,631-byte `f ↦ f^|x|` exponentiation ladder
-was deployed and spent independently.
+**Both stages of a BLS12-381 pairing were deployed and spent on Bitcoin SV
+mainnet**, as two transactions: the complete 63-round Miller loop as a
+333,676-byte locking script, and the complete final exponentiation as a
+474,207-byte one. That is 98.7% of a pairing by bytes.
 
-We then introduce a 2/6 compressed representation of the cyclotomic subgroup
-whose squaring is closed by construction, with a decompression derived from
-f·f̄ = 1 as two linear equations over Fp2. This reduces the final exponentiation
-from 592,008 to **473,466 bytes — below the default 500,000-byte script
-policy** — so both stages of a pairing are now individually relayable. A whole
-pairing in one script is 817,031 bytes and remains above it; it is validated
-against `bsv.Script.Interpreter`.
+The second was made possible by a 2/6 compressed representation of the
+cyclotomic subgroup whose squaring is closed by construction, with a
+decompression derived from f·f̄ = 1 as two linear equations over Fp2. It reduces
+the final exponentiation from 592,008 to 473,466 bytes, across the default
+500,000-byte script policy boundary.
+
+What has not executed on chain is the *chaining*: a single script running the
+loop and feeding its twelve outputs to the exponentiation is 817,031 bytes, past
+the policy, and the 10,588 bytes by which the whole exceeds its two stages are
+exactly that plumbing. It is validated against `bsv.Script.Interpreter`.
 
 We construct a Groth16 verification predicate of 1,240,810 bytes and 774,756
 opcodes that accepts a valid proof and rejects invalid proofs whose curve
@@ -75,10 +78,9 @@ The contributions are:
 2. **A witness-assisted arithmetic model** in which the spender computes
    expensive values and the script verifies algebraic identities, with the
    canonicity obligation that makes this sound (§3).
-3. **Empirical mainnet execution** of the complete Miller-loop stage and of one
-   exponentiation ladder, with byte-exact reconstruction from source (§8).
-   Compressed squaring subsequently brings the final exponentiation under the
-   script-size policy, making both stages individually relayable (§6.1).
+3. **Empirical mainnet execution of both stages** of a pairing, as two
+   transactions, with byte-exact reconstruction from source (§8). The final
+   exponentiation reaches the network only because of the compression in §6.1.
 4. **A multi-pairing result**: k pairings sharing one Miller accumulator, with
    measured savings (§7).
 5. **A Groth16 verifier** and the precise separation between the values a
@@ -285,8 +287,8 @@ halved.
 | e(P, Q), after | 817,031 |
 
 25.5% off a ladder, 20.0% off the final exponentiation, 12.6% off a pairing —
-and the exponentiation crosses the 500,000-byte policy boundary, so both stages
-of a pairing are individually relayable.
+and the exponentiation crosses the 500,000-byte policy boundary — which is why
+it is on mainnet and not only in the interpreter.
 
 The determinant ξ·c₁ₛc₂ₛ − c₁ᵣc₂ᵣ can vanish, and then nothing is recovered.
 That is a **completeness** limit, not a soundness one: it cannot make a wrong
@@ -356,16 +358,19 @@ they are malformed has not been shown to check the intended relation.
 See **Table 5** and **Table 7**.
 
 The complete Miller loop was deployed as a 333,676-byte locking script and
-spent. One `f ↦ f^|x|` ladder was deployed as 99,631 bytes and spent. Each
-deployed script is rebuilt from source and compared byte for byte against the
-chain; 14 of 14 reconstruct exactly.
+spent. One `f ↦ f^|x|` ladder was deployed as 99,631 bytes and spent. Each deployed script is rebuilt from source and compared byte for byte against
+the chain; 15 of 15 reconstruct exactly.
 
-**Scope.** 40.8% of one pairing by bytes has executed on the network, and it is
-the Miller-loop stage, complete and byte-identical to what the implementation
-still emits. The deployed `fp12.powX` is a correct ladder the network executed
-and is no longer on the critical path — §6.1 replaced it — so its bytes are not
-counted toward that figure. The final exponentiation is now 473,466 bytes,
-below the policy boundary, and has not been deployed.
+**Scope.** 98.7% of one pairing by bytes has executed on the network, in two
+transactions: the Miller-loop stage complete, and the final exponentiation
+complete. Neither figure includes the deployed `fp12.powX`, a correct
+uncompressed ladder the network also executed and which §6.1 has since taken off
+the critical path; counting a superseded version would inflate the number.
+
+What remains is the 10,588 bytes of chaining between the stages. A pairing in
+one script is 817,031 bytes and past the policy, so the composition itself has
+run only in the interpreter. "Both stages have executed on mainnet" is the
+claim; "a pairing has executed on mainnet" is not.
 
 ### 8.1 Systems findings
 
@@ -458,10 +463,9 @@ with `results.json`.
 ## 11. Limitations
 
 - **A complete pairing has not executed on mainnet** in a single script and
-  cannot at 817,031 bytes under a 500,000-byte script policy. It is validated
-  against the interpreter.
-- **The final exponentiation has not executed on mainnet.** It now fits under
-  the policy at 473,466 bytes; it has not been deployed.
+  cannot at 817,031 bytes under a 500,000-byte script policy. Both of its stages
+  have, separately; the 10,588 bytes that chain them have run only in the
+  interpreter.
 - **`fp12.powX` is deployed but superseded.** It computes a correct f^|x| and
   the network executed it; `fp12.powXc` replaced it, so it is not a component of
   the pairing measured here and its bytes are not counted as such.
@@ -485,8 +489,9 @@ effort belongs, though §6.1 has taken it below the policy boundary. Better
 addition chains, further witness-assisted subcomputations and transaction-level
 decomposition across several outputs are all open. Whether a whole pairing can
 be brought under the boundary in one script is an engineering question, not an
-expressiveness one; the immediate next step is simply to deploy the final
-exponentiation, which now fits.
+expressiveness one. Bringing the chaining under the boundary — which is a
+further 344,000 bytes off the two stages together — is what would turn "both
+stages have executed" into "a pairing has executed".
 
 Beyond BLS12-381: BLS signature verification is a two-pairing product; KZG
 opening is likewise. Both land directly on the multi-pairing predicate in §7.1.

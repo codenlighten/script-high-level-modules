@@ -294,13 +294,25 @@ The precise position:
 | | bytes | share of a pairing | where |
 | --- | ---: | ---: | --- |
 | Miller loop, complete | 332,977 | 40.8% | **mainnet** |
-| final exponentiation | 473,466 | 57.9% | under policy, not deployed |
-| e(P, Q) | 817,031 | 100% | interpreter |
+| final exponentiation, complete | 473,466 | 57.9% | **mainnet** |
+| e(P, Q) in one script | 817,031 | 100% | interpreter |
 | `fp12.powX`, superseded | 98,902 | — | mainnet |
 
-**40.8% of one pairing, by bytes, has been executed by the Bitcoin network**,
-and it is the Miller-loop stage, complete and byte-identical to what the
-implementation still emits.
+**Both stages of a BLS12-381 pairing have been executed by the Bitcoin
+network**, as two transactions — 98.7% of one pairing by bytes.
+
+```
+Miller loop           deploy 10c52d6dfb2831ecff79fe40e827695187d1e8453af845e5ab31f17a84684d20
+                      spend  f90cc1e3d60eecfb4f1a849dc4798db601b3085ca07a4155c4ae2d0890170d40
+final exponentiation  deploy 038dbe94167beee28ad273f3e2d66dcda6098a5cbe0c1613109621352088b5f4
+                      spend  1b1d0f042b863cdc9ce33cdac0893db77da9c05a3eac91bb462364073fae3c90
+```
+
+What has **not** run on chain is the chaining. A single script that runs the
+loop and feeds its twelve outputs to the exponentiation is 817,031 bytes, past
+the policy, and the **10,588 bytes** by which the whole exceeds its two stages
+are exactly that plumbing. "Both stages have executed on mainnet" is the claim.
+"A pairing has executed on mainnet" is not.
 
 The last row carries its own caveat. `fp12.powX` — one uncompressed f^|x| ladder
 — was deployed and spent and is correct, and it is no longer what the
@@ -314,17 +326,16 @@ pairing rather than against the sum of its parts, which is smaller and would
 have flattered them. Every figure here is generated into `results.json` by
 `npm run results`, and `npm test` checks it.
 
-**The final exponentiation is now under the 500,000-byte script policy.** Both
-stages of a pairing are individually relayable; only a whole pairing in one
-script is not. Deploying it is a funding question, not a technical one.
+Compressed squaring is what put the second one there: the final exponentiation
+was 592,008 bytes before it and 473,466 after, which is the difference between
+over the 500,000-byte policy boundary and under it.
 
 The Miller-loop stage is complete and that is the substantive claim. The final
 exponentiation additionally needs four more of those ladders, an easy part —
 f ↦ conj(f)·f⁻¹ then φ²(·)·(·), with the pairing's single witnessed Fp12
 inversion in it — and 15 term combinations over 19 Frobenius applications. At
-473,466 bytes — after §"compressed squaring" below — it is now UNDER the 500 KB
-script policy and could be deployed. That has not been done, and it is a funding
-question rather than a technical one.
+473,466 bytes it is under the 500 KB script policy, and it has been deployed and
+spent.
 
 A 48-round prefix went out first, when that was what the wallet could pay for,
 and is kept:
@@ -360,7 +371,7 @@ sized from the script that is about to be deployed.
 
 At 817 KB a pairing is past the default 500 KB script policy, and so is a
 Groth16 verifier at 1.24 MB. The Miller loop at 333 KB is not, and is on chain;
-the final exponentiation at 473 KB is not either, and has not been deployed. Neither is standard relay today. That is a policy
+the final exponentiation at 473 KB is not either, and is also on chain. Neither is standard relay today. That is a policy
 number, not a consensus one, and it is the kind of number that moves; the
 arithmetic underneath it is what this measures, and the arithmetic does not
 change when the policy does.

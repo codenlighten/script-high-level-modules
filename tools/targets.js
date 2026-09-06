@@ -408,4 +408,52 @@ targets.powX = (() => {
   }
 })()
 
+// ── 11. The final exponentiation ────────────────────────────────────────────
+//
+// The second stage of a pairing, whole: the easy part — f ↦ conj(f)·f⁻¹ then
+// φ²(·)·(·), containing the single Fp12 inversion a pairing needs — and then
+// λ = 3(p⁴ − p² + 1)/r as fifteen terms over five shared f^|x| ladders.
+//
+// It fits under the 500 KB script policy only because the ladders square in the
+// COMPRESSED cyclotomic representation: four Fp2 coefficients instead of six,
+// with a decompression before each multiplication whose Fp2 inversion is a
+// witness. 592,008 bytes before that, 473,466 after.
+//
+// With the Miller loop already deployed, this puts BOTH STAGES of a BLS12-381
+// pairing on the network — as two transactions. A whole pairing in one script
+// is 817,031 bytes and is still past the policy.
+targets.finalExp = (() => {
+  const m = pairingMod.finalExp
+  const f = bls.millerLoop(bls.G1, bls.G2)
+  const values = { ...pairingMod.spread(bls.X < 0n ? bls.f12conj(f) : f, 'f') }
+  Object.assign(values, m.hint(values, { n: bls.P, nn: bls.P }))
+  const want = m.model(values, { n: bls.P, nn: bls.P })
+  const order = m.inputs.map((i) => i.name)
+
+  const asm = new Asm()
+  asm.given([
+    ...order.map((name) => ({ name, kind: 'num' })),
+    { name: 'sig', kind: 'bytes' }, { name: 'pubkey', kind: 'bytes' }
+  ])
+  ownedBy(asm)
+  m.emit(asm, { n: bls.P, nn: bls.P })
+  for (const name of fp12.twelve('r')) {
+    asm.roll(name)
+    asm.num(want[name], '_want')
+    asm.numEqualVerify()
+  }
+  asm.num(1, 'ok')
+
+  return {
+    name: 'pairing.finalExp',
+    claim: 'the whole final exponentiation of a BLS12-381 pairing, run by the network',
+    lock: asm.script(),
+    unlock: ({ sign }) => {
+      const u = new bsv.Script()
+      for (const name of order) u.add(pushNum(values[name]))
+      return u.add(sign(owner)).add(owner.publicKey.toBuffer())
+    }
+  }
+})()
+
 module.exports = { targets, owner, ownerPkh }

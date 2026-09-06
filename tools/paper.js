@@ -114,23 +114,27 @@ could choose one satisfying the equation for a proof of nothing.
 | | bytes | share of a pairing | status |
 | --- | ---: | ---: | --- |
 | Miller loop, complete | ${n(r.pairing.miller.bytes)} | ${pct(r.pairing.onchain.millerShare)} | **mainnet** |
-| final exponentiation, whole | ${n(r.pairing.finalExp.bytes)} | ${pct(r.pairing.finalExp.bytes / r.pairing.e.bytes)} | ${r.pairing.onchain.finalExpDeployable ? 'under policy, not deployed' : 'interpreter'} |
-| e(P, Q), whole | ${n(r.pairing.e.bytes)} | 100% | interpreter |
+| final exponentiation, complete | ${n(r.pairing.finalExp.bytes)} | ${pct(r.pairing.onchain.finalExpShare)} | **mainnet** |
+| e(P, Q) in one script | ${n(r.pairing.e.bytes)} | 100% | interpreter |
 | \`fp12.powX\`, superseded | ${n(r.pairing.onchain.supersededOnChain.bytes)} | — | mainnet |
 
-**${pct(r.pairing.onchain.pairingShareOnChain)} of one pairing, by bytes, has been executed by the Bitcoin network**,
-and it is the Miller-loop stage, complete.
+**Both stages of a BLS12-381 pairing have executed on the Bitcoin network**, as
+two transactions: ${pct(r.pairing.onchain.stagesShareOnChain)} of one pairing by bytes.
 
-The last row needs its caveat. \`fp12.powX\` — one f^|x| ladder, uncompressed —
-was deployed and spent, and it is correct. It is no longer what the
-implementation does: \`fp12.powXc\` replaced it at ${n(r.pairing.onchain.supersededOnChain.replacementBytes)} bytes, and the
-final exponentiation calls that. Counting its bytes toward "a pairing on chain"
-would be counting a version that no longer exists, so the figure above does not.
+What has **not** run on chain is the chaining. A single script that runs the
+loop and feeds its twelve outputs to the exponentiation is ${n(r.pairing.e.bytes)} bytes — past
+the ${n(r.scriptPolicyBytes)}-byte policy — and the ${n(r.pairing.onchain.chainingBytesNotOnChain)} bytes by which the whole exceeds
+its two stages are exactly that plumbing. It has run only in the interpreter.
 
-The default script-size policy is ${n(r.scriptPolicyBytes)} bytes. Compressed squaring brought
-the final exponentiation to ${n(r.pairing.finalExp.bytes)}, **under that boundary**, so both stages
-of a pairing are now individually relayable; only the whole pairing in one
-script (${n(r.pairing.e.bytes)}) is not.
+The last row carries its own caveat. \`fp12.powX\` — one f^|x| ladder,
+uncompressed — was deployed and spent and is correct, and it is no longer what
+the implementation does: \`fp12.powXc\` replaced it at ${n(r.pairing.onchain.supersededOnChain.replacementBytes)} bytes. Counting
+its bytes toward a pairing on chain would be counting a version that no longer
+exists, so the figure above does not.
+
+Compressed squaring is what made the second row possible: the final
+exponentiation was ${n(592008)} bytes before it and is ${n(r.pairing.finalExp.bytes)} after, which is the
+difference between over the policy boundary and under it.
 
 ## Table 6 — field operations per pairing
 
@@ -171,7 +175,8 @@ const PROSE = {
   'script policy': n(r.scriptPolicyBytes),
   'saving on two pairings': n(r.pairing.products[1].saved),
   'saving on three pairings': n(r.pairing.products[2].saved),
-  'share of a pairing on chain': pct(r.pairing.onchain.pairingShareOnChain),
+  'stages on chain, as a share': pct(r.pairing.onchain.stagesShareOnChain),
+  'chaining not on chain': n(r.pairing.onchain.chainingBytesNotOnChain),
   'final exponentiation as a share': pct(r.pairing.finalExp.bytes / r.pairing.e.bytes),
   'fp12.mul, marginal': n(M('fp12.mul').marginal),
   'fp12.sqr, marginal': n(M('fp12.sqr').marginal),

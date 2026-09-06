@@ -1,6 +1,6 @@
 {
   "generated": "2026-09-06",
-  "commit": "3f56d5ff2386738a6e05c2ecea24183c6a2a10fd",
+  "commit": "0b19b3e0ee9fdf47d6b676e2a0b192f3963db765",
   "curve": {
     "name": "BLS12-381",
     "p": "0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab",
@@ -221,8 +221,12 @@
     },
     "onchain": {
       "millerComplete": true,
+      "finalExpComplete": true,
       "millerShare": 0.40754512374683455,
-      "pairingShareOnChain": 0.40754512374683455,
+      "finalExpShare": 0.5794957596468188,
+      "stagesShareOnChain": 0.9870408833936534,
+      "chainingBytesNotOnChain": 10588,
+      "wholePairingInOneScript": false,
       "supersededOnChain": {
         "module": "fp12.powX",
         "bytes": 98902,
@@ -230,8 +234,7 @@
         "replacementBytes": 73582,
         "note": "deployed and spent, correct, and no longer on the critical path"
       },
-      "finalExpDeployable": true,
-      "note": "the Miller-loop stage is complete on chain and is what the implementation still emits; the final exponentiation is now under the script-size policy and has not been deployed"
+      "note": "both stages of a pairing have executed on mainnet as separate transactions; the script that chains them is past the size policy and has run only in the interpreter"
     }
   },
   "operations": {
@@ -377,6 +380,12 @@
       "lockBytes": 99631,
       "deploy": "1caac568ad58e9049ce4760d2998c31cef57045f84cb03c170a3243fdb936958",
       "spend": "0025ca4c616f9ea2bd5ccbc7a03e12ed3cf434003bc4b490609cae995c8d2cfb"
+    },
+    {
+      "claim": "the whole final exponentiation of a BLS12-381 pairing, run by the network",
+      "lockBytes": 474207,
+      "deploy": "038dbe94167beee28ad273f3e2d66dcda6098a5cbe0c1613109621352088b5f4",
+      "spend": "1b1d0f042b863cdc9ce33cdac0893db77da9c05a3eac91bb462364073fae3c90"
     }
   ]
 }
