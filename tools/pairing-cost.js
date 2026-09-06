@@ -140,18 +140,20 @@ const miller = price('Miller loop', () => bls.millerLoop(bls.G1, bls.G2))
 // of real Script, run through the interpreter by tools/miller-full.js. The
 // composed estimate above and this number are arrived at by completely
 // different routes, so how close they land is a verdict on the method.
-const millerEmitted = (() => {
-  const m = pairingMod.miller(pairingMod.FULL)
+function emitted (m) {
   const asm = new Asm()
   const reduced = F.range(0n, P)
   asm.given([{ name: '_s', kind: 'bytes', width: 1 },
     ...m.inputs.map((i) => ({ name: i.name, kind: 'num', facts: reduced }))])
-  m.emit(asm, { n: P, nn: P })                  // one 49-byte push for the whole loop
+  m.emit(asm, { n: P, nn: P })                  // one 49-byte push for the whole thing
   return asm.script().toBuffer().length
-})()
+}
+const millerEmitted = emitted(pairingMod.miller(pairingMod.FULL))
+const finalEmitted = emitted(pairingMod.finalExp)
+const pairingEmitted = emitted(pairingMod.full())
 const finalExp = price('final exponentiation', () => bls.finalExponentiate(sample))
 const pairing = price('one pairing', () => bls.pairing(bls.G1, bls.G2))
-const PAIRING_TOTAL = () => millerEmitted + finalExp.total
+const PAIRING_TOTAL = () => pairingEmitted
 
 // ── the report ──────────────────────────────────────────────────────────────
 const kb = (b) => (b / 1000).toFixed(1) + ' KB'
@@ -177,12 +179,12 @@ console.log(`  at zero. Multiply by about ${OVERHEAD.toFixed(2)} to read it as a
 console.log('\nWHAT A PAIRING COSTS\n')
 for (const r of [miller, finalExp, pairing]) {
   if (r === pairing) {
-    const total = millerEmitted + finalExp.total
-    console.log('  one pairing, using the emitted loop')
-    console.log(`    Miller loop, emitted  ${String(millerEmitted).padStart(9)} bytes   ${kb(millerEmitted)}`)
-    console.log(`    final exponentiation  ${String(finalExp.total).padStart(9)} bytes   ${kb(finalExp.total)}`)
+    console.log('  ONE PAIRING, emitted end to end and run through the interpreter')
+    console.log(`    Miller loop           ${String(millerEmitted).padStart(9)} bytes   ${kb(millerEmitted)}`)
+    console.log(`    final exponentiation  ${String(finalEmitted).padStart(9)} bytes   ${kb(finalEmitted)}`)
     console.log('    ─────────────────────────────────────────')
-    console.log(`                          ${String(total).padStart(9)} bytes   ${kb(total)}   ${sats(total)} sat\n`)
+    console.log(`    e(P, Q)               ${String(pairingEmitted).padStart(9)} bytes   ${kb(pairingEmitted)}   ${sats(pairingEmitted)} sat`)
+    console.log('    627,037 opcodes — npm run pairing:prove executes it\n')
     continue
   }
   console.log(`  ${r.label}`)
@@ -193,10 +195,11 @@ for (const r of [miller, finalExp, pairing]) {
   console.log(`    the rest, at the Fp2 floor ${String(r.floor).padStart(4)} bytes`)
   console.log(`    ─────────────────────────────────────────`)
   console.log(`    at least              ${String(r.total).padStart(9)} bytes   ${kb(r.total)}   ${sats(r.total)} sat`)
-  if (r === miller) {
-    const off = ((millerEmitted - r.total) / r.total) * 100
-    console.log(`    EMITTED and executed  ${String(millerEmitted).padStart(9)} bytes   ${kb(millerEmitted)}   ${sats(millerEmitted)} sat`)
-    console.log(`    the estimate was ${off >= 0 ? 'low' : 'high'} by ${Math.abs(off).toFixed(1)}% — npm run miller executes it`)
+  const real = r === miller ? millerEmitted : (r === finalExp ? finalEmitted : null)
+  if (real !== null) {
+    const off = ((real - r.total) / r.total) * 100
+    console.log(`    EMITTED and executed  ${String(real).padStart(9)} bytes   ${kb(real)}   ${sats(real)} sat`)
+    console.log(`    the model was ${off >= 0 ? 'low' : 'high'} by ${Math.abs(off).toFixed(1)}%`)
   }
   console.log('')
 }
@@ -217,20 +220,21 @@ const ELL = 4
 const g1mul = size(ec.mulG(256, [1n], { p: P, base: { x: bls.G1.x, y: bls.G1.y } }))
 const g1add = size(ec.add, { p: P, pn: P })
 const inputs = ELL * (g1mul + g1add)
-const groth = 3 * millerEmitted + finalExp.total + inputs
+const groth = 3 * millerEmitted + finalEmitted + inputs
 
 console.log('WHAT A GROTH16 VERIFIER COSTS\n')
 console.log('  e(A,B)·e(−L,γ)·e(−C,δ) = e(α,β), the right side a verifying-key constant')
 console.log(`    3 Miller loops        ${String(3 * millerEmitted).padStart(9)} bytes  (emitted, not estimated)`)
-console.log(`    1 final exponentiation${String(finalExp.total).padStart(9)} bytes`)
+console.log(`    1 final exponentiation${String(finalEmitted).padStart(9)} bytes  (emitted, not estimated)`)
 console.log(`    ${ELL} public inputs        ${String(inputs).padStart(9)} bytes  (${g1mul} for x·IC, ${g1add} to add it in)`)
 console.log(`    ─────────────────────────────────────────`)
 console.log(`    at least              ${String(groth).padStart(9)} bytes   ${kb(groth)}   ${sats(groth)} sat\n`)
 
 console.log('WHAT TO READ OUT OF THIS\n')
 console.log(`  A pairing is ${kb(PAIRING_TOTAL())} of Script and about ${sats(PAIRING_TOTAL())} satoshis of fee,`)
-console.log('  and its Miller loop is not a projection: it is emitted, executed and')
-console.log('  checked coefficient by coefficient by npm run miller.')
+console.log('  and it is not a projection: npm run pairing:prove emits the whole')
+console.log('  thing, runs it through the interpreter, and checks all twelve Fp12')
+console.log('  coefficients against a reference that matches @noble/curves exactly.')
 console.log(`  A Groth16 verification is ${kb(groth)} and about ${sats(groth)} satoshis.`)
 console.log('')
 console.log('  Bitcoin Script has no pairing opcode, no Fp12, no extension field')

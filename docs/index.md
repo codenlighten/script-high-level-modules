@@ -37,8 +37,9 @@ last column is the one to read first.
 **[pairing.md](pairing.md)** — what a BLS12-381 pairing costs in Script. The one
 claim this repository could not put a number on for a long time — "ZK
 verification reduces to field arithmetic" is true and is not a number. It is
-978 KB, and a Groth16 verifier is 1.80 MB, arrived at by counting the operations
-a verified pairing performs and measuring the modules that perform them.
+935,334 bytes, and it is not arrived at by counting: `npm run pairing:prove`
+emits the whole pairing as one locking script and runs it through the
+interpreter. A Groth16 verifier is about 1.75 MB.
 
 **[cost.md](cost.md)** — what every module costs, generated from the code. RSA
 verification is 955 bytes; SHA-256 rebuilt from primitives is 49,181; ECDSA over
@@ -95,6 +96,7 @@ npm run merkle          # the tree against the library's own block merkle tree
 npm run malleability    # RSA's s + n and ECDSA's n − s, with the rule on and off
 npm run cost            # regenerate cost.md from the code
 npm run pairing         # what a BLS12-381 pairing costs, from first principles
+npm run pairing:prove   # emit e(P, Q) and run it through the interpreter
 npm run catalog         # regenerate catalog.md from the registry
 npm run verify:chain    # every deployed txid, against the chain (needs network)
 npm run deploy          # list the deployable targets; --broadcast to send one

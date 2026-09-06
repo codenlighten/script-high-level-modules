@@ -85,6 +85,10 @@ function replay (P, Q, rounds, n) {
   return { f, T, witnesses }
 }
 
+const unspread = (v, p) => {
+  const g = (i) => v[twelve(p)[i]]
+  return [[[g(0), g(1)], [g(2), g(3)], [g(4), g(5)]], [[g(6), g(7)], [g(8), g(9)], [g(10), g(11)]]]
+}
 const spread = (f, p) => {
   const out = {}
   twelve(p).forEach((name, i) => { out[name] = f[i < 6 ? 0 : 1][Math.floor((i % 6) / 2)][i % 2] })
@@ -202,4 +206,187 @@ function miller (rounds = FULL, opts = {}) {
   })
 }
 
-module.exports = { miller, schedule, replay, FULL, BITS }
+// ── THE FINAL EXPONENTIATION, emitted ───────────────────────────────────────
+//
+// f ↦ f^(3(p¹² − 1)/r), in two halves.
+//
+// The EASY part is f^(p⁶ − 1)(p² + 1), which is conj(f)·f⁻¹ followed by
+// φ²(·)·(·). One inversion in the whole pairing, and it is a witness. After it
+// the value lies in the cyclotomic subgroup, where squaring is half price and
+// inversion is conjugation — and every negative digit below becomes free.
+//
+// The HARD part is λ = 3(p⁴ − p² + 1)/r, written as fifteen terms a·y^j·p^i
+// with |a| ≤ 3, y the 63-bit curve parameter and p a Frobenius. Six shared
+// ladders — r, r^y, r^y², … r^y⁵ — and the terms are assembled from those.
+// The digits are derived in bls12381.js, not transcribed.
+//
+// The ladder here is MSB-first and unrolled, so it costs 63 squarings and 5
+// multiplications for each exponentiation by y. The JavaScript reference runs
+// LSB-first from an accumulator of one and pays 64 and 6, the extra multiply
+// being by one — which is free to compute and is not free to emit.
+
+const F12SUF = ['A00', 'A01', 'A10', 'A11', 'A20', 'A21', 'B00', 'B01', 'B10', 'B11', 'B20', 'B21']
+let uid = 0
+const tmp = () => `_e${uid++}`
+const copy12 = (asm, from, to = tmp()) => { for (const x of F12SUF) asm.pick(from + x, to + x); return to }
+const call12 = (asm, m, p, ins, out = tmp(), flat = []) => {
+  apply(asm, m, p, [...ins.flatMap(twelve), ...flat], twelve(out))
+  return out
+}
+
+/** x^y for the 63-bit curve parameter: unrolled square-and-multiply, x kept. */
+function powY (asm, p, base) {
+  const bits = bls.Y.toString(2)
+  let acc = copy12(asm, base)                                   // the leading 1 bit
+  for (let i = 1; i < bits.length; i++) {
+    acc = call12(asm, fp12.cycSqr, p, [acc])
+    if (bits[i] === '1') acc = call12(asm, fp12.mul, p, [acc, copy12(asm, base)])
+  }
+  return acc
+}
+
+/** x^a for |a| ≤ 3, consuming x. A negative a is a conjugation, not an inverse. */
+function smallPow (asm, p, x, a) {
+  const mag = a < 0n ? -a : a
+  let acc = x
+  if (mag === 2n) acc = call12(asm, fp12.cycSqr, p, [acc])
+  else if (mag === 3n) acc = call12(asm, fp12.mul, p, [call12(asm, fp12.cycSqr, p, [copy12(asm, acc)]), acc])
+  else if (mag !== 1n) throw new Error(`pairing.finalExp: a digit of ${a} is not one of the small ones this was built for`)
+  return a < 0n ? call12(asm, fp12.conj, p, [acc]) : acc
+}
+
+const finalExp = defineModule({
+  name: 'pairing.finalExp',
+  doc: 'f ↦ f^(3(p¹² − 1)/r) — the final exponentiation, easy part and hard part',
+  inputs: [...twelve('f'), ...twelve('inv').map((name) => ({ name, witness: true }))],
+  outputs: twelve('r'),
+  maxWitnessAttacks: 4,
+  requires: ({ nn = P381 }) => {
+    const r = { range: { lo: 0n, hi: nn } }
+    const out = {}
+    for (const k of twelve('f')) out[k] = r
+    return out
+  },
+  ensures: ({ nn = P381 }) => {
+    const r = { range: { lo: 0n, hi: nn } }
+    const out = {}
+    for (const k of twelve('r')) out[k] = r
+    return out
+  },
+  hint: (v, params) => spread(bls.f12inv(unspread(v, 'f')), 'inv'),
+  model: (v, params) => spread(bls.finalExponentiate(unspread(v, 'f')), 'r'),
+  prologue: (asm, { n = P381 }) => pushModulus(asm, n),
+  emit: (asm, params) => {
+    const n = params.n === undefined ? P381 : params.n
+    const p = inner({ n, nn: params.nn === undefined ? numericModulus({ n }, 'pairing.finalExp') : params.nn }, 'pairing.finalExp')
+
+    // easy part: conj(f)·f⁻¹, then φ²(·)·(·)
+    const fc = call12(asm, fp12.conj, p, [copy12(asm, 'f')])
+    const fi = call12(asm, fp12.inv, p, ['f'], undefined, twelve('inv'))
+    let r = call12(asm, fp12.mul, p, [fc, fi])
+    let rf = call12(asm, fp12.frob, p, [copy12(asm, r)])
+    rf = call12(asm, fp12.frob, p, [rf])
+    r = call12(asm, fp12.mul, p, [rf, r])
+
+    // the shared ladders r^(y^j)
+    const maxJ = bls.HARD_TERMS.reduce((m, t) => Math.max(m, t.j), 0)
+    const pow = [r]
+    for (let j = 1; j <= maxJ; j++) pow.push(powY(asm, p, pow[j - 1]))
+
+    // λ = Σ a·y^j·p^i, assembled from them
+    let acc = null
+    for (const t of bls.HARD_TERMS) {
+      let v = copy12(asm, pow[t.j])
+      for (let k = 0; k < t.i; k++) v = call12(asm, fp12.frob, p, [v])
+      v = smallPow(asm, p, v, t.a)
+      acc = acc === null ? v : call12(asm, fp12.mul, p, [acc, v])
+    }
+
+    for (const base of pow) for (const x of F12SUF) asm.discard(base + x)
+    if (typeof n !== 'string') asm.discard('_pn')
+    for (const x of F12SUF) asm.relabel(acc + x, 'r' + x)
+    for (const name of twelve('r')) asm.roll(name)
+  },
+  notes: [
+    'the one inversion a pairing needs, and it is a witness: twelve numbers the spender supplies, each bounded into [0, p) and checked by a single Fp12 multiplication',
+    'correct only because the easy part lands in the cyclotomic subgroup — fp12.cycSqr is wrong anywhere else, and no range says so'
+  ],
+  cases: [
+    { name: 'a real Miller output', inputs: spread(bls.millerLoop(bls.G1, bls.G2), 'f'), params: { n: P381, nn: P381 } },
+    { name: 'another', inputs: spread(bls.millerLoop(bls.g1mul(3n), bls.g2mul(5n)), 'f'), params: { n: P381, nn: P381 } }
+  ]
+})
+
+/**
+ * THE PAIRING. e(P, Q), as one locking script.
+ *
+ * The Miller loop and the final exponentiation, chained: the twelve values the
+ * loop leaves on the stack are the twelve the exponentiation reads, so nothing
+ * joins them but a rename. 148 witnessed numbers — 136 Fp2 inverse coefficients
+ * for the loop's 68 lines, twelve for the single Fp12 inversion — and every one
+ * of them is bounded into [0, p) and checked.
+ *
+ * There is no opcode in Bitcoin Script for any part of this. There is OP_MUL
+ * and OP_MOD at arbitrary width, and that is the whole of what it needs.
+ */
+function full (opts = {}) {
+  const loop = miller(FULL)
+  const loopWit = loop.inputs.filter((i) => i.witness).map((i) => i.name)
+
+  return defineModule({
+    name: 'pairing.e',
+    doc: 'e(P, Q) on BLS12-381 — the optimal ate pairing, as one script',
+    inputs: [
+      'Px', 'Py', 'Qx0', 'Qx1', 'Qy0', 'Qy1',
+      ...loopWit.map((name) => ({ name, witness: true })),
+      ...twelve('inv').map((name) => ({ name, witness: true }))
+    ],
+    outputs: twelve('r'),
+    maxWitnessAttacks: opts.maxWitnessAttacks || 3,
+    requires: ({ nn = P381 }) => {
+      const r = { range: { lo: 0n, hi: nn } }
+      const out = {}
+      for (const k of ['Px', 'Py', 'Qx0', 'Qx1', 'Qy0', 'Qy1']) out[k] = r
+      return out
+    },
+    ensures: ({ nn = P381 }) => {
+      const r = { range: { lo: 0n, hi: nn } }
+      const out = {}
+      for (const k of twelve('r')) out[k] = r
+      return out
+    },
+    hint: (v, params) => {
+      const nn = params.nn === undefined ? P381 : params.nn
+      const P = { x: v.Px, y: v.Py }
+      const Q = { x: [v.Qx0, v.Qx1], y: [v.Qy0, v.Qy1] }
+      const { witnesses } = replay(P, Q, FULL, nn)
+      const out = {}
+      witnesses.forEach(([a, b], k) => { out[`w${k}a`] = a; out[`w${k}b`] = b })
+      const f = bls.X < 0n ? bls.f12conj(replay(P, Q, FULL, nn).f) : replay(P, Q, FULL, nn).f
+      return { ...out, ...spread(bls.f12inv(f), 'inv') }
+    },
+    model: (v, params) => {
+      const P = { x: v.Px, y: v.Py }
+      const Q = { x: [v.Qx0, v.Qx1], y: [v.Qy0, v.Qy1] }
+      return spread(bls.pairing(P, Q), 'r')
+    },
+    prologue: (asm, { n = P381 }) => pushModulus(asm, n),
+    emit: (asm, params) => {
+      const n = params.n === undefined ? P381 : params.n
+      const p = { n: modulusName(n), nn: params.nn === undefined ? numericModulus({ n }, 'pairing.e') : params.nn }
+      apply(asm, loop, p, ['Px', 'Py', 'Qx0', 'Qx1', 'Qy0', 'Qy1', ...loopWit], twelve('f'))
+      apply(asm, finalExp, p, [...twelve('f'), ...twelve('inv')], twelve('r'))
+      if (typeof n !== 'string') asm.discard('_pn')
+      for (const name of twelve('r')) asm.roll(name)
+    },
+    cases: [
+      {
+        name: 'e(G1, G2)',
+        inputs: { Px: bls.G1.x, Py: bls.G1.y, Qx0: bls.G2.x[0], Qx1: bls.G2.x[1], Qy0: bls.G2.y[0], Qy1: bls.G2.y[1] },
+        params: { n: P381, nn: P381 }
+      }
+    ]
+  })
+}
+
+module.exports = { miller, finalExp, full, schedule, replay, FULL, BITS }

@@ -18,6 +18,9 @@
 | `fp12.mulLine` | BLS12-381, a Miller-loop line | 2,178 | 1,382 |
 | `g2.stepDouble` | a tangent and the point it moves to | 587 | 395 |
 | `g2.stepAdd` | a chord and the point it moves to | 598 | 399 |
+| `fp12.conj` | BLS12-381, the p⁶ Frobenius | 223 | 110 |
+| `fp12.frob` | BLS12-381, f ↦ f^p | 798 | 378 |
+| `fp12.inv` | BLS12-381, witnessed | 3,523 | 2,214 |
 | `int.modexp` | e = 65537, 2048-bit | 355 | 76 |
 | `int.modexp` | e = 3, 2048-bit | 280 | 16 |
 | `bytes.reverse` | a 32-byte digest | 124 | 93 |

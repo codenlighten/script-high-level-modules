@@ -77,6 +77,7 @@ const modules = {
   'fp2.add': fp2.add,
   'fp2.sub': fp2.sub,
   'fp2.neg': fp2.neg,
+  'fp2.conj': fp2.conj,
   'fp2.mulXi': fp2.mulXi,
   'fp2.mulFp': fp2.mulFp,
   'fp2.inv': fp2.inv,
@@ -89,11 +90,16 @@ const modules = {
   'fp12.sqr': fp12.sqr,
   'fp12.cycSqr': fp12.cycSqr,
   'fp12.mulLine': fp12.mulLine,
+  'fp12.conj': fp12.conj,
+  'fp12.frob': fp12.frob,
+  'fp12.inv': fp12.inv,
   // The Miller loop's step function on the twist. These ARE BLS12-381 specific
   // in their test vectors but not in their arithmetic: the curve equation never
   // appears, only the slope through two points and the line it determines.
   'g2.stepDouble': g2mod.stepDouble,
-  'g2.stepAdd': g2mod.stepAdd
+  'g2.stepAdd': g2mod.stepAdd,
+  // The whole final exponentiation, 592 KB of it, as one module.
+  'pairing.finalExp': pairingMod.finalExp
 }
 
 /** The ones that are built for a particular key, width or scalar set. */
@@ -113,7 +119,8 @@ const factories = {
   'state.counter': stateMod.counter,
   'state.limit': stateMod.limit,
   'recipes.budgetCoin': recipes.budgetCoin,
-  'pairing.miller': pairingMod.miller
+  'pairing.miller': pairingMod.miller,
+  'pairing.e': pairingMod.full
 }
 
 /** What a consumer needs to decide whether a module fits. */

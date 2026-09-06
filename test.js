@@ -60,6 +60,7 @@ const { failures } = proveAll([
   [fp2.mulXi, {}],
   [fp2.mulFp, {}],
   [fp2.neg, {}],
+  [fp2.conj, {}],
   [fp2.inv, {}],
   [fp6.mul, {}],
   [fp6.sqr, {}],
@@ -72,10 +73,13 @@ const { failures } = proveAll([
   [fp12.mulLine, {}],
   [g2mod.stepDouble, {}],
   [g2mod.stepAdd, {}],
+  [fp12.conj, {}],
+  [fp12.frob, {}],
+  [fp12.inv, {}],
   // Two rounds is enough to exercise every shape the loop has: a tangent, a
   // chord, the squaring that belongs to the bit rather than to the line, and
-  // the accumulator surviving a round trip through both. tools/miller-full.js
-  // runs all sixty-three.
+  // the accumulator surviving a round trip through both.
+  // tools/pairing-prove.js runs the whole pairing.
   [pairingMod.miller(2), {}],
   [bytes.reverse, {}],
   [bytes.beToNum, {}],

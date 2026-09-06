@@ -283,6 +283,42 @@ const neg = defineModule({
 })
 
 /**
+ * r = ā in Fp2 — the conjugate, which is also the Frobenius here.
+ *
+ * p ≡ 3 (mod 4) for every pairing-friendly prime this tower works over, so
+ * a^p = ā: raising to the p-th power in Fp2 is negating one coefficient. That
+ * is the whole reason a degree-12 Frobenius costs seven multiplications rather
+ * than a 381-bit exponentiation, and fp12.frob is built on it.
+ */
+const conj = defineModule({
+  name: 'fp2.conj',
+  doc: 'r = ā in Fp2 — the conjugate, and the Frobenius when p ≡ 3 (mod 4)',
+  inputs: ['a0', 'a1'],
+  outputs: ['r0', 'r1'],
+  requires: inField('fp2.conj', 'a0', 'a1'),
+  ensures: (p) => ({ r0: residues(p, 'fp2.conj'), r1: residues(p, 'fp2.conj') }),
+  model: ({ a0, a1 }, { n }) => ({ r0: mod(a0, n), r1: mod(-a1, n) }),
+  prologue: (asm, { n }) => pushModulus(asm, n),
+  emit: (asm, { n }) => {
+    asm.pick(modulusName(n), '_n'); asm.roll('a1'); asm.sub('_d1')
+    reduce(asm, n, 'r1')
+    asm.toAlt()
+    asm.roll('a0'); asm.rename('r0')
+    asm.fromAlt()
+    dropModulus(asm, n)
+  },
+  cases: (() => {
+    const P381 = 0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaabn
+    return [
+      { name: 'small', inputs: { a0: 3n, a1: 4n }, params: { n: 11n } },
+      { name: 'real stays put', inputs: { a0: 7n, a1: 0n }, params: { n: 11n } },
+      { name: 'zero', inputs: { a0: 0n, a1: 0n }, params: { n: 11n } },
+      { name: 'BLS12-381', inputs: { a0: 5n, a1: P381 - 1n }, params: { n: P381 } }
+    ]
+  })()
+})
+
+/**
  * r = a·k where k is a plain Fp scalar — two OP_MULs, no cross terms.
  *
  * The Frobenius map and the Miller loop's line function both scale an Fp2
@@ -392,4 +428,4 @@ const inv = defineModule({
   })()
 })
 
-module.exports = { mul, sqr, add: addm, sub: subm, neg, mulXi, mulFp, inv }
+module.exports = { mul, sqr, add: addm, sub: subm, neg, conj, mulXi, mulFp, inv }

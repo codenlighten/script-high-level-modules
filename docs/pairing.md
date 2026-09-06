@@ -7,17 +7,19 @@ and it is not a number.
 
 This is the number.
 
-**One BLS12-381 pairing is about 982 KB of Script: roughly 98,000 satoshis at
-100 sat/KB. A Groth16 verification with four public inputs is about 1.81 MB and
-roughly 181,000 satoshis.**
+**One BLS12-381 pairing is 935,334 bytes of Script — 935 KB, about 93,500
+satoshis at 100 sat/KB. A Groth16 verification with four public inputs is about
+1.75 MB and roughly 175,000 satoshis.**
 
-Run `npm run pairing` to reproduce it.
-
-The Miller loop half of that is not a projection. `npm run miller` **emits all
-63 rounds as one locking script — 332,977 bytes, 215,332 opcodes — hands it to
+The pairing figure is not an estimate. `npm run pairing:prove` **emits e(P, Q)
+as a single locking script — 935,388 bytes, 627,037 opcodes — hands it to
 `bsv.Script.Interpreter` under relay policy flags, and checks all twelve Fp12
-coefficients that come back against the reference implementation.** It runs in
-about fifteen seconds and it is part of `npm test`.
+coefficients that come back against a reference that matches `@noble/curves`
+byte for byte.** It runs in about thirty seconds and it is part of `npm test`.
+
+Bitcoin Script has no pairing opcode. No Fp12, no Fp6, no Fp2, no
+extension-field arithmetic of any kind. It has `OP_MUL` and `OP_MOD` at
+arbitrary width, and this is what that turns out to be sufficient for.
 
 ## How it was arrived at
 
@@ -65,25 +67,37 @@ non-negative in every component. `tools/pairing-cost.js` throws if it does not.
 
 ## Where the cost is
 
-| stage | operations | bytes |
+| stage | what it does | bytes, emitted |
 | --- | --- | ---: |
-| Miller loop | 63 × `fp12.sqr`, 68 × `fp12.mulLine`, 68 lines | **332,977, emitted** |
-| final exponentiation | 63 × `fp12.mul`, 342 × `fp12.cycSqr` | 648,653, priced |
-| **one pairing** | | **981,630** |
+| Miller loop | 63 tangents, 5 chords, 68 line products, 63 squarings | 332,977 |
+| final exponentiation | the easy part, then 15 terms over 6 shared ladders | 592,008 |
+| **e(P, Q)** | | **935,334** |
 
 The final exponentiation is two thirds of it, which is why three of the four
 optimisations below live there.
 
-### The estimate, checked against the thing itself
+### The model, checked against the thing itself
 
-Before the loop was emitted, the pricing model above said 314,005 bytes. Emitted
-it is 332,977 — **the estimate was low by 6.0%**, which is what "prices the
-operations and prices the stack at zero" should look like when it is wrong in
-the direction it is expected to be wrong in. Two completely different routes to
-the same number, and the gap is the part the model admits it does not model.
+Before either half was emitted, the pricing model said 314,005 for the loop and
+648,653 for the exponentiation. Emitted, they are 332,977 and 592,008.
 
-That comparison is printed every time `npm run pairing` runs, so it cannot
-quietly stop being true.
+| | model | emitted | |
+| --- | ---: | ---: | --- |
+| Miller loop | 314,005 | 332,977 | model **low by 6.0%** |
+| final exponentiation | 648,653 | 592,008 | model **high by 8.7%** |
+
+Both errors have causes, and they are different causes. The loop is *more* than
+the model because the model prices the stack at zero and a real emitter pays for
+`OP_PICK` and `OP_ROLL`. The exponentiation is *less* because the emitted ladder
+is better than the reference it was counted from: unrolled and MSB-first, it
+costs 63 squarings and 5 multiplications for each exponentiation by the curve
+parameter, where the JavaScript runs LSB-first from an accumulator of one and
+pays 64 and 6 — the extra multiply being by one, which is free to compute and is
+not free to emit.
+
+A model that was wrong in only one direction would be suspicious. `npm run
+pairing` prints both comparisons every time it runs, so neither can quietly stop
+being true.
 
 ## The four things that made it this small
 
@@ -133,10 +147,13 @@ Together the four take one pairing from roughly 4 MB to under 1 MB.
 
 ## What is left on the table
 
-The final exponentiation is still priced rather than emitted. The four modules
-it is made of are measured whole, so the unmodelled part is only its Fp2
-leftovers, and the Miller loop's 6% is the best available guide to how far off
-that is.
+Nothing in the pairing itself: both halves are emitted and executed. The Fp2
+floor still appears in the tables above because the *model* is kept alongside
+the measurement as a cross-check, not because anything depends on it.
+
+The Groth16 figure does still contain estimates: the four public-input scalar
+multiplications are priced from `ec.mulG` retargeted to the 381-bit prime rather
+than emitted, and the three Miller loops are counted as three copies of one.
 
 The Fp2 leftovers — G2 point arithmetic, the line coefficients, the Frobenius
 maps, the single Fp12 inversion — are priced at the sum of their module bodies

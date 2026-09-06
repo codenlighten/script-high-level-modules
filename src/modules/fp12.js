@@ -319,4 +319,162 @@ const mulLine = defineModule({
   })()
 })
 
-module.exports = { mul, sqr, cycSqr, mulLine, twelve, op6, dup6, park6, unpark6, F12mul, spread, cyclotomic }
+/**
+ * r = f̄ — the Fp12 conjugate, which is the p⁶-th power.
+ *
+ * Negate the w-odd half and nothing else. In the cyclotomic subgroup this is
+ * the INVERSE, which is why the final exponentiation's balanced digits are free:
+ * a negative digit costs a negation, not an inversion.
+ */
+const conj = defineModule({
+  name: 'fp12.conj',
+  doc: 'r = f̄ in Fp12 — the p⁶ Frobenius, and inversion on the cyclotomic subgroup',
+  inputs: twelve('a'),
+  outputs: twelve('r'),
+  requires: inField('fp12.conj', ...twelve('a')),
+  ensures: ensures12('fp12.conj'),
+  model: (v, { n }) => {
+    const a = load12(v, 'a')
+    return store12([a[0], a[1].map((c) => [f2s([0n, 0n], c, n)[0], f2s([0n, 0n], c, n)[1]])])
+  },
+  prologue: (asm, { n }) => pushModulus(asm, n),
+  emit: (asm, params) => {
+    const { n } = params
+    const p = inner(params, 'fp12.conj')
+    for (const c of ['B0', 'B1', 'B2']) op(asm, fp2.neg, p, ['a' + c], 'r' + c)
+    for (const c of ['A00', 'A01', 'A10', 'A11', 'A20', 'A21']) asm.relabel('a' + c, 'r' + c)
+    dropModulus(asm, n)
+    for (const name of twelve('r')) asm.roll(name)
+  },
+  cases: [
+    { name: 'cyclotomic', inputs: spread(cyclotomic(2n), 'a'), params: { n: BLS } },
+    { name: 'one', inputs: (() => { const o = {}; twelve('a').forEach((k) => { o[k] = 0n }); o.aA00 = 1n; return o })(), params: { n: BLS } }
+  ]
+})
+
+/**
+ * r = f^p — the Frobenius, as seven multiplications instead of an exponentiation.
+ *
+ * Raising to the p-th power is a field automorphism, so it distributes over the
+ * tower and lands on the coefficients:
+ *
+ *     (Σ cᵢvⁱ)^p = Σ c̄ᵢ · ξ^(i(p−1)/3) vⁱ        in Fp6
+ *     (c0 + c1w)^p = c0^p + c1^p · ξ^((p−1)/6) w  in Fp12
+ *
+ * because p ≡ 3 (mod 4) makes the Fp2 Frobenius a conjugation. Six conjugations
+ * and seven Fp2 multiplications by fixed constants, against the 381 squarings a
+ * literal f^p would cost.
+ *
+ * The constants are DERIVED — bls12381.js computes ξ^(i(p−1)/6) with the same
+ * Fp2 arithmetic everything else uses — and the model here is the literal
+ * exponentiation f^p, so what is proven is that the shortcut equals the thing
+ * it is a shortcut for, not that it equals another copy of itself.
+ */
+const frob = defineModule({
+  name: 'fp12.frob',
+  doc: 'r = f^p in Fp12 — the Frobenius, by conjugation and fixed constants',
+  inputs: twelve('a'),
+  outputs: twelve('r'),
+  requires: inField('fp12.frob', ...twelve('a')),
+  ensures: ensures12('fp12.frob'),
+  model: (v, { n }) => {
+    if (n !== BLS) throw new Error('fp12.frob: the Frobenius constants are derived for the BLS12-381 prime')
+    return store12(bls.f12pow(load12(v, 'a'), n))
+  },
+  prologue: (asm, { n }) => pushModulus(asm, n),
+  emit: (asm, params) => {
+    const { n } = params
+    if (numericModulus(params, 'fp12.frob') !== BLS) {
+      throw new Error('fp12.frob: the Frobenius constants are derived for the BLS12-381 prime')
+    }
+    const p = inner(params, 'fp12.frob')
+    const G1 = bls.FROB[0]; const G2 = bls.FROB[1]; const G4 = bls.FROB[3]
+    const push = (c, name) => { asm.num(c[0], name + '0'); asm.num(c[1], name + '1'); return name }
+    const g1 = push(G1, '_g1'); const g2 = push(G2, '_g2'); const g4 = push(G4, '_g4')
+
+    // the w-odd half first, so the altstack hands the halves back in order
+    op(asm, fp2.mul, p, [op(asm, fp2.mul, p, [op(asm, fp2.conj, p, ['aB2']), dup(asm, g4)]), dup(asm, g1)], 'rB2')
+    park(asm)
+    op(asm, fp2.mul, p, [op(asm, fp2.mul, p, [op(asm, fp2.conj, p, ['aB1']), dup(asm, g2)]), dup(asm, g1)], 'rB1')
+    park(asm)
+    op(asm, fp2.mul, p, [op(asm, fp2.conj, p, ['aB0']), g1], 'rB0')
+    park(asm)
+    op(asm, fp2.mul, p, [op(asm, fp2.conj, p, ['aA2']), g4], 'rA2')
+    park(asm)
+    op(asm, fp2.mul, p, [op(asm, fp2.conj, p, ['aA1']), g2], 'rA1')
+    park(asm)
+    op(asm, fp2.conj, p, ['aA0'], 'rA0')
+    for (let i = 0; i < 5; i++) unpark(asm)
+    dropModulus(asm, n)
+    for (const name of twelve('r')) asm.roll(name)
+  },
+  cases: [
+    { name: 'cyclotomic', inputs: spread(cyclotomic(2n), 'a'), params: { n: BLS } },
+    { name: 'a Miller output', inputs: spread(bls.millerLoop(bls.G1, bls.G2), 'a'), params: { n: BLS } },
+    { name: 'one', inputs: (() => { const o = {}; twelve('a').forEach((k) => { o[k] = 0n }); o.aA00 = 1n; return o })(), params: { n: BLS } }
+  ]
+})
+
+/**
+ * r = f⁻¹, SUPPLIED BY THE SPENDER and checked: one Fp12 multiplication.
+ *
+ * The final exponentiation needs exactly one inversion, and computing it in
+ * Script would mean an Fp6 inversion, an Fp2 inversion and a base-field
+ * exponentiation. Instead the spender supplies twelve numbers and the script
+ * multiplies: f·f⁻¹ must be one, which is twelve comparisons after one
+ * fp12.mul. Each of the twelve is bounded into [0, p) first, because otherwise
+ * a coefficient and that coefficient plus p are two witnesses for one inverse.
+ */
+const inv = defineModule({
+  name: 'fp12.inv',
+  doc: 'r = f⁻¹ in Fp12, witnessed and checked (f·r = 1, every coefficient in [0, p))',
+  inputs: [...twelve('a'), ...twelve('i').map((name) => ({ name, witness: true }))],
+  outputs: twelve('r'),
+  requires: inField('fp12.inv', ...twelve('a')),
+  ensures: ensures12('fp12.inv'),
+  hint: (v, { n }) => {
+    const out = spread(bls.f12inv(load12(v, 'a')), 'i')
+    if (n !== BLS) throw new Error('fp12.inv: the hint inverts over the BLS12-381 prime')
+    return out
+  },
+  model: (v, { n }) => {
+    if (n !== BLS) throw new Error('fp12.inv: the model inverts over the BLS12-381 prime')
+    return store12(bls.f12inv(load12(v, 'a')))
+  },
+  prologue: (asm, { n }) => pushModulus(asm, n),
+  emit: (asm, params) => {
+    const { n } = params
+    const p = inner(params, 'fp12.inv')
+    const nn = numericModulus(params, 'fp12.inv')
+    for (const name of twelve('i')) asm.bound(name, 0n, nn, '_b')
+    // The product consumes what it multiplies, and the witness IS the result,
+    // so it goes in as a copy. Twelve OP_PICKs to keep the answer.
+    for (const name of twelve('i')) asm.pick(name, 'j' + name.slice(1))
+    apply(asm, mul, p, [...twelve('a'), ...twelve('j')], twelve('c'))
+    twelve('c').forEach((name, k) => {
+      asm.roll(name)
+      asm.num(k === 0 ? 1n : 0n, '_want')
+      asm.numEqualVerify()
+    })
+    dropModulus(asm, n)
+    for (const name of twelve('i')) { asm.roll(name); asm.rename('r' + name.slice(1)) }
+  },
+  cases: [
+    { name: 'a Miller output', inputs: spread(bls.millerLoop(bls.G1, bls.G2), 'a'), params: { n: BLS } },
+    { name: 'cyclotomic', inputs: spread(cyclotomic(3n), 'a'), params: { n: BLS } },
+    {
+      name: 'zero has no inverse',
+      refuse: 'zero is not invertible in Fp12 either',
+      inputs: (() => {
+        const o = {}
+        twelve('a').forEach((k) => { o[k] = 0n })
+        twelve('i').forEach((k) => { o[k] = 0n })
+        o.iA00 = 1n
+        return o
+      })(),
+      params: { n: BLS }
+    }
+  ]
+})
+
+module.exports = { mul, sqr, cycSqr, mulLine, conj, frob, inv, twelve, op6, dup6, park6, unpark6, F12mul, spread, cyclotomic }

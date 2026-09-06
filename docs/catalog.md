@@ -35,6 +35,7 @@
 | `fp2.add` | `a0` `a1` `b0` `b1` | `r0` `r1` | — | 3 |
 | `fp2.sub` | `a0` `a1` `b0` `b1` | `r0` `r1` | — | 3 |
 | `fp2.neg` | `a0` `a1` | `r0` `r1` | — | 4 |
+| `fp2.conj` | `a0` `a1` | `r0` `r1` | — | 4 |
 | `fp2.mulXi` | `a0` `a1` | `r0` `r1` | — | 3 |
 | `fp2.mulFp` | `a0` `a1` `k` | `r0` `r1` | — | 4 |
 | `fp2.inv` | `a0` `a1` `i0` `i1` | `r0` `r1` | `i0` `i1` | 6 |
@@ -47,8 +48,12 @@
 | `fp12.sqr` | `aA00` `aA01` `aA10` `aA11` `aA20` `aA21` `aB00` `aB01` `aB10` `aB11` `aB20` `aB21` | `rA00` `rA01` `rA10` `rA11` `rA20` `rA21` `rB00` `rB01` `rB10` `rB11` `rB20` `rB21` | — | 3 |
 | `fp12.cycSqr` | `aA00` `aA01` `aA10` `aA11` `aA20` `aA21` `aB00` `aB01` `aB10` `aB11` `aB20` `aB21` | `rA00` `rA01` `rA10` `rA11` `rA20` `rA21` `rB00` `rB01` `rB10` `rB11` `rB20` `rB21` | — | 3 |
 | `fp12.mulLine` | `aA00` `aA01` `aA10` `aA11` `aA20` `aA21` `aB00` `aB01` `aB10` `aB11` `aB20` `aB21` `l00` `l01` `l10` `l11` `l20` `l21` | `rA00` `rA01` `rA10` `rA11` `rA20` `rA21` `rB00` `rB01` `rB10` `rB11` `rB20` `rB21` | — | 3 |
+| `fp12.conj` | `aA00` `aA01` `aA10` `aA11` `aA20` `aA21` `aB00` `aB01` `aB10` `aB11` `aB20` `aB21` | `rA00` `rA01` `rA10` `rA11` `rA20` `rA21` `rB00` `rB01` `rB10` `rB11` `rB20` `rB21` | — | 2 |
+| `fp12.frob` | `aA00` `aA01` `aA10` `aA11` `aA20` `aA21` `aB00` `aB01` `aB10` `aB11` `aB20` `aB21` | `rA00` `rA01` `rA10` `rA11` `rA20` `rA21` `rB00` `rB01` `rB10` `rB11` `rB20` `rB21` | — | 3 |
+| `fp12.inv` | `aA00` `aA01` `aA10` `aA11` `aA20` `aA21` `aB00` `aB01` `aB10` `aB11` `aB20` `aB21` `iA00` `iA01` `iA10` `iA11` `iA20` `iA21` `iB00` `iB01` `iB10` `iB11` `iB20` `iB21` | `rA00` `rA01` `rA10` `rA11` `rA20` `rA21` `rB00` `rB01` `rB10` `rB11` `rB20` `rB21` | `iA00` `iA01` `iA10` `iA11` `iA20` `iA21` `iB00` `iB01` `iB10` `iB11` `iB20` `iB21` | 3 |
 | `g2.stepDouble` | `Tx0` `Tx1` `Ty0` `Ty1` `Px` `inv0` `inv1` | `x30` `x31` `y30` `y31` `l10` `l11` `l20` `l21` | `inv0` `inv1` | 4 |
 | `g2.stepAdd` | `Tx0` `Tx1` `Ty0` `Ty1` `Qx0` `Qx1` `Qy0` `Qy1` `Px` `inv0` `inv1` | `x30` `x31` `y30` `y31` `l10` `l11` `l20` `l21` | `inv0` `inv1` | 4 |
+| `pairing.finalExp` | `fA00` `fA01` `fA10` `fA11` `fA20` `fA21` `fB00` `fB01` `fB10` `fB11` `fB20` `fB21` `invA00` `invA01` `invA10` `invA11` `invA20` `invA21` `invB00` `invB01` `invB10` `invB11` `invB20` `invB21` | `rA00` `rA01` `rA10` `rA11` `rA20` `rA21` `rB00` `rB01` `rB10` `rB11` `rB20` `rB21` | `invA00` `invA01` `invA10` `invA11` `invA20` `invA21` `invB00` `invB01` `invB10` `invB11` `invB20` `invB21` | 2 |
 | `rsa.verify(…)` | *built per key or width* | | | |
 | `ec.mul(…)` | *built per key or width* | | | |
 | `ec.mulG(…)` | *built per key or width* | | | |
@@ -65,6 +70,7 @@
 | `state.limit(…)` | *built per key or width* | | | |
 | `recipes.budgetCoin(…)` | *built per key or width* | | | |
 | `pairing.miller(…)` | *built per key or width* | | | |
+| `pairing.e(…)` | *built per key or width* | | | |
 
 A module with **no outputs** is a predicate: it asserts and returns nothing, and
 `predicate(module, params, { owner })` turns it straight into a locking script

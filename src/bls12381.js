@@ -501,10 +501,10 @@ function pairing (P, Q) { return finalExponentiate(millerLoop(P, Q)) }
 module.exports = {
   P, R, X, B, B2, G1, G2, ops, ops2, ops12, reset, count, count2, count12,
   mod, fpMul, fpAdd, fpSub, fpInv, fpPow,
-  f2, f2add, f2sub, f2mul, f2sqr, f2inv, f2conj, f2mulXi, f2pow, f2eq, F2_ONE, F2_ZERO,
+  f2, f2add, f2sub, f2mul, f2sqr, f2inv, f2conj, f2mulXi, f2pow, f2eq, F2_ONE, F2_ZERO, FROB,
   f6, f6mul, f6sqr, f6inv, F6_ONE,
   f12, f12mulRaw, f12sqr, f12inv, f12conj, f12frob, f12frobN, f12pow, f12eq, F12_ONE,
-  cyclotomicPow, cyclotomicSqr,
+  cyclotomicPow, cyclotomicSqr, HARD_TERMS, Y,
   g1add, g1mul, g1neg, g2add, g2mul, g2neg,
   lineDouble, lineAdd, lineDense, f12mulLine,
   millerLoop, finalExponentiate, pairing

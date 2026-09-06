@@ -132,7 +132,7 @@ and are now era-derived and checked after every opcode (released in 9.7.0; see
 [limits.md](docs/limits.md)). They are skipped, with a note, on a library that
 predates it. Nothing else here depends on that fix.
 
-Sixty-five modules, 326 cases, 943 forgery attempts, all green.
+Sixty-nine modules, 338 cases, 1,111 forgery attempts, all green.
 
 ## The three claims a module must earn
 
@@ -237,15 +237,18 @@ number to compute *before* lowering a new algorithm, not after.
 The same method, run to the end of its rope: `fp12.mul` is one multiplication in
 the degree-12 extension field a pairing lives in, and 342 cyclotomic squarings
 and 63 of these are what a final exponentiation is. **A BLS12-381 pairing is
-982 KB of Script and a Groth16 verifier is 1.81 MB.**
+935 KB of Script and a Groth16 verifier is about 1.75 MB.**
 
-Its Miller loop is not an estimate. `npm run miller` emits all 63 rounds as one
-332,977-byte locking script, runs it through `bsv.Script.Interpreter` under
-relay policy flags, and checks all twelve Fp12 coefficients against the
-reference — 215,332 opcodes, about fifteen seconds, part of `npm test`. The
-pricing model had predicted 314,005 bytes; it was low by 6%, which is what
-pricing the stack at zero looks like when it is wrong in the expected
-direction. See [docs/pairing.md](docs/pairing.md).
+It is not an estimate. `npm run pairing:prove` emits `e(P, Q)` as **one
+935,388-byte locking script**, runs it through `bsv.Script.Interpreter` under
+relay policy flags, and checks all twelve Fp12 coefficients against a reference
+that matches `@noble/curves` byte for byte — 627,037 opcodes, about thirty
+seconds, part of `npm test`. 148 of the numbers in the unlocking script are
+witnesses the spender chooses, and every one is bounded into [0, p) and checked.
+
+The pricing model that preceded it was low by 6% on the Miller loop and high by
+8.7% on the final exponentiation, for two different and identifiable reasons.
+See [docs/pairing.md](docs/pairing.md).
 
 `ecdsa.verify` is the expensive end of that judgement, and worth stating plainly.
 `OP_CHECKSIG` answers one question — is this a valid signature over *this*
