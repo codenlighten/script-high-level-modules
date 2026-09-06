@@ -59,10 +59,10 @@ The same idea takes a **whole Groth16 verifier** across three inputs.
 `npm run groth16:split` cuts the Miller loop itself, at round 31 of 63 — it has
 to, because three pairings sharing one accumulator are 705,838 bytes of loop
 alone, over the policy before the final exponentiation is considered. The three
-stages lock in 384,240 / 372,456 / 476,147 bytes, all three are accepted, and
+stages lock in 384,299 / 372,515 / 476,206 bytes, all three are accepted, and
 the 2,156-byte output they all commit to is what makes them one computation. The
 proof being verified is snarkjs's, for *"at least 21 years old as of 2026"*.
-That one is an interpreter result, not a deployment — it would cost ~249,700
+That one is an interpreter result, not a deployment — it would cost ~249,800
 satoshis to fund and spend, and the wallet holds 97,257. Two of the deployments are not single spends but **sequences** —
 a
 coin advancing its own counter 0 → 1 → 2 → 3, and a coin paying three different
@@ -336,7 +336,7 @@ changes which transaction field carries the OP_PUSH_TX nonce: one preimage in
 fifty is canonical, so a *triple* lands once in ~123,000, and `nSequence` is the
 wrong knob because it also sits inside `hashSequence` at offset 36. `nLockTime`
 appears once, eight bytes from the end, so every SHA-256 block but the last is
-reusable — 27,409 tries in 1.2 seconds instead of rehashing 400 KB apiece.
+reusable — 79,389 tries in 1.5 seconds instead of rehashing 400 KB apiece.
 
 `npm run groth16:external` runs the same verifier against a proof **snarkjs**
 generated over BLS12-381 — an independent trusted setup, prover and field
@@ -345,7 +345,21 @@ proof is refused by a verifier built for a different public input, because the
 statement is a compile-time constant and therefore a different coin.
 
 `npm run audit` is this repository trying to break its own soundness
-assumptions, and three of its findings changed the code. **All 722 numeric
+assumptions, and four of its findings changed the code.
+
+The newest one is the sharpest. The split construction binds its stages through
+`hashOutputs`, which pins the **bytes** the inputs agree on — and says nothing
+about **which inputs are present**. Spend the final-exponentiation coin alone
+and its covenant is satisfied trivially; all that is left is finding an f with
+F(f) = e(P,Q), and since F is exponentiation by d = 3(p¹²−1)/r against a target
+of order r with gcd(d, r) = 1, `f = e(P,Q)^(d⁻¹ mod r)` does it in two modexps.
+`npm run attack:siblings` runs that against the interpreter and the coin is
+accepted. The fix is `hashPrevouts`, the field none of this code read: rebuild
+the spend's whole outpoint list from one witnessed txid, match its hash, and
+require this input to be the slot it claims — 47 bytes at two stages, 56 at
+three. Every stage of the three-way split uses it. The two-way pairing split is
+already on chain and its bytes are the record, so it is reported as it stands
+rather than quietly amended. **All 722 numeric
 witnesses in the library are bounded**, checked by provenance rather than by
 sampling attacks — a slot carries the input it descends from, and every bound
 records it. Chasing a false positive from that check exposed a true one: the

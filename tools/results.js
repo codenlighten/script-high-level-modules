@@ -179,13 +179,16 @@ const onchain = {
     stages: 3,
     cutRound: 31,
     millerLoopThreePairs: 705838,
-    lockBytes: [384240, 372456, 476147],
-    unlockBytes: [395669, 383888, 481994],
+    lockBytes: [384299, 372515, 476206],
+    unlockBytes: [395761, 383980, 482086],
     blobBytes: 2156,
     blobValues: 44,
-    txBytes: 1263868,
+    txBytes: 1264144,
     grindField: 'nLockTime',
-    grindTries: 27409,
+    grindTries: 79389,
+    // Each stage also binds its siblings through hashPrevouts, which the
+    // deployed two-way split does not. tools/attack-siblings.js is why.
+    siblingBytes: 56,
     deployed: false,
     note: 'three inputs of one spend; every stage commits to the same 44-element blob'
   },

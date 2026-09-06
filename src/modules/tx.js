@@ -102,12 +102,12 @@ const PAY_B = bsv.PrivateKey.fromBuffer(Buffer.from('22'.repeat(32), 'hex')).toA
  * change. A case that pins all three is telling the truth about a transaction
  * that cannot be built.
  */
-function locktimeWitnessFor ({ tx, lockingScript, satoshis, spend = {} }) {
+function locktimeWitnessFor ({ tx, lockingScript, satoshis, spend = {}, inputIndex = 0 }) {
   const pinned = (f) => spend[f] !== undefined
   const field = !pinned('sequence') ? 'sequence' : !pinned('nLockTime') ? 'nLockTime' : null
   const g = field
-    ? PushTx.grind(tx, 0, lockingScript, satoshis, { field })
-    : grindValue(tx, 0, lockingScript, satoshis)
+    ? PushTx.grind(tx, inputIndex, lockingScript, satoshis, { field })
+    : grindValue(tx, inputIndex, lockingScript, satoshis)
   return { preimage: g.preimage }
 }
 
@@ -330,18 +330,74 @@ const dataOutput = (width, data) => new bsv.Transaction.Output({
   satoshis: 0
 })
 
-function commitData (width, { cases } = {}) {
+/** A 4-byte little-endian output index, as it appears inside an outpoint. */
+const le4 = (v) => { const b = Buffer.alloc(4); b.writeUInt32LE(v >>> 0); return b }
+
+/**
+ * Require the spend to consume a whole family of coins, and this one to be a
+ * named member of it.
+ *
+ * `hashOutputs` binds the BYTES that several inputs agree on. It says nothing
+ * about WHICH inputs are present, and a stage that only checks it can be spent
+ * alone — see tools/attack-siblings.js, where a final exponentiation is
+ * satisfied by an f nobody computed, because the input that was supposed to
+ * produce that f is simply not in the transaction.
+ *
+ * `hashPrevouts` is the missing half. It is the double-SHA of every spent
+ * outpoint in order, each 32-byte txid then 4-byte little-endian index. The
+ * stages of one computation are outputs of a single funding transaction, so
+ * the entire list is determined by that one txid — rebuild it in script from a
+ * witnessed txid and require the hash to match, and the transaction's whole
+ * input set is pinned by 32 witnessed bytes rather than 36n checked apart.
+ *
+ * What that establishes: the spend has exactly `count` inputs, all of them
+ * outputs of one transaction at indices 0..count-1, and this script is the one
+ * at `index`. What it cannot establish is which SCRIPTS those outputs carry —
+ * an outpoint does not name a script, and a stage cannot see its siblings'
+ * code. That last step belongs to whoever reads the chain, and it is one check
+ * on one funding transaction rather than a judgement about the spend.
+ */
+function siblingCheck (asm, sib) {
+  for (let j = 0; j < sib.count; j++) {
+    asm.pick('fundingTxid', `_ft${j}`)
+    if (j > 0) asm.cat('_prevouts')
+    asm.data(le4(j), `_ix${j}`)
+    asm.cat('_prevouts')
+  }
+  asm.hash256('_hp')
+  asm.pick('preimage', '_pp'); left(asm, 36, '_head36'); right(asm, 32, '_hashPrevouts')
+  asm.equalVerify()
+
+  // and this input is the stage it claims to be: its own outpoint sits at
+  // offset 68 of the preimage, after nVersion, hashPrevouts and hashSequence.
+  asm.pick('fundingTxid', '_ftMine'); asm.data(le4(sib.index), '_ixMine'); asm.cat('_mine')
+  asm.pick('preimage', '_po'); left(asm, 104, '_head104'); right(asm, 36, '_outpoint')
+  asm.equalVerify()
+}
+
+function commitData (width, { cases, siblings: sib } = {}) {
   const prefix = commitPrefix(width)
+  if (sib && !(sib.count > 1 && sib.index >= 0 && sib.index < sib.count)) {
+    throw new Error(`tx.commitData: siblings needs count > 1 and 0 <= index < count, got ${JSON.stringify(sib)}`)
+  }
   return defineModule({
     name: 'tx.commitData',
-    doc: `the spend's only output must be OP_RETURN carrying these ${width} bytes`,
+    doc: sib
+      ? `the spend's only output must be OP_RETURN carrying these ${width} bytes, and it must consume all ${sib.count} sibling coins`
+      : `the spend's only output must be OP_RETURN carrying these ${width} bytes`,
     inputs: [
       { name: 'preimage', kind: 'bytes', witness: true },
+      ...(sib ? [{ name: 'fundingTxid', kind: 'bytes', width: 32, witness: true }] : []),
       { name: 'data', kind: 'bytes', width }
     ],
     outputs: [{ name: 'data', kind: 'bytes', width }],
     contextual: true,
-    witnessFor: locktimeWitnessFor,
+    witnessFor: (ctx) => {
+      const base = locktimeWitnessFor(ctx)
+      if (!sib) return base
+      const pre = Buffer.from(base.preimage)
+      return { ...base, fundingTxid: pre.subarray(68, 100) }
+    },
     hint: () => ({}),
     model: ({ data }) => ({ data: Buffer.from(data) }),
     emit: (asm) => {
@@ -351,16 +407,46 @@ function commitData (width, { cases } = {}) {
       asm.pick('preimage', '_pf'); right(asm, 4, '_flag')
       asm.data(Buffer.from([SIGHASH_ALL_FORKID, 0, 0, 0]), '_want'); asm.equalVerify()
 
+      if (sib) siblingCheck(asm, sib)
+
       asm.data(prefix, '_prefix')
       asm.pick('data', '_d'); asm.cat('_txout')
       asm.hash256('_h')
 
       asm.roll('preimage'); right(asm, 40, '_t40'); left(asm, 32, '_committed')
       asm.equalVerify()
+      if (sib) asm.discard('fundingTxid')
       asm.roll('data')
     },
-    attacks: preimageAttacks,
-    cases: cases || [
+    // A wrong funding txid is the attack this exists to refuse: it is a
+    // spender claiming a family of siblings their transaction does not spend.
+    attacks: (honest, params, name) => {
+      if (name !== 'fundingTxid') return preimageAttacks(honest, params, name)
+      const b = Buffer.from(honest[name]); b[0] ^= 0x01
+      return [
+        { label: 'a different funding transaction', value: b },
+        { label: 'the txid truncated', value: Buffer.from(honest[name]).subarray(0, 31) }
+      ]
+    },
+    cases: cases || (sib ? [
+      {
+        name: `the value the spend publishes, from ${sib.count} sibling coins`,
+        spend: { outputs: [dataOutput(width, Buffer.alloc(width, 0x11))], siblings: sib },
+        inputs: { data: Buffer.alloc(width, 0x11) }
+      },
+      {
+        name: 'a value the spend does not publish',
+        refuse: 'the output commitment is over the bytes, not over the intent',
+        spend: { outputs: [dataOutput(width, Buffer.alloc(width, 0x11))], siblings: sib },
+        inputs: { data: Buffer.alloc(width, 0x22) }
+      },
+      {
+        name: 'the same coin spent without its siblings',
+        refuse: 'hashPrevouts covers one outpoint, not the family the script names',
+        spend: { outputs: [dataOutput(width, Buffer.alloc(width, 0x11))] },
+        inputs: { data: Buffer.alloc(width, 0x11) }
+      }
+    ] : [
       {
         name: 'the value the spend publishes',
         spend: { outputs: [dataOutput(width, Buffer.alloc(width, 0x11))] },
@@ -372,7 +458,7 @@ function commitData (width, { cases } = {}) {
         spend: { outputs: [dataOutput(width, Buffer.alloc(width, 0x11))] },
         inputs: { data: Buffer.alloc(width, 0x22) }
       }
-    ],
+    ]),
     notes: [
       'two coins in one transaction that both do this must have computed the same bytes',
       'the output carries zero satoshis: it is a channel, not a payment'

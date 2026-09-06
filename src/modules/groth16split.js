@@ -14,9 +14,9 @@ const fp6 = require('./fp6')
 // three pairings share one Miller accumulator, and even so that loop alone is
 // 705,838 — so a two-way cut is not enough and the loop itself has to be cut.
 //
-//     input 0   rounds 1–31 of three loops     384,240 B lock, 395,669 unlock
-//     input 1   rounds 32–63, resuming         372,456 B lock, 383,888 unlock
-//     input 2   the final exponentiation       476,147 B lock, 481,994 unlock
+//     input 0   rounds 1–31 of three loops     384,299 B lock, 395,761 unlock
+//     input 1   rounds 32–63, resuming         372,515 B lock, 383,980 unlock
+//     input 2   the final exponentiation       476,206 B lock, 482,086 unlock
 //
 // Round 31 is not a seam in the mathematics. It is where the halves are each
 // small enough, and what makes an arbitrary cut legal is that the state there
@@ -134,7 +134,13 @@ function verifier (vk, publicInputs, opts = {}) {
   const L = g16.combine(vk.IC, publicInputs)
   const expected = bls.pairing(vk.alpha, vk.beta)
   const want = pairing.spread(expected, 'r')
-  const commit = txmod.commitData(BLOB_BYTES)
+  // Each stage binds a different slot of the same family: stage k is the coin
+  // at output k-1 of the funding transaction, and the spend must consume all
+  // three. Without this a stage is spendable alone — see
+  // tools/attack-siblings.js. It costs 56 bytes per stage.
+  const SIB = opts.siblings === false ? null : { count: 3 }
+  const sibFor = (which) => (SIB ? { count: SIB.count, index: which - 1 } : null)
+  const commits = [1, 2, 3].map((w) => txmod.commitData(BLOB_BYTES, sibFor(w) ? { siblings: sibFor(w) } : {}))
 
   const loop1 = pairing.miller(CUT, { pairs: 3, emitState: true })
   const loop2 = pairing.miller(pairing.FULL, { pairs: 3, first: CUT + 1, resume: true })
@@ -144,13 +150,14 @@ function verifier (vk, publicInputs, opts = {}) {
 
   /** The witness generator every stage shares: build the output, then grind. */
   const witnessFor = (which) => (ctx) => {
-    const { tx, lockingScript, satoshis, spend = {} } = ctx
+    const { tx, lockingScript, satoshis, spend = {}, inputIndex = 0 } = ctx
     const st = stateFor(vk, L, spend.proof)
     tx.outputs.length = 0
     tx.addOutput(txmod.dataOutput(BLOB_BYTES, serialise(st.values)))
     tx._outputAmount = undefined
-    const g = txmod.PushTx.grind(tx, 0, lockingScript, satoshis, { field: 'sequence' })
+    const g = txmod.PushTx.grind(tx, inputIndex, lockingScript, satoshis, { field: 'sequence' })
     const out = { preimage: g.preimage, ...st.values }
+    if (sibFor(which)) out.fundingTxid = Buffer.from(g.preimage).subarray(68, 100)
     const tape = which === 1 ? st.wit1 : which === 2 ? st.wit2 : []
     tape.forEach(([a, b], k) => { out[`w${k}a`] = a; out[`w${k}b`] = b })
     if (which === 3) Object.assign(out, pairing.finalExp.hint(pairing.spread(st.s2, 'f'), { n: P381, nn: P381 }))
@@ -160,16 +167,23 @@ function verifier (vk, publicInputs, opts = {}) {
   const shell = (name, doc, inputs, body, which) => defineModule({
     name,
     doc,
-    inputs: [{ name: 'preimage', kind: 'bytes', witness: true }, ...inputs],
+    inputs: [{ name: 'preimage', kind: 'bytes', witness: true },
+      ...(sibFor(which) ? [{ name: 'fundingTxid', kind: 'bytes', width: 32, witness: true }] : []),
+      ...inputs],
     outputs: [],
     contextual: true,
     maxWitnessAttacks: opts.maxWitnessAttacks || 2,
     witnessFor: witnessFor(which),
     hint: () => ({}),
     model: () => ({}),
-    attacks: (honest, params, nm) => (nm === 'preimage'
-      ? txmod.preimageAttacks(honest, params, nm)
-      : require('../testkit').defaultAttacks(honest[nm], { n: P381 })),
+    attacks: (honest, params, nm) => {
+      if (nm === 'preimage') return txmod.preimageAttacks(honest, params, nm)
+      if (nm === 'fundingTxid') {
+        const b = Buffer.from(honest[nm]); b[0] ^= 0x01
+        return [{ label: 'a family of siblings the spend does not consume', value: b }]
+      }
+      return require('../testkit').defaultAttacks(honest[nm], { n: P381 })
+    },
     requires: () => {
       const r = { range: { lo: 0n, hi: P381 } }
       const out = {}
@@ -184,7 +198,11 @@ function verifier (vk, publicInputs, opts = {}) {
     // Every stage needs the SAME transaction shape, so every case carries the
     // proof and lets witnessFor build the output all three commit to.
     cases: (opts.cases && opts.cases[which]) || (opts.proof
-      ? [{ name: `stage ${which}, on a real proof`, spend: { proof: opts.proof }, params: {} }]
+      ? [{
+          name: `stage ${which}, on a real proof`,
+          spend: { proof: opts.proof, ...(sibFor(which) ? { siblings: sibFor(which) } : {}) },
+          params: {}
+        }]
       : [])
   })
 
@@ -213,7 +231,7 @@ function verifier (vk, publicInputs, opts = {}) {
       for (const [i, nm] of S1_NAMES.entries()) asm.relabel(loop1.outputs[i].name, nm)
       for (const nm of PROOF_NAMES) asm.relabel('_keep' + nm, nm)
       emitBlob(asm, BLOB_NAMES, 'data')
-      apply(asm, commit, {}, ['preimage', 'data'], ['_p'])
+      apply(asm, commits[0], {}, sibFor(1) ? ['preimage', 'fundingTxid', 'data'] : ['preimage', 'data'], ['_p'])
       asm.drop()
     }, 1)
 
@@ -236,7 +254,7 @@ function verifier (vk, publicInputs, opts = {}) {
       for (const nm of PROOF_NAMES) asm.relabel('_keep' + nm, nm)
       for (const nm of S1_NAMES) asm.relabel('_keepS' + nm, nm)
       emitBlob(asm, BLOB_NAMES, 'data')
-      apply(asm, commit, {}, ['preimage', 'data'], ['_p'])
+      apply(asm, commits[1], {}, sibFor(2) ? ['preimage', 'fundingTxid', 'data'] : ['preimage', 'data'], ['_p'])
       asm.drop()
     }, 2)
 
@@ -249,7 +267,7 @@ function verifier (vk, publicInputs, opts = {}) {
     (asm, p) => {
       for (const nm of S2_NAMES) asm.pick(nm, '_e' + nm)
       emitBlob(asm, BLOB_NAMES, 'data')
-      apply(asm, commit, {}, ['preimage', 'data'], ['_p'])
+      apply(asm, commits[2], {}, sibFor(3) ? ['preimage', 'fundingTxid', 'data'] : ['preimage', 'data'], ['_p'])
       asm.drop()
       apply(asm, pairing.finalExp, p,
         [...S2_NAMES.map((n) => '_e' + n), ...expWit], twelve('r'))

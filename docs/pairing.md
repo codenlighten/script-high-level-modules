@@ -429,6 +429,52 @@ size suggests.
 
 It cost 164,997 satoshis.
 
+### What the shared commitment does not establish
+
+`hashOutputs` binds the **bytes** two inputs agree on. It says nothing about
+**which inputs are present**, and that gap is not academic here.
+
+Spend `pairing.consume` alone, in a transaction whose one data output carries an
+f of your choosing. The covenant is satisfied — the data *is* what the
+transaction publishes. All that remains is finding an f with F(f) = e(P, Q)
+without running a Miller loop, and that is cheap: F is exponentiation by
+d = 3(p¹²−1)/r, the target has order r, and gcd(d, r) = 1, so
+
+```
+f = e(P,Q)^(d⁻¹ mod r)      two modexps, no pairing
+```
+
+satisfies it. `npm run attack:siblings` does exactly this against the
+interpreter, and the coin is accepted. Nothing is stolen — the covenant forbids
+change, so the satoshis go to fees — but the claim the construction makes is
+that the *transaction* establishes the computation, and a reader who checks one
+input is deceived. It is also a live griefing attack on a deployment:
+front-run the honest spend, consume its final-exponentiation coin with a forged
+f, and the honest spend can never be published, because its input is gone.
+
+**The fix is `hashPrevouts`**, the field this repository never read. It is the
+double-SHA of every spent outpoint in order — 32-byte txid, then 4-byte
+little-endian index. The stages of one computation are outputs of a single
+funding transaction, so the whole list is determined by that one txid: rebuild
+it in script from a witnessed 32 bytes, require the hash to match, and then
+require this input's own outpoint — at offset 68 of the preimage — to be the
+slot the script claims.
+
+```
+commitData(width, { siblings: { count, index } })    47 bytes at two, 56 at three
+```
+
+That pins the spend to exactly `count` inputs, all outputs of one transaction at
+indices 0..count-1, with this script at `index`. What it cannot pin is which
+*scripts* those outputs carry — an outpoint does not name a script. That last
+step stays outside, and it is one check on one funding transaction rather than a
+judgement about the spend; `npm run verify:chain` is where it lives.
+
+All three stages of the Groth16 split bind their siblings. The two-way pairing
+split does **not**, because it is already on chain and its bytes are the record;
+`tools/pairing-split.js` reproduces it as deployed, and the audit carries the
+finding rather than quietly closing it.
+
 The last row carries its own caveat. `fp12.powX` — one uncompressed f^|x| ladder
 — was deployed and spent and is correct, and it is no longer what the
 implementation does: `fp12.powXc` replaced it at 73,674 bytes. Counting its
@@ -506,20 +552,20 @@ input 2   the final exponentiation of S₂, against e(α, β)
 forged witnesses substituted and refused — and then builds the transaction:
 
 ```
-input 0   rounds 1–31, publishes S₁         384,240 lock   395,669 unlock   ACCEPTED
-input 1   rounds 32–63, publishes S₂        372,456 lock   383,888 unlock   ACCEPTED
-input 2   final exponentiation vs e(α,β)    476,147 lock   481,994 unlock   ACCEPTED
+input 0   rounds 1–31, publishes S₁         384,299 lock   395,761 unlock   ACCEPTED
+input 1   rounds 32–63, publishes S₂        372,515 lock   383,980 unlock   ACCEPTED
+input 2   final exponentiation vs e(α,β)    476,206 lock   482,086 unlock   ACCEPTED
 output    the blob all three commit to        2,156 bytes — 44 field elements
 ```
 
 The proof being verified is a real one: snarkjs generated it from a circuit
 asserting *"the holder was at least 21 years old as of 2026"*, and nothing in
-this repository produced it. The transaction is 1,263,868 bytes.
+this repository produced it. The transaction is 1,264,144 bytes.
 
 **This one has not been deployed**, and the reason is money rather than
 policy — every locking script here is under the 500 KB limit and so is every
-unlocking script. At 100 sat/kB, funding the three coins costs about 123,325
-satoshis and spending them about 126,411, so ~249,700 against a wallet holding
+unlocking script. At 100 sat/kB, funding the three coins costs about 123,342
+satoshis and spending them about 126,439, so ~249,800 against a wallet holding
 97,257. The two-way pairing split above *is* on mainnet; this is an interpreter
 result and is labelled as one.
 
@@ -561,7 +607,7 @@ computed once and copied per attempt. The cost per try drops from hashing 400 KB
 to hashing 64 bytes:
 
 ```
-27,409 nLockTimes, 549 cleared input 0, 9 cleared inputs 0 and 1 — 1.2 seconds
+79,389 nLockTimes, 1,611 cleared input 0, 26 cleared inputs 0 and 1 — 1.5 seconds
 ```
 
 Small nLockTime values are block heights already in the past, so the transaction
@@ -574,7 +620,7 @@ relative to a hash function's block boundaries.
 
 ### Headroom
 
-Stage 3 unlocks in 481,994 bytes, 18,006 under the policy — the binding
+Stage 3 unlocks in 482,086 bytes, 17,914 under the policy — the binding
 constraint is again the *unlocking* script. A four-way split would relieve it,
 and nothing in the construction would have to change.
 
@@ -606,6 +652,7 @@ npm run pairing         # the cost report: model and measurement side by side
 npm run pairing:prove   # emit e(P, Q), run it, check twelve coefficients
 npm run groth16         # the Groth16 equation, one valid proof and two forged
 npm run groth16:split   # the whole verifier across three inputs of one tx
+npm run attack:siblings # spend a stage without its siblings; then stop it
 npm run verify:chain    # rebuild every deployed script and compare to the chain
 ```
 

@@ -258,7 +258,18 @@ const { failures, reports } = proveAll([
       process.exit(1)
     }
   }
-  console.log(`  groth16.split: cut at round ${split.CUT} of 63, all three stages commit to the same ${split.BLOB_BYTES}-byte blob`)
+  // And every stage must bind its siblings. Committing to the same blob is
+  // only half of it: hashOutputs says what the bytes are, hashPrevouts says
+  // who is spending. Without the second, a stage is satisfiable alone — see
+  // tools/attack-siblings.js, which is a standing test precisely because the
+  // property it defends belongs to the transaction and not to any one script.
+  for (const [name, m] of [['stage1', v.stage1], ['stage2', v.stage2], ['stage3', v.stage3]]) {
+    if (!m.inputs.some((i) => i.name === 'fundingTxid')) {
+      console.log(`\n  groth16.split: ${name} does not bind its siblings — it can be spent without them`)
+      process.exit(1)
+    }
+  }
+  console.log(`  groth16.split: cut at round ${split.CUT} of 63, all three stages commit to the same ${split.BLOB_BYTES}-byte blob and bind their siblings`)
 }
 
 process.exit(failures.length ? 1 : 0)

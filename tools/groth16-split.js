@@ -95,9 +95,15 @@ const locks = [coin(v.stage1), coin(v.stage2), coin(v.stage3)]
 const mods = [v.stage1, v.stage2, v.stage3]
 const SATS = 1
 
+// The three coins are outputs 0, 1 and 2 of ONE funding transaction, because
+// that is what each stage's sibling check requires: it rebuilds the whole
+// prevouts list from a single witnessed txid and compares the hash against the
+// preimage's own hashPrevouts. Spending any of them alone is refused —
+// tools/attack-siblings.js is the demonstration of why that matters.
+const FUNDING = Buffer.alloc(32, 0xa7)
 const tx = new bsv.Transaction()
 locks.forEach((lock, i) => tx.addInput(new bsv.Transaction.Input({
-  prevTxId: Buffer.alloc(32, 0xa0 + i), outputIndex: 0, script: new bsv.Script(), sequenceNumber: 0xfffffffe
+  prevTxId: FUNDING, outputIndex: i, script: new bsv.Script(), sequenceNumber: 0xfffffffe
 }), lock, SATS))
 tx.addOutput(txmod.dataOutput(split.BLOB_BYTES, blob))
 tx._outputAmount = undefined
@@ -181,7 +187,7 @@ bases.forEach((b, i) => {
 // ── the unlocking scripts ───────────────────────────────────────────────────
 const tapes = [st.wit1, st.wit2, []]
 const unlocks = mods.map((m, i) => {
-  const values = { ...st.values, preimage: pres[i] }
+  const values = { ...st.values, preimage: pres[i], fundingTxid: Buffer.from(pres[i]).subarray(68, 100) }
   tapes[i].forEach(([a, b], k) => { values[`w${k}a`] = a; values[`w${k}b`] = b })
   if (i === 2) Object.assign(values, require('../src/modules/pairing').finalExp.hint(require('../src/modules/pairing').spread(st.s2, 'f'), { n: P, nn: P }))
   const u = new bsv.Script()

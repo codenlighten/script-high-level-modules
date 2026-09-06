@@ -1,6 +1,6 @@
 {
   "generated": "2026-09-06",
-  "commit": "12ab0a6db77204f2e3519d97bce29141377622b5",
+  "commit": "48618cf6898d5a5f41808554094ca4d7212ded12",
   "curve": {
     "name": "BLS12-381",
     "p": "0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab",
@@ -251,20 +251,21 @@
         "cutRound": 31,
         "millerLoopThreePairs": 705838,
         "lockBytes": [
-          384240,
-          372456,
-          476147
+          384299,
+          372515,
+          476206
         ],
         "unlockBytes": [
-          395669,
-          383888,
-          481994
+          395761,
+          383980,
+          482086
         ],
         "blobBytes": 2156,
         "blobValues": 44,
-        "txBytes": 1263868,
+        "txBytes": 1264144,
         "grindField": "nLockTime",
-        "grindTries": 27409,
+        "grindTries": 79389,
+        "siblingBytes": 56,
         "deployed": false,
         "note": "three inputs of one spend; every stage commits to the same 44-element blob"
       },

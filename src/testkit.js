@@ -175,7 +175,7 @@ function onePass (m, params, spend, expected, caseValues = {}) {
     for (const k of Object.keys(hinted)) if (!(k in values)) values[k] = hinted[k]
   }
 
-  const actual = { nLockTime: prepared.tx.nLockTime, sequence: prepared.tx.inputs[0].sequenceNumber }
+  const actual = { nLockTime: prepared.tx.nLockTime, sequence: prepared.tx.inputs[prepared.inputIndex || 0].sequenceNumber }
   for (const field of ['nLockTime', 'sequence']) {
     if (spend[field] !== undefined && spend[field] !== actual[field]) {
       throw new Error(`${m.name}: the case asked for ${field}=${spend[field]} and witnessFor() left ${actual[field]} — ` +

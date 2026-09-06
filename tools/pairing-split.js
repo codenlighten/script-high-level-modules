@@ -28,6 +28,20 @@
 // about once in 2,500 tries — cheap here, but see tools/groth16-split.js for
 // what the same search costs when there are three of them.
 //
+// WHAT THIS CONSTRUCTION DOES NOT ESTABLISH, and the deployed instance does
+// not either. Each input requires the committed output to be the bytes IT
+// builds. Nothing requires the OTHER input to be present. Spent alone,
+// `pairing.consume` is satisfied by any f with F(f) = e(P,Q), and one is
+// cheap to find: F is exponentiation by d = 3(p¹²−1)/r, the target has order
+// r, and gcd(d, r) = 1, so f = e(P,Q)^(d⁻¹ mod r) works for two modexps.
+// tools/attack-siblings.js does it, and shows the fix — `{ siblings }`, which
+// rebuilds the prevouts list from a witnessed funding txid and matches it
+// against the preimage's hashPrevouts for 47 bytes at two siblings.
+//
+// This tool deliberately reproduces the construction AS DEPLOYED, without it,
+// so that what is on chain and what is here stay the same object. The whole-
+// verifier split in tools/groth16-split.js binds its siblings.
+//
 // What the network verifies, in one transaction:
 //
 //     the Miller loop ran correctly on P and Q          input 0

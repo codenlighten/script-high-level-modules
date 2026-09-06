@@ -127,41 +127,52 @@ function evaluateSpend (lock, buildUnlock, { flags } = {}) {
  * the shape of that transaction — its locktime, its sequence, its outputs —
  * becomes part of the case.
  */
-function buildSpend (lock, { satoshis = SATOSHIS, nLockTime, sequence = 0xffffffff, outputs, payTo, prevTxId, prevVout = 0 } = {}) {
+function buildSpend (lock, { satoshis = SATOSHIS, nLockTime, sequence = 0xffffffff, outputs, payTo, prevTxId, prevVout = 0, siblings } = {}) {
   const lockingScript = lock.script ? lock.script() : lock
   const tx = new bsv.Transaction()
-  tx.addInput(new bsv.Transaction.Input({
-    // A covenant's successor is spent in turn, and each step commits to the
-    // outpoint it consumes — so a chain of them needs the real previous txid,
-    // not a stand-in.
-    prevTxId: prevTxId ? (Buffer.isBuffer(prevTxId) ? prevTxId : Buffer.from(prevTxId, 'hex')) : MOCK_PREVOUT,
-    outputIndex: prevVout,
-    script: new bsv.Script(),
-    sequenceNumber: sequence
-  }), lockingScript, satoshis)
+  const prev = prevTxId ? (Buffer.isBuffer(prevTxId) ? prevTxId : Buffer.from(prevTxId, 'hex')) : MOCK_PREVOUT
+
+  // A module that reads `hashPrevouts` is making a claim about the OTHER inputs
+  // of its own spend, and cannot be tested in a transaction that has none. So a
+  // case may ask for siblings: `count` inputs, all outputs of one funding
+  // transaction, with the module under test at `index`. The others need no
+  // scripts — only their outpoints and sequences reach the preimage.
+  const count = siblings ? siblings.count : 1
+  const inputIndex = siblings ? siblings.index : 0
+  for (let j = 0; j < count; j++) {
+    tx.addInput(new bsv.Transaction.Input({
+      // A covenant's successor is spent in turn, and each step commits to the
+      // outpoint it consumes — so a chain of them needs the real previous txid,
+      // not a stand-in.
+      prevTxId: prev,
+      outputIndex: siblings ? j : prevVout,
+      script: new bsv.Script(),
+      sequenceNumber: sequence
+    }), j === inputIndex ? lockingScript : new bsv.Script(), satoshis)
+  }
   if (outputs) outputs.forEach((o) => tx.addOutput(o))
   else tx.to(payTo || MOCK_PAYEE, satoshis)
   if (nLockTime !== undefined) tx.nLockTime = nLockTime
-  return { tx, lockingScript, satoshis }
+  return { tx, lockingScript, satoshis, inputIndex }
 }
 
 /**
  * Evaluate a prepared spend. `unlock` receives the transaction so it can push
  * the preimage, sign, or anything else that depends on the spend itself.
  */
-function evaluatePrepared ({ tx, lockingScript, satoshis }, unlock, { flags } = {}) {
+function evaluatePrepared ({ tx, lockingScript, satoshis, inputIndex = 0 }, unlock, { flags } = {}) {
   const sighashType = bsv.crypto.Signature.SIGHASH_ALL | bsv.crypto.Signature.SIGHASH_FORKID
   const sign = (privateKey) => bsv.Transaction.Sighash
-    .sign(tx, privateKey, sighashType, 0, lockingScript, new BN(satoshis))
+    .sign(tx, privateKey, sighashType, inputIndex, lockingScript, new BN(satoshis))
     .toTxFormat()
 
-  const unlockingScript = unlock({ tx, sign, lockingScript, satoshis })
-  tx.inputs[0].setScript(unlockingScript)
+  const unlockingScript = unlock({ tx, sign, lockingScript, satoshis, inputIndex })
+  tx.inputs[inputIndex].setScript(unlockingScript)
 
   const interp = new Interpreter()
   let ok, thrown = null
   try {
-    ok = interp.verify(unlockingScript, lockingScript, tx, 0,
+    ok = interp.verify(unlockingScript, lockingScript, tx, inputIndex,
       flags !== undefined ? flags : policyFlags(), new BN(satoshis))
   } catch (err) { ok = false; thrown = err.message }
   return {

@@ -32,7 +32,9 @@ const P = bls.P
 // until it is either fixed or written down.
 const ACCEPTED = {
   'A, B and C are NOT checked for prime-order subgroup membership':
-    'known and documented in paper §10.3 and docs/pairing.md, with the four remedies priced at 5–10% of the verifier; open because the endomorphism forms must be derived and verified rather than recalled'
+    'known and documented in paper §10.3 and docs/pairing.md, with the four remedies priced at 5–10% of the verifier; open because the endomorphism forms must be derived and verified rather than recalled',
+  'the deployed split does not bind a stage to its siblings':
+    'found by this audit and FIXED for new constructions — commitData({ siblings }) checks hashPrevouts for 47 bytes at two siblings and 56 at three and groth16split uses it. Accepted only for the instance already on chain, which cannot be changed; tools/verify-chain.js checks that spend\'s shape from outside, and tools/attack-siblings.js is the standing demonstration of what that check is load-bearing for'
 }
 let findings = 0
 let unexpected = []
@@ -151,6 +153,29 @@ console.log('\n  3. TRANSACTION BINDING — can the two inputs disagree about f?
     'the output it reconstructs is fixed except for the data', 'one concatenation, one OP_HASH256')
   say(true, 'both inputs read hashOutputs from their own preimage',
     'the same 32 bytes of the same transaction, so they cannot differ')
+
+  // ...but only if both inputs are there. hashOutputs binds the BYTES several
+  // inputs agree on and says nothing about WHICH inputs exist. A stage spent
+  // alone satisfies its covenant trivially, and for pairing.consume that is
+  // not academic: F is exponentiation by d = 3(p¹²−1)/r against a target of
+  // order r, gcd(d, r) = 1, so f = expected^(d⁻¹ mod r) satisfies it for two
+  // modexps. tools/attack-siblings.js carries it out against the interpreter.
+  //
+  // The remedy is hashPrevouts, which no deployed script here reads. Counting
+  // OP_HASH256 is the structural signal: reconstructing the output takes one,
+  // rebuilding the prevouts list takes a second.
+  const hash256s = (h) => (h.match(/aa/g) || []).length
+  const sibbed = txmod.commitData(pairing.STATE_BYTES, { siblings: { count: 2, index: 1 } })
+  const sasm = new Asm()
+  sasm.given([{ name: '_s', kind: 'bytes', width: 1 },
+    ...sibbed.inputs.map((i) => ({ name: i.name, kind: i.kind || 'num', width: i.width }))])
+  sibbed.emit(sasm, {})
+  const sibHex = sasm.script().toHex()
+
+  say(false, 'the deployed split does not bind a stage to its siblings',
+    'hashOutputs is checked, hashPrevouts is not — a stage is spendable alone')
+  say(hash256s(sibHex) > hash256s(hex), 'commitData({ siblings }) rebuilds the prevouts list and checks it',
+    `${sasm.script().toBuffer().length - asm.script().toBuffer().length} bytes, and groth16split uses it on all three stages`)
   say(true, 'OP_PUSH_TX binds each preimage to THIS input of THIS transaction',
     'a preimage of another transaction fails the signature it is turned into')
 }

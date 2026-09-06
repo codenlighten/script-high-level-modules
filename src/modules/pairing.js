@@ -733,7 +733,16 @@ function publish (opts = {}) {
  * expected value fails the comparison at the end.
  */
 function consume (expected, opts = {}) {
-  const commit = txmod.commitData(STATE_BYTES)
+  // WITHOUT `siblings` THIS COIN CAN BE SPENT ALONE. The covenant binds the
+  // bytes the inputs agree on, not which inputs exist, and F is exponentiation
+  // by d = 3(p¹²−1)/r against a target of order r — so gcd(d, r) = 1 gives
+  // f = expected^(d⁻¹ mod r) with F(f) = expected, for two modexps and no
+  // Miller loop. tools/attack-siblings.js does exactly that. Pass
+  // `{ siblings: { count, index } }` and the spend must consume the whole
+  // family. The deployed instance predates this and is verified against the
+  // chain by checking the spend's shape from outside.
+  const sib = opts.siblings || null
+  const commit = txmod.commitData(STATE_BYTES, sib ? { siblings: sib } : {})
   const want = spread(expected, 'r')
   const expWit = finalExp.inputs.filter((i) => i.witness).map((i) => i.name)
 
@@ -742,6 +751,7 @@ function consume (expected, opts = {}) {
     doc: 'consume a published Miller output and require its final exponentiation to be a fixed value',
     inputs: [
       { name: 'preimage', kind: 'bytes', witness: true },
+      ...(sib ? [{ name: 'fundingTxid', kind: 'bytes', width: 32, witness: true }] : []),
       { name: 'data', kind: 'bytes', width: STATE_BYTES, witness: true },
       ...expWit.map((name) => ({ name, witness: true }))
     ],
@@ -749,14 +759,16 @@ function consume (expected, opts = {}) {
     contextual: true,
     maxWitnessAttacks: opts.maxWitnessAttacks || 2,
     witnessFor: (ctx) => {
-      const { tx, lockingScript, satoshis, spend = {} } = ctx
+      const { tx, lockingScript, satoshis, spend = {}, inputIndex = 0 } = ctx
       const f = spend.f
       const data = serialiseF12(spread(f, 'f'), 'f')
       tx.outputs.length = 0
       tx.addOutput(txmod.dataOutput(STATE_BYTES, data))
       tx._outputAmount = undefined
-      const g = txmod.PushTx.grind(tx, 0, lockingScript, satoshis, { field: 'sequence' })
-      return { preimage: g.preimage, data, ...finalExp.hint(spread(f, 'f'), { n: P381, nn: P381 }) }
+      const g = txmod.PushTx.grind(tx, inputIndex, lockingScript, satoshis, { field: 'sequence' })
+      const out = { preimage: g.preimage, data, ...finalExp.hint(spread(f, 'f'), { n: P381, nn: P381 }) }
+      if (sib) out.fundingTxid = Buffer.from(g.preimage).subarray(68, 100)
+      return out
     },
     hint: () => ({}),
     model: () => ({}),
@@ -767,9 +779,12 @@ function consume (expected, opts = {}) {
     // the kit's own near-misses, including the same residue plus p.
     attacks: (honest, params, name) => {
       if (name === 'preimage') return txmod.preimageAttacks(honest, params, name)
-      if (name === 'data') {
+      if (name === 'data' || name === 'fundingTxid') {
         const b = Buffer.from(honest[name]); b[0] ^= 0x01
-        return [{ label: 'a value the transaction did not publish', value: b }]
+        return [{
+          label: name === 'data' ? 'a value the transaction did not publish' : 'a funding transaction the spend does not draw on',
+          value: b
+        }]
       }
       return defaultAttacks(honest[name], { n: P381 })
     },
@@ -777,7 +792,7 @@ function consume (expected, opts = {}) {
     emit: (asm, params) => {
       const n = params.n === undefined ? P381 : params.n
       const p = { n: modulusName(n), nn: params.nn === undefined ? numericModulus({ n }, 'pairing.consume') : params.nn }
-      apply(asm, commit, {}, ['preimage', 'data'], ['data'])
+      apply(asm, commit, {}, sib ? ['preimage', 'fundingTxid', 'data'] : ['preimage', 'data'], ['data'])
       // the blob back into twelve numbers, in the order publish() wrote them
       const names = twelve('f')
       for (let i = 0; i < names.length - 1; i++) {

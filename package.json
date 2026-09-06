@@ -4,7 +4,7 @@
   "description": "High-level math and cryptography compiled to reusable, tested BSV Script modules.",
   "main": "src/index.js",
   "scripts": {
-    "test": "node test.js && node tools/kit-selftest.js && node tools/fuzz.js && node tools/rfc6238-check.js && node tools/bip340-check.js && node tools/ec-crosscheck.js && node tools/merkle-crosscheck.js && node tools/bls-crosscheck.js && node tools/pairing-prove.js && node tools/probe-limits.js && node tools/malleability-demo.js && node tools/select.js && node tools/audit-soundness.js && node tools/pairing-split.js && node tools/cost-report.js --check && node tools/catalog.js --check && node tools/results.js --check && node tools/paper.js --check && node examples/rsa-lock.js && node examples/totp-lock.js && node examples/oracle-lock.js && node examples/vault-lock.js && node examples/totp-timelock.js && node examples/authority-pays.js && node examples/counter-coin.js && node examples/budget-coin.js",
+    "test": "node test.js && node tools/kit-selftest.js && node tools/fuzz.js && node tools/rfc6238-check.js && node tools/bip340-check.js && node tools/ec-crosscheck.js && node tools/merkle-crosscheck.js && node tools/bls-crosscheck.js && node tools/pairing-prove.js && node tools/probe-limits.js && node tools/malleability-demo.js && node tools/select.js && node tools/audit-soundness.js && node tools/pairing-split.js && node tools/attack-siblings.js && node tools/cost-report.js --check && node tools/catalog.js --check && node tools/results.js --check && node tools/paper.js --check && node examples/rsa-lock.js && node examples/totp-lock.js && node examples/oracle-lock.js && node examples/vault-lock.js && node examples/totp-timelock.js && node examples/authority-pays.js && node examples/counter-coin.js && node examples/budget-coin.js",
     "probe": "node tools/probe-limits.js",
     "selftest": "node tools/kit-selftest.js",
     "fuzz": "node tools/fuzz.js",
@@ -19,6 +19,7 @@
     "audit": "node tools/audit-soundness.js",
     "select": "node tools/select.js",
     "pairing:split": "node tools/pairing-split.js",
+    "attack:siblings": "node tools/attack-siblings.js",
     "pairing": "node tools/pairing-cost.js",
     "pairing:prove": "node tools/pairing-prove.js",
     "groth16": "node tools/groth16.js",
