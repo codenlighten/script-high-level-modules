@@ -15,7 +15,7 @@ Neither is an estimate.
 | | what it does | bytes | run it |
 | --- | --- | ---: | --- |
 | `pairing.e` | e(P, Q) | 935,334 | `npm run pairing:prove` |
-| `pairing.verify(3, …)` | e(A,B)·e(−L,γ)·e(−C,δ) = e(α,β) | 1,346,218 | `npm run groth16` |
+| `groth16.verify` | e(A,B)·e(−L,γ)·e(−C,δ) = e(α,β) | 1,350,790 | `npm run groth16` |
 | `pairing.miller(63)` | the Miller loop alone | 333,676 | **on mainnet** |
 
 Each of those emits a locking script, hands it to `bsv.Script.Interpreter`
@@ -191,25 +191,54 @@ comparing numbers that are congruent rather than equal.
 
 Together the four take one pairing from roughly 4 MB to under 1 MB.
 
+## The Groth16 verifier, and where its soundness lives
+
+The equation is arithmetic. The *verifier* is a question about who chooses what.
+
+```
+e(A, B) · e(−L, γ) · e(−C, δ) = e(α, β)
+```
+
+**Only A, B and C come from the unlocking script.** γ, δ and L are pushed as
+constants by the locking script, and e(α,β) is the constant they are compared
+against. A spender who could choose γ could choose a γ that makes the equation
+hold for a proof of nothing — so `pairing.verify(3, …)`, which takes all three
+pairs as inputs, is a check of the *equation* and not a verifier. The two are
+one wrapper apart, the wrapper is 490 bytes of pushed constant, and the wrapper
+is the entire point.
+
+`npm test` asserts that separation on every run — that `groth16.verify`'s
+non-witness inputs are exactly `Ax, Ay, Bx0, Bx1, By0, By1, Cx, Cy`, and that
+γ, δ and L appear in the locking script as constants the interpreter would read
+as those numbers. It is a two-second check standing in for a fifty-second one,
+and it is the property that must never regress.
+
+### Why L is free
+
+L = IC₀ + Σ xᵢ·ICᵢ combines the public inputs into a G1 point, and a general
+verifier computes it on chain: one fixed-base scalar multiplication per input at
+about 39,910 bytes.
+
+This one does not need to. **The statement is fixed when the coin is locked.** A
+covenant that says "pay out to whoever proves *this*" knows its public inputs
+when it is written, so L is computed off chain, once, and pushed — 96 bytes, not
+40 KB per input. Change a public input and L changes, the locking script
+changes, and it is a different coin. That is what fixing the statement means, and
+it is the normal shape for a Bitcoin covenant.
+
+A verifier whose public inputs are chosen at *spend* time is a different object
+and does need the multiplications. `src/ec.js` now takes curve parameters — it
+carries `secp256k1` and `bls12381G1` and the `curve()` factory that makes both —
+so the arithmetic exists; wiring the `ec` ladder modules to an arbitrary curve
+is the remaining step, and it is ordinary work on ground this repository already
+holds.
+
 ## What is left on the table
 
-Nothing in the pairing itself, and nothing in the Groth16 *equation*: all of it
-is emitted and executed. The Fp2 floor still appears in the tables above because
-the model is kept alongside the measurement as a cross-check, not because
-anything depends on it.
-
-What a complete Groth16 verifier still needs is the **public-input binding**.
-`pairing.verify` checks the equation for the L it is given; a verifier must also
-establish that L = IC₀ + Σ xᵢ·ICᵢ. That is ℓ fixed-base scalar multiplications
-on G1 at about 39,910 bytes each, so a four-input verifier is about 160 KB more
-— priced, not emitted, because `src/ec.js` is written for secp256k1 and
-generalising it to an arbitrary short Weierstrass curve is its own piece of work.
-The equation is the hard nine tenths and it is done; this is the tenth, and it is
-ordinary elliptic-curve arithmetic that this repository already does elsewhere.
-
-Stating it plainly: **`pairing.verify(3, e(α,β))` is not by itself a Groth16
-verifier.** It is the equation a Groth16 verifier checks, and it is sound for
-exactly the statement it makes.
+Nothing in the pairing, and nothing in the verifier for a fixed statement: all
+of it is emitted and executed. The Fp2 floor still appears in the tables above
+because the model is kept alongside the measurement as a cross-check, not
+because anything depends on it.
 
 The Fp2 leftovers — G2 point arithmetic, the line coefficients, the Frobenius
 maps, the single Fp12 inversion — are priced at the sum of their module bodies

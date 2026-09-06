@@ -9,6 +9,7 @@ const fp6 = require('./src/modules/fp6')
 const fp12 = require('./src/modules/fp12')
 const g2mod = require('./src/modules/g2')
 const pairingMod = require('./src/modules/pairing')
+const groth16 = require('./src/modules/groth16')
 const bytes = require('./src/modules/bytes')
 const rsa = require('./src/modules/rsa')
 const u32 = require('./src/modules/u32')
@@ -127,5 +128,55 @@ const { failures } = proveAll([
   [stateMod.limit({ stateWidth: 8 }), {}],
   [recipes.budgetCoin({ allowance: 1000n }), {}]
 ])
+
+// ── the one Groth16 property that must never regress ────────────────────────
+//
+// tools/groth16.js emits the whole verifier and runs it, and takes fifty
+// seconds to do it. This is the part of that which is worth checking on every
+// single run, because it is not a performance property or an arithmetic one —
+// it is the difference between a verifier and a hole.
+//
+// A Groth16 verifier is sound only if the SPENDER CANNOT CHOOSE γ, δ or L. A
+// spender who could choose γ could choose one that makes the equation hold for
+// a proof of nothing. So the verifier's inputs must be exactly the proof and
+// the witnesses, and never a verifying-key point. pairing.verify(3, …) takes
+// all three pairs as inputs and is therefore a check of the equation rather
+// than a verifier; the two are one wrapper apart and the wrapper is the point.
+{
+  const fx = groth16.fixture([3n, 5n])
+  const v = groth16.verifier(fx.vk, fx.publicInputs, {
+    cases: [{ name: 'a valid proof', inputs: fx.proof, params: { n: require('./src/bls12381').P, nn: require('./src/bls12381').P } }]
+  })
+  const open = v.inputs.filter((i) => !i.witness).map((i) => i.name).sort()
+  const expected = ['Ax', 'Ay', 'Bx0', 'Bx1', 'By0', 'By1', 'Cx', 'Cy'].sort()
+  const same = open.length === expected.length && open.every((k, i) => k === expected[i])
+  if (!same) {
+    console.log(`\n  groth16.verify: the spender can choose ${open.join(', ')}`)
+    console.log(`  it must be only the proof: ${expected.join(', ')}`)
+    process.exit(1)
+  }
+  // and the verifying key must actually appear in the script, as constants
+  const { Asm } = require('./src/asm')
+  const F = require('./src/facts')
+  const bls = require('./src/bls12381')
+  const asm = new Asm()
+  asm.given([{ name: '_s', kind: 'bytes', width: 1 },
+    ...v.inputs.map((i) => ({ name: i.name, kind: 'num', facts: F.range(0n, bls.P) }))])
+  v.emit(asm, { n: bls.P, nn: bls.P })
+  // Script numbers are little-endian and minimally encoded, so the constant is
+  // looked for the way the interpreter would see it, not as big-endian hex.
+  const { fromNum } = require('./src/num')
+  const live = new Set(asm.script().chunks
+    .filter((c) => c.buf)
+    .map((c) => fromNum(c.buf).toString()))
+  const buried = { 'γ.x0': fx.vk.gamma.x[0], 'δ.x0': fx.vk.delta.x[0], 'L.x': groth16.combine(fx.vk.IC, fx.publicInputs).x }
+  for (const [what, value] of Object.entries(buried)) {
+    if (!live.has(value.toString())) {
+      console.log(`\n  groth16.verify: ${what} is not a constant in the locking script`)
+      process.exit(1)
+    }
+  }
+  console.log('\n  groth16.verify: the spender chooses only A, B, C — γ and δ are in the script')
+}
 
 process.exit(failures.length ? 1 : 0)

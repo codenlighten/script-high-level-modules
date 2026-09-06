@@ -248,12 +248,19 @@ that matches `@noble/curves` byte for byte — 627,037 opcodes, about thirty
 seconds, part of `npm test`. 148 of the numbers in the unlocking script are
 witnesses the spender chooses, and every one is bounded into [0, p) and checked.
 
-And the equation a **Groth16 verifier** checks —
-`e(A,B)·e(−L,γ)·e(−C,δ) = e(α,β)` — is `npm run groth16`: three pairings folded
-onto one accumulator, **1,350,472 bytes, 863,033 opcodes**, accepting a valid
-proof and refusing two invalid ones. Three separate pairings would be 2.8 MB; as
-a product they are 1.35, because k pairings share the 63 squarings and the one
-final exponentiation.
+And a **Groth16 verifier** — `e(A,B)·e(−L,γ)·e(−C,δ) = e(α,β)` — is
+`npm run groth16`: three pairings folded onto one accumulator, **1,350,790
+bytes, 862,999 opcodes**, accepting a valid proof and refusing two invalid ones.
+Three separate pairings would be 2.8 MB; as a product they are 1.35, because k
+pairings share the 63 squarings and the one final exponentiation.
+
+Its soundness is not the arithmetic, it is who chooses what: **only A, B and C
+come from the unlocking script**, while γ, δ and L are constants the locking
+script pushes. A spender who could choose γ could choose one that satisfies the
+equation for a proof of nothing. `npm test` asserts that separation on every
+run. L is a constant because the statement is fixed when the coin is locked —
+which is what makes the public-input combination free rather than 40 KB per
+input.
 
 The pricing model that preceded all of it was low by 6% on the Miller loop and
 high by 8.7% on the final exponentiation, for two different and identifiable

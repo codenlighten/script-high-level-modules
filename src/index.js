@@ -26,6 +26,7 @@ const fp6 = require('./modules/fp6')
 const fp12 = require('./modules/fp12')
 const g2mod = require('./modules/g2')
 const pairingMod = require('./modules/pairing')
+const groth16 = require('./modules/groth16')
 
 const { defineModule, apply, instantiate } = require('./module')
 const { Asm } = require('./asm')
@@ -122,7 +123,8 @@ const factories = {
   'pairing.miller': pairingMod.miller,
   'pairing.e': pairingMod.full,
   'pairing.product': pairingMod.product,
-  'pairing.verify': pairingMod.verify
+  'pairing.verify': pairingMod.verify,
+  'groth16.verify': groth16.verifier
 }
 
 /** What a consumer needs to decide whether a module fits. */
@@ -149,7 +151,7 @@ function catalog () {
 
 module.exports = {
   int, bytes, u32, sha256, rsa, hmac, totp, ec, ecdsa, schnorr: schnorrMod, merkle, tx: txmod, state: stateMod,
-  fp2, fp6, fp12, g2: g2mod, pairing: pairingMod, bls12381: require('./bls12381'),
+  fp2, fp6, fp12, g2: g2mod, pairing: pairingMod, groth16, bls12381: require('./bls12381'),
   modules, factories, catalog, describe,
   defineModule, apply, instantiate, predicate, compose, recipes, Asm,
   evaluate, evaluateSpend, policyFlags,

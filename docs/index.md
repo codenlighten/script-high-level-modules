@@ -39,9 +39,9 @@ claim this repository could not put a number on for a long time — "ZK
 verification reduces to field arithmetic" is true and is not a number. It is
 935,334 bytes, and it is not arrived at by counting: `npm run pairing:prove`
 emits the whole pairing as one locking script and runs it through the
-interpreter. The Groth16 verification equation is 1,346,218 and `npm run
-groth16` runs that too, accepting a valid proof and refusing two forged ones.
-The Miller loop is on mainnet.
+interpreter. A Groth16 verifier is 1,350,790 and `npm run groth16`
+runs that too, accepting a valid proof and refusing two forged ones. The Miller
+loop is on mainnet.
 
 **[cost.md](cost.md)** — what every module costs, generated from the code. RSA
 verification is 955 bytes; SHA-256 rebuilt from primitives is 49,181; ECDSA over

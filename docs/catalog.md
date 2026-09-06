@@ -73,6 +73,7 @@
 | `pairing.e(…)` | *built per key or width* | | | |
 | `pairing.product(…)` | *built per key or width* | | | |
 | `pairing.verify(…)` | *built per key or width* | | | |
+| `groth16.verify(…)` | *built per key or width* | | | |
 
 A module with **no outputs** is a predicate: it asserts and returns nothing, and
 `predicate(module, params, { owner })` turns it straight into a locking script
