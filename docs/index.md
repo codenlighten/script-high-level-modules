@@ -50,6 +50,12 @@ interpreter. A Groth16 verifier is 1,350,790 and `npm run groth16`
 runs that too, accepting a valid proof and refusing two forged ones. The Miller
 loop is on mainnet.
 
+**[../paper/paper.md](../paper/paper.md)** — the preprint draft: what was
+computed, under what assumptions, how correctness was established, what the
+network verified, what it consumed, and what general technique it demonstrates.
+Its tables come from `results.json`, and `npm test` fails if either drifts from
+the code — including a check that the prose still quotes the figures it claims.
+
 **[cost.md](cost.md)** — what every module costs, generated from the code.
 
 <!-- cost:line -->
@@ -117,6 +123,8 @@ npm run pairing         # what a BLS12-381 pairing costs, from first principles
 npm run pairing:prove   # emit e(P, Q) and run it through the interpreter
 npm run groth16         # emit a Groth16 verifier and run it, valid proof and two forged
 npm run catalog         # regenerate catalog.md from the registry
+npm run results         # measure everything into results.json
+npm run paper           # results.json, then the paper's tables
 npm run verify:chain    # every deployed txid, against the chain (needs network)
 npm run deploy          # list the deployable targets; --broadcast to send one
 node bin/sequence.js counter|budget   # run a stateful coin on chain, step by step

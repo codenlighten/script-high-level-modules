@@ -1,0 +1,370 @@
+{
+  "generated": "2026-09-06",
+  "commit": "33adc7f9b3154b902aa9755e27437935b5f3acf7",
+  "curve": {
+    "name": "BLS12-381",
+    "p": "0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab",
+    "r": "0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001",
+    "x": "-0xd201000000010000",
+    "tower": "Fp2 = Fp[u]/(u^2+1); Fp6 = Fp2[v]/(v^3-xi), xi = u+1; Fp12 = Fp6[w]/(w^2-v)"
+  },
+  "feeRateSatPerKB": 100,
+  "scriptPolicyBytes": 500000,
+  "modules": {
+    "fp2.mul": {
+      "bytes": 90,
+      "marginal": 39,
+      "opcodes": 30,
+      "witnesses": 0
+    },
+    "fp2.sqr": {
+      "bytes": 77,
+      "marginal": 22,
+      "opcodes": 22,
+      "witnesses": 0
+    },
+    "fp2.add": {
+      "bytes": 64,
+      "marginal": 13,
+      "opcodes": 14,
+      "witnesses": 0
+    },
+    "fp2.sub": {
+      "bytes": 68,
+      "marginal": 18,
+      "opcodes": 18,
+      "witnesses": 0
+    },
+    "fp2.neg": {
+      "bytes": 63,
+      "marginal": 14,
+      "opcodes": 14,
+      "witnesses": 0
+    },
+    "fp2.conj": {
+      "bytes": 59,
+      "marginal": 9,
+      "opcodes": 10,
+      "witnesses": 0
+    },
+    "fp2.mulXi": {
+      "bytes": 67,
+      "marginal": 15,
+      "opcodes": 16,
+      "witnesses": 0
+    },
+    "fp2.mulFp": {
+      "bytes": 64,
+      "marginal": 13,
+      "opcodes": 14,
+      "witnesses": 0
+    },
+    "fp2.inv": {
+      "bytes": 101,
+      "marginal": 51,
+      "opcodes": 36,
+      "witnesses": 2
+    },
+    "fp6.mul": {
+      "bytes": 756,
+      "marginal": 721,
+      "opcodes": 520,
+      "witnesses": 0
+    },
+    "fp6.sqr": {
+      "bytes": 507,
+      "marginal": 456,
+      "opcodes": 360,
+      "witnesses": 0
+    },
+    "fp6.mulV": {
+      "bytes": 87,
+      "marginal": 33,
+      "opcodes": 32,
+      "witnesses": 0
+    },
+    "fp12.mul": {
+      "bytes": 3073,
+      "marginal": 3110,
+      "opcodes": 2036,
+      "witnesses": 0
+    },
+    "fp12.sqr": {
+      "bytes": 2292,
+      "marginal": 2301,
+      "opcodes": 1540,
+      "witnesses": 0
+    },
+    "fp12.cycSqr": {
+      "bytes": 1259,
+      "marginal": 1292,
+      "opcodes": 968,
+      "witnesses": 0
+    },
+    "fp12.mulLine": {
+      "bytes": 2051,
+      "marginal": 2018,
+      "opcodes": 1310,
+      "witnesses": 0
+    },
+    "fp12.conj": {
+      "bytes": 140,
+      "marginal": 90,
+      "opcodes": 62,
+      "witnesses": 0
+    },
+    "fp12.frob": {
+      "bytes": 715,
+      "marginal": 675,
+      "opcodes": 330,
+      "witnesses": 0
+    },
+    "fp12.inv": {
+      "bytes": 3431,
+      "marginal": 3414,
+      "opcodes": 2166,
+      "witnesses": 12
+    },
+    "fp12.powX": {
+      "bytes": 98902,
+      "marginal": 101353,
+      "opcodes": 71954,
+      "witnesses": 0
+    },
+    "g2.stepDouble": {
+      "bytes": 552,
+      "marginal": 503,
+      "opcodes": 375,
+      "witnesses": 2
+    },
+    "g2.stepAdd": {
+      "bytes": 535,
+      "marginal": 487,
+      "opcodes": 363,
+      "witnesses": 2
+    }
+  },
+  "pairing": {
+    "miller": {
+      "bytes": 332977,
+      "marginal": 342614,
+      "opcodes": 215308,
+      "witnesses": 136,
+      "tangents": 63,
+      "chords": 5,
+      "lines": 68,
+      "squarings": 63
+    },
+    "finalExp": {
+      "bytes": 592008,
+      "marginal": 591968,
+      "opcodes": 411505,
+      "witnesses": 12,
+      "ladders": 5,
+      "terms": 15,
+      "frobenius": 19
+    },
+    "e": {
+      "bytes": 935334,
+      "marginal": 937703,
+      "opcodes": 627013,
+      "witnesses": 148
+    },
+    "products": [
+      {
+        "pairs": 1,
+        "bytes": 935334,
+        "opcodes": 627013,
+        "witnesses": 148,
+        "separately": 935334,
+        "saved": 0
+      },
+      {
+        "pairs": 2,
+        "bytes": 1142571,
+        "opcodes": 744751,
+        "witnesses": 284,
+        "separately": 1870668,
+        "saved": 728097
+      },
+      {
+        "pairs": 3,
+        "bytes": 1346218,
+        "opcodes": 862489,
+        "witnesses": 420,
+        "separately": 2806002,
+        "saved": 1459784
+      }
+    ],
+    "groth16": {
+      "bytes": 1350790,
+      "marginal": 1350790,
+      "opcodes": 862966,
+      "witnesses": 420,
+      "publicInputs": 2,
+      "spenderChooses": [
+        "Ax",
+        "Ay",
+        "Bx0",
+        "Bx1",
+        "By0",
+        "By1",
+        "Cx",
+        "Cy"
+      ]
+    },
+    "onchain": {
+      "millerComplete": true,
+      "millerShare": 0.35599796436353215,
+      "ladderShareOfFinalExp": 0.167061931595519,
+      "ladderShareOfPairing": 0.10573976782625244,
+      "pairingShareOnChain": 0.4617377321897846,
+      "note": "the Miller-loop stage is complete on chain; of the final exponentiation only one of its five f^|x| ladders is"
+    }
+  },
+  "operations": {
+    "miller": {
+      "fp2": {
+        "mul": 1912,
+        "sqr": 131,
+        "add": 3056,
+        "sub": 2436,
+        "neg": 71,
+        "conj": 0,
+        "mulFp": 131,
+        "mulXi": 786,
+        "inv": 68
+      },
+      "fp12": {
+        "mul": 0,
+        "sqr": 63,
+        "cycSqr": 0,
+        "mulLine": 68
+      }
+    },
+    "finalExp": {
+      "fp2": {
+        "mul": 1306,
+        "sqr": 3087,
+        "add": 11536,
+        "sub": 4614,
+        "neg": 27,
+        "conj": 126,
+        "mulFp": 0,
+        "mulXi": 1821,
+        "inv": 1
+      },
+      "fp12": {
+        "mul": 63,
+        "sqr": 0,
+        "cycSqr": 342,
+        "mulLine": 0
+      }
+    },
+    "pairing": {
+      "fp2": {
+        "mul": 3218,
+        "sqr": 3218,
+        "add": 14592,
+        "sub": 7050,
+        "neg": 98,
+        "conj": 126,
+        "mulFp": 131,
+        "mulXi": 2607,
+        "inv": 69
+      },
+      "fp12": {
+        "mul": 63,
+        "sqr": 63,
+        "cycSqr": 342,
+        "mulLine": 68
+      }
+    }
+  },
+  "deployments": [
+    {
+      "claim": "an allowlist, an authenticator code and an owner key, composed and attacked as one",
+      "lockBytes": 433,
+      "deploy": "0b3055d52367223d1bc011afe5f8a3d866b319f3c1ed695c257ddf4e64f83e88",
+      "spend": "8ffb6ecb8f251c8cdcdf683ea2da11d359d859674c48442f27f7f8a8aeb08b73"
+    },
+    {
+      "claim": "an RSA-2048 PKCS#1 v1.5 signature, made by OpenSSL, verified by Bitcoin Script",
+      "lockBytes": 981,
+      "deploy": "37c0c7a7109054820e9951f484bf16f9838630e1a642d976147a5282f76d6b7c",
+      "spend": "4b716dae581fee37692d7820d12e15b67c2260eb0fe68bb35468f9f883bfdacc"
+    },
+    {
+      "claim": "a covenant that reads its own transaction: the code must match the locked time",
+      "lockBytes": 746,
+      "deploy": "15dfa4c4ea56ad73d9f48215a250a27a9662a26f044dc9583e7d4fe65ff1f6ee",
+      "spend": "0d58f2275205f67da6a140798cd5225b1de0d9eadf607bc54e125c5268b9a934"
+    },
+    {
+      "claim": "a secp256k1 ECDSA signature over an arbitrary message — no OP_CHECKSIG involved",
+      "lockBytes": 59247,
+      "deploy": "2e2830799509ba4f7dd4cd56f9c88d80dda5ad0b2bd23083c3725e7546b08d46",
+      "spend": "3d4e284f9bb7e6d2b6d1b8070c90752e4ee32dacd36c9186d52b929509559467"
+    },
+    {
+      "claim": "SHA-256 computed from OP_AND, OP_XOR, OP_LSHIFT and OP_ADD — the opcode unused",
+      "lockBytes": 49240,
+      "deploy": "4cbc7f96da81f7877af29a944b522cbf79731c2542e113f4a41cae39b95c205a",
+      "spend": "406026bde4cf02e1c63923b87d7f5859d20eb8bee74279cfbc835a0f049b6503"
+    },
+    {
+      "claim": "a BIP-340 Schnorr signature over an arbitrary message, checked against the BIP's own vectors",
+      "lockBytes": 59721,
+      "deploy": "28d106a6cff81c70b8507fa0cc2352ca00965adb86281d209edd2022b4e21c6e",
+      "spend": "4a2bafc98fd0789204c20f2be992c1264852399a57c7b20dc05d0a4a3a55d0cb"
+    },
+    {
+      "claim": "the authority names the destination in what it signs, and the chain pays whoever it named",
+      "lockBytes": 1386,
+      "deploy": "186ff18e5e480b9065794fc330a6ed5c4f695aae4f997403bd7c510ea77fd946",
+      "spend": "8edf55810ab7726e67807ccda04d0617daf237c1a1a158c5d89015c97f452320"
+    },
+    {
+      "claim": "a secp256k1 ECDSA signature over an arbitrary message — no OP_CHECKSIG involved",
+      "lockBytes": 59297,
+      "deploy": "fe4184c05bbd3d41a0ea5641afc571c46fac7dac35577b9887a783081b382576",
+      "spend": "1a8f52d14c0e6a060f20714e75058a6a67e343034e2e8b3e8d3f30381bb4fbef"
+    },
+    {
+      "claim": "a coin advanced 3 times on chain, each spend paying the coin the next spend consumed",
+      "lockBytes": 470,
+      "deploy": "eb58479abf8ab19ad7baaff4ee8a3288ad2e7c3fafafaca3f989c7771d1acc50",
+      "spend": "46674b294303cdc9df2bf2dde4d615515b8b5ef41c6f98ba239936720e041231"
+    },
+    {
+      "claim": "a coin stepped 3 times on chain, each spend paying the coin the next spend consumed",
+      "lockBytes": 510,
+      "deploy": "3226e448dc8a5c5194a4fc2e4168e702ebde36eed2ec14652b05e1a243a0523a",
+      "spend": "5f26ba03e13ce017ded181ce742a2540a2985a08f4d234374f1d3caa69020a95"
+    },
+    {
+      "claim": "one step of a BLS12-381 Miller loop, in a field Bitcoin has no opcode for",
+      "lockBytes": 5269,
+      "deploy": "1bf828187c39d0b5de9856c7b2a6290b2cba6be4062947f86420eb9287b63de5",
+      "spend": "4ef8a7a70f477b118ffda82e689df0ffd8951ac0176b997c1db446f7132dc16d"
+    },
+    {
+      "claim": "48 of the 63 rounds of a BLS12-381 Miller loop, run by the network",
+      "lockBytes": 257558,
+      "deploy": "d5395e02a492a7af05e92bb01ee2b0bcc75ba2fda621420f96236e52e87ccdeb",
+      "spend": "2b81cc0811029f43c75ed9fcb355e0af4a62fbf47e0f6021ee0288d70af7101f"
+    },
+    {
+      "claim": "the whole 63-round BLS12-381 Miller loop — 68 lines, 68 witnessed inverses — run by the network",
+      "lockBytes": 333676,
+      "deploy": "10c52d6dfb2831ecff79fe40e827695187d1e8453af845e5ab31f17a84684d20",
+      "spend": "f90cc1e3d60eecfb4f1a849dc4798db601b3085ca07a4155c4ae2d0890170d40"
+    },
+    {
+      "claim": "f ↦ f^|x| in Fp12 — the ladder a final exponentiation runs five times",
+      "lockBytes": 99631,
+      "deploy": "1caac568ad58e9049ce4760d2998c31cef57045f84cb03c170a3243fdb936958",
+      "spend": "0025ca4c616f9ea2bd5ccbc7a03e12ed3cf434003bc4b490609cae995c8d2cfb"
+    }
+  ]
+}

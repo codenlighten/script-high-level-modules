@@ -37,13 +37,19 @@ node examples/oracle-lock.js     # a coin an oracle's ordinary secp256k1 key unl
 ## On chain
 
 Fourteen of these are deployed and spent on BSV mainnet, and the first five are
-**confirmed in block 965487**. **Both halves of a BLS12-381 pairing are among
-them**: the whole 63-round Miller loop, a 333,676-byte locking script doing 63
-tangents, 5 chords, 68 sparse line products and 68 witnessed Fp2 inversions; and
-the ladder its final exponentiation runs five times, at 99,631 bytes. The
-network ran both and accepted the spends. The *whole* pairing, at 935,388, is
-past the 500 KB script policy and cannot be relayed. Two others are not single
-spends but **sequences** — a
+**confirmed in block 965487**. The largest is the **complete 63-round Miller
+loop of a BLS12-381 pairing** — a 333,676-byte locking script doing 63 tangents,
+5 chords, 68 sparse line products and 68 witnessed Fp2 inversions in a field
+Bitcoin has no opcode for. Alongside it is `fp12.powX`, one of the five ladders
+the final exponentiation runs, at 99,631 bytes.
+
+Precisely: the Miller-loop stage is complete on chain, and **46.2% of a whole
+pairing by bytes has been executed by the network** — measured against the
+emitted pairing, not against the sum of its two stages, which is smaller and
+would have flattered the number. The final exponentiation
+(592,008 bytes) is past the 500 KB script policy on its own, and a whole pairing
+at 935,388 is further past it. Two of the deployments are not single spends but
+**sequences** — a
 coin advancing its own counter 0 → 1 → 2 → 3, and a coin paying three different
 people out of an allowance that falls 1500 → 900 → 400 → 0. In each, every
 transaction pays the output the next one consumes, so the state is not recorded
@@ -98,6 +104,8 @@ At the 100 sat/KB this wallet now pays, about 29,000.
 - **[cost.md](docs/cost.md)** — what every module costs, generated from the code.
 - **[pairing.md](docs/pairing.md)** — what a BLS12-381 pairing costs in Script,
   and a Groth16 verifier: counted, not estimated.
+- **[paper/paper.md](paper/paper.md)** — the preprint draft, with its tables
+  generated from `results.json` and its prose figures checked against the code.
 
 ## What is here
 

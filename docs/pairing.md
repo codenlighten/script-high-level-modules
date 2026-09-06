@@ -17,6 +17,7 @@ Neither is an estimate.
 | `pairing.e` | e(P, Q) | 935,334 | `npm run pairing:prove` |
 | `groth16.verify` | e(A,B)·e(−L,γ)·e(−C,δ) = e(α,β) | 1,350,790 | `npm run groth16` |
 | `pairing.miller(63)` | the Miller loop alone | 333,676 | **on mainnet** |
+| `fp12.powX` | f ↦ f^\|x\|, one of the exponentiation's five ladders | 99,631 | **on mainnet** |
 
 Each of those emits a locking script, hands it to `bsv.Script.Interpreter`
 under relay policy flags, and checks the result against a reference that matches
@@ -271,8 +272,8 @@ deploy  10c52d6dfb2831ecff79fe40e827695187d1e8453af845e5ab31f17a84684d20
 spend   f90cc1e3d60eecfb4f1a849dc4798db601b3085ca07a4155c4ae2d0890170d40
 ```
 
-And **the other half is there too**. `fp12.powX` is the ladder the final
-exponentiation runs five times — f ↦ f^|x|, 63 cyclotomic squarings and 5 Fp12
+And a **piece of the final exponentiation** is there. `fp12.powX` is the ladder
+it runs five times — f ↦ f^|x|, 63 cyclotomic squarings and 5 Fp12
 multiplications on a genuine element of the subgroup — in a 99,631-byte locking
 script:
 
@@ -281,9 +282,34 @@ deploy  1caac568ad58e9049ce4760d2998c31cef57045f84cb03c170a3243fdb936958
 spend   0025ca4c616f9ea2bd5ccbc7a03e12ed3cf434003bc4b490609cae995c8d2cfb
 ```
 
-So both halves of a BLS12-381 pairing have been executed by the network, which
-the whole pairing cannot be: at 935,388 bytes it is past the 500 KB script
-policy, and the Miller loop at 333,676 is the largest piece that fits.
+### Exactly how much of a pairing has run on the network
+
+This document said "both halves" for one commit, and that was wrong. f^|x| is
+**one of five** ladders inside the final exponentiation, not the exponentiation.
+The precise position:
+
+| | bytes | share of a pairing | where |
+| --- | ---: | ---: | --- |
+| Miller loop, complete | 332,977 | 35.6% | **mainnet** |
+| final exponentiation | 592,008 | 63.3% | interpreter |
+| — of which `fp12.powX` | 98,902 | 10.6% | **mainnet** |
+| e(P, Q) | 935,334 | 100% | interpreter |
+
+**46.2% of one pairing, by bytes, has been executed by the Bitcoin network.**
+
+The two stages do not sum to the whole: chaining them costs 349 bytes the
+separate measurements do not contain, and the shares are taken against the
+emitted pairing rather than against the sum of its parts. Writing it the other
+way gives 46.7%, and choosing the flattering denominator without saying so is
+the kind of thing this document exists not to do. Every figure here is generated
+into `results.json` by `npm run results`, and `npm test` checks it.
+
+The Miller-loop stage is complete and that is the substantive claim. The final
+exponentiation additionally needs four more of those ladders, an easy part —
+f ↦ conj(f)·f⁻¹ then φ²(·)·(·), with the pairing's single witnessed Fp12
+inversion in it — and 15 term combinations over 19 Frobenius applications. At
+592,008 bytes it is itself past the 500 KB script policy and cannot be deployed
+whole, so this is not a funding question.
 
 A 48-round prefix went out first, when that was what the wallet could pay for,
 and is kept:
