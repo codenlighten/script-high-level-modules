@@ -170,6 +170,7 @@ const TARGETS = [
   ['fp12.conj', fp12mod.conj, { n: BLS }, 4],
   ['fp12.frob', fp12mod.frob, { n: BLS }, 4],
   ['fp12.inv', fp12mod.inv, { n: BLS }, 3],
+  ['fp12.powXc', fp12mod.powXc, { n: BLS }, 2],
   ['g2.stepDouble', g2mod.stepDouble, { n: BLS }, 6],
   ['g2.stepAdd', g2mod.stepAdd, { n: BLS }, 6]
 ]

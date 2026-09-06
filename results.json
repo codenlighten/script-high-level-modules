@@ -1,6 +1,6 @@
 {
   "generated": "2026-09-06",
-  "commit": "33adc7f9b3154b902aa9755e27437935b5f3acf7",
+  "commit": "3f56d5ff2386738a6e05c2ecea24183c6a2a10fd",
   "curve": {
     "name": "BLS12-381",
     "p": "0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab",
@@ -131,6 +131,12 @@
       "opcodes": 71954,
       "witnesses": 0
     },
+    "fp12.powXc": {
+      "bytes": 73582,
+      "marginal": 77779,
+      "opcodes": 54204,
+      "witnesses": 12
+    },
     "g2.stepDouble": {
       "bytes": 552,
       "marginal": 503,
@@ -156,51 +162,51 @@
       "squarings": 63
     },
     "finalExp": {
-      "bytes": 592008,
-      "marginal": 591968,
-      "opcodes": 411505,
-      "witnesses": 12,
+      "bytes": 473466,
+      "marginal": 473485,
+      "opcodes": 323175,
+      "witnesses": 72,
       "ladders": 5,
       "terms": 15,
       "frobenius": 19
     },
     "e": {
-      "bytes": 935334,
-      "marginal": 937703,
-      "opcodes": 627013,
-      "witnesses": 148
+      "bytes": 817031,
+      "marginal": 831558,
+      "opcodes": 538743,
+      "witnesses": 208
     },
     "products": [
       {
         "pairs": 1,
-        "bytes": 935334,
-        "opcodes": 627013,
-        "witnesses": 148,
-        "separately": 935334,
+        "bytes": 817031,
+        "opcodes": 538743,
+        "witnesses": 208,
+        "separately": 817031,
         "saved": 0
       },
       {
         "pairs": 2,
-        "bytes": 1142571,
-        "opcodes": 744751,
-        "witnesses": 284,
-        "separately": 1870668,
-        "saved": 728097
+        "bytes": 1024268,
+        "opcodes": 656481,
+        "witnesses": 344,
+        "separately": 1634062,
+        "saved": 609794
       },
       {
         "pairs": 3,
-        "bytes": 1346218,
-        "opcodes": 862489,
-        "witnesses": 420,
-        "separately": 2806002,
-        "saved": 1459784
+        "bytes": 1227915,
+        "opcodes": 774219,
+        "witnesses": 480,
+        "separately": 2451093,
+        "saved": 1223178
       }
     ],
     "groth16": {
-      "bytes": 1350790,
-      "marginal": 1350790,
-      "opcodes": 862966,
-      "witnesses": 420,
+      "bytes": 1240810,
+      "marginal": 1240810,
+      "opcodes": 774756,
+      "witnesses": 480,
       "publicInputs": 2,
       "spenderChooses": [
         "Ax",
@@ -215,11 +221,17 @@
     },
     "onchain": {
       "millerComplete": true,
-      "millerShare": 0.35599796436353215,
-      "ladderShareOfFinalExp": 0.167061931595519,
-      "ladderShareOfPairing": 0.10573976782625244,
-      "pairingShareOnChain": 0.4617377321897846,
-      "note": "the Miller-loop stage is complete on chain; of the final exponentiation only one of its five f^|x| ladders is"
+      "millerShare": 0.40754512374683455,
+      "pairingShareOnChain": 0.40754512374683455,
+      "supersededOnChain": {
+        "module": "fp12.powX",
+        "bytes": 98902,
+        "replacedBy": "fp12.powXc",
+        "replacementBytes": 73582,
+        "note": "deployed and spent, correct, and no longer on the critical path"
+      },
+      "finalExpDeployable": true,
+      "note": "the Miller-loop stage is complete on chain and is what the implementation still emits; the final exponentiation is now under the script-size policy and has not been deployed"
     }
   },
   "operations": {

@@ -100,7 +100,7 @@ add('fp2.mulXi', fp2.mulXi); add('fp2.mulFp', fp2.mulFp); add('fp2.inv', fp2.inv
 add('fp6.mul', fp6.mul); add('fp6.sqr', fp6.sqr); add('fp6.mulV', fp6.mulV)
 add('fp12.mul', fp12.mul); add('fp12.sqr', fp12.sqr); add('fp12.cycSqr', fp12.cycSqr)
 add('fp12.mulLine', fp12.mulLine); add('fp12.conj', fp12.conj); add('fp12.frob', fp12.frob)
-add('fp12.inv', fp12.inv); add('fp12.powX', fp12.powX)
+add('fp12.inv', fp12.inv); add('fp12.powX', fp12.powX); add('fp12.powXc', fp12.powXc)
 add('g2.stepDouble', g2mod.stepDouble); add('g2.stepAdd', g2mod.stepAdd)
 
 // ── the pairing ─────────────────────────────────────────────────────────────
@@ -129,13 +129,29 @@ const deployments = (Array.isArray(ledger) ? ledger : ledger.deployments || []).
   name: d.name, claim: d.claim, lockBytes: d.lockBytes || d.lock_bytes || null, deploy: d.deploy || d.txid || null, spend: d.spend || null
 }))
 
+// What is on chain AND is still what the implementation does.
+//
+// The deployed fp12.powX is the UNCOMPRESSED ladder, which fp12.powXc has since
+// superseded — the current final exponentiation does not call it. It is a
+// correct piece of pairing arithmetic that the network executed, and it is not
+// a component of the pairing measured above, so counting its bytes toward
+// "a pairing on chain" would be counting a version that no longer exists.
+//
+// The Miller loop is both: byte-identical to what the current implementation
+// emits, and rebuilt from source against the chain on every check.
 const onchain = {
   millerComplete: true,
   millerShare: miller.bytes / e.bytes,
-  ladderShareOfFinalExp: modules['fp12.powX'].bytes / finalExp.bytes,
-  ladderShareOfPairing: modules['fp12.powX'].bytes / e.bytes,
-  pairingShareOnChain: (miller.bytes + modules['fp12.powX'].bytes) / e.bytes,
-  note: 'the Miller-loop stage is complete on chain; of the final exponentiation only one of its five f^|x| ladders is'
+  pairingShareOnChain: miller.bytes / e.bytes,
+  supersededOnChain: {
+    module: 'fp12.powX',
+    bytes: modules['fp12.powX'].bytes,
+    replacedBy: 'fp12.powXc',
+    replacementBytes: modules['fp12.powXc'].bytes,
+    note: 'deployed and spent, correct, and no longer on the critical path'
+  },
+  finalExpDeployable: finalExp.bytes < 500000,
+  note: 'the Miller-loop stage is complete on chain and is what the implementation still emits; the final exponentiation is now under the script-size policy and has not been deployed'
 }
 
 // ── operation counts, from running a real pairing ───────────────────────────

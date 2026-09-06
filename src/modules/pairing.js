@@ -293,6 +293,7 @@ function miller (rounds = FULL, opts = {}) {
 // being by one — which is free to compute and is not free to emit.
 
 const F12SUF = ['A00', 'A01', 'A10', 'A11', 'A20', 'A21', 'B00', 'B01', 'B10', 'B11', 'B20', 'B21']
+const HARD_MAX_J = bls.HARD_TERMS.reduce((m, t) => Math.max(m, t.j), 0)
 let uid = 0
 const tmp = () => `_e${uid++}`
 const copy12 = (asm, from, to = tmp()) => { for (const x of F12SUF) asm.pick(from + x, to + x); return to }
@@ -301,15 +302,24 @@ const call12 = (asm, m, p, ins, out = tmp(), flat = []) => {
   return out
 }
 
-/** x^y for the 63-bit curve parameter: unrolled square-and-multiply, x kept. */
-function powY (asm, p, base) {
-  const bits = bls.Y.toString(2)
-  let acc = copy12(asm, base)                                   // the leading 1 bit
-  for (let i = 1; i < bits.length; i++) {
-    acc = call12(asm, fp12.cycSqr, p, [acc])
-    if (bits[i] === '1') acc = call12(asm, fp12.mul, p, [acc, copy12(asm, base)])
-  }
-  return acc
+/**
+ * x^y for the 63-bit curve parameter, by fp12.powXc — the COMPRESSED ladder.
+ *
+ * The uncompressed version of this was 63 general cyclotomic squarings inline.
+ * fp12.powXc does the same exponentiation with four Fp2 coefficients instead of
+ * six and one witnessed decompression before each of the five multiplications
+ * plus one at the end: 73,674 bytes against 98,902, checked against the literal
+ * f^|x| rather than against another copy of itself.
+ *
+ * Five of these is most of a final exponentiation, so a quarter off each is a
+ * sixth off a pairing.
+ */
+const LADDER_WITNESSES = 6
+const ladderNames = (j) => Array.from({ length: LADDER_WITNESSES },
+  (_, k) => [`L${j}d${k}i0`, `L${j}d${k}i1`]).flat()
+
+function powY (asm, p, base, j) {
+  return call12(asm, fp12.powXc, p, [copy12(asm, base)], undefined, ladderNames(j))
 }
 
 /** x^a for |a| ≤ 3, consuming x. A negative a is a conjugation, not an inverse. */
@@ -325,7 +335,11 @@ function smallPow (asm, p, x, a) {
 const finalExp = defineModule({
   name: 'pairing.finalExp',
   doc: 'f ↦ f^(3(p¹² − 1)/r) — the final exponentiation, easy part and hard part',
-  inputs: [...twelve('f'), ...twelve('inv').map((name) => ({ name, witness: true }))],
+  inputs: [
+    ...twelve('f'),
+    ...twelve('inv').map((name) => ({ name, witness: true })),
+    ...Array.from({ length: HARD_MAX_J }, (_, i) => ladderNames(i + 1)).flat().map((name) => ({ name, witness: true }))
+  ],
   outputs: twelve('r'),
   maxWitnessAttacks: 4,
   requires: ({ nn = P381 }) => {
@@ -340,7 +354,21 @@ const finalExp = defineModule({
     for (const k of twelve('r')) out[k] = r
     return out
   },
-  hint: (v, params) => spread(bls.f12inv(unspread(v, 'f')), 'inv'),
+  hint: (v, params) => {
+    const f = unspread(v, 'f')
+    const out = spread(bls.f12inv(f), 'inv')
+    // the ladders' decompression witnesses, produced by replaying what the
+    // script is about to do — which is what fp12.powXc's own hint does, once
+    // per ladder, on the value that ladder will actually see
+    let r = bls.f12mulRaw(bls.f12conj(f), bls.f12inv(f))
+    r = bls.f12mulRaw(bls.f12frobN(r, 2), r)
+    for (let j = 1; j <= HARD_MAX_J; j++) {
+      const w = fp12.powXc.hint(spread(r, 'a'), { n: P381 })
+      for (const [name, value] of Object.entries(w)) out[`L${j}${name}`] = value
+      r = bls.cyclotomicPow(r, bls.Y)
+    }
+    return out
+  },
   model: (v, params) => spread(bls.finalExponentiate(unspread(v, 'f')), 'r'),
   prologue: (asm, { n = P381 }) => pushModulus(asm, n),
   emit: (asm, params) => {
@@ -356,9 +384,8 @@ const finalExp = defineModule({
     r = call12(asm, fp12.mul, p, [rf, r])
 
     // the shared ladders r^(y^j)
-    const maxJ = bls.HARD_TERMS.reduce((m, t) => Math.max(m, t.j), 0)
     const pow = [r]
-    for (let j = 1; j <= maxJ; j++) pow.push(powY(asm, p, pow[j - 1]))
+    for (let j = 1; j <= HARD_MAX_J; j++) pow.push(powY(asm, p, pow[j - 1], j))
 
     // λ = Σ a·y^j·p^i, assembled from them
     let acc = null
@@ -409,6 +436,9 @@ function product (pairs = 1, opts = {}) {
   const loopIn = loop.inputs.map((i) => i.name)
   const loopWit = loop.inputs.filter((i) => i.witness).map((i) => i.name)
   const points = loopIn.filter((name) => !loopWit.includes(name))
+  // whatever the exponentiation needs beyond the Fp12 element itself: the one
+  // Fp12 inverse, and the decompression inverses its five ladders consume
+  const expWit = finalExp.inputs.filter((i) => i.witness).map((i) => i.name)
 
   return defineModule({
     name: pairs === 1 ? 'pairing.e' : `pairing.product${pairs}`,
@@ -418,7 +448,7 @@ function product (pairs = 1, opts = {}) {
     inputs: [
       ...points,
       ...loopWit.map((name) => ({ name, witness: true })),
-      ...twelve('inv').map((name) => ({ name, witness: true }))
+      ...expWit.map((name) => ({ name, witness: true }))
     ],
     outputs: twelve('r'),
     maxWitnessAttacks: opts.maxWitnessAttacks || 3,
@@ -440,7 +470,8 @@ function product (pairs = 1, opts = {}) {
       const out = {}
       witnesses.forEach(([a, b], k) => { out[`w${k}a`] = a; out[`w${k}b`] = b })
       const raw = bls.X < 0n ? bls.f12conj(f) : f
-      return { ...out, ...spread(bls.f12inv(raw), 'inv') }
+      // the exponentiation's own hint, on the value it will actually see
+      return { ...out, ...finalExp.hint(spread(raw, 'f'), { n: nn, nn }) }
     },
     model: (v, params) => {
       const nn = params.nn === undefined ? P381 : params.nn
@@ -452,7 +483,7 @@ function product (pairs = 1, opts = {}) {
       const n = params.n === undefined ? P381 : params.n
       const p = { n: modulusName(n), nn: params.nn === undefined ? numericModulus({ n }, 'pairing.product') : params.nn }
       apply(asm, loop, p, loopIn, twelve('f'))
-      apply(asm, finalExp, p, [...twelve('f'), ...twelve('inv')], twelve('r'))
+      apply(asm, finalExp, p, [...twelve('f'), ...expWit], twelve('r'))
       if (typeof n !== 'string') asm.discard('_pn')
       for (const name of twelve('r')) asm.roll(name)
     },

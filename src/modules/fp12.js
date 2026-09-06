@@ -73,6 +73,13 @@ const store12 = (c) => {
 // Cyclotomic test vectors: real elements of G_Φ6(Fp2), produced the only way
 // there is to produce one — by running the easy part of a final exponentiation.
 const bls = require('../bls12381')
+
+/**
+ * The determinant fp12.powXc's decompression inverts, and an Fp2 inverse — both
+ * only for producing hints. The script recomputes the determinant itself and
+ * checks the inverse; nothing here is trusted.
+ */
+const detOf = (c) => bls.f2x2(bls.f2sub(bls.f2mulXi(bls.f2mul(c[1], c[3])), bls.f2mul(c[0], c[2])))
 const cyclotomic = (k) => {
   const f = bls.millerLoop(bls.g1mul(k), bls.g2mul(k + 1n))
   let e = bls.f12mulRaw(bls.f12conj(f), bls.f12inv(f))
@@ -573,4 +580,167 @@ const powX = defineModule({
   ]
 })
 
-module.exports = { mul, sqr, cycSqr, mulLine, conj, frob, inv, powX, randomCyclotomic, twelve, op6, dup6, park6, unpark6, F12mul, spread, cyclotomic }
+// ── COMPRESSED SQUARING, at the Asm level ───────────────────────────────────
+//
+// These are helpers rather than modules on purpose. A compressed squaring's
+// specification is "the square, projected" and the only way to write that down
+// is the formula the emitter uses, so a module built around it would have a
+// model that could not disagree with its own schedule. Used inside fp12.powXc,
+// whose model IS independent — the literal f^|x| by general exponentiation —
+// they are checked against something that did not come from them.
+//
+// The reference implementations are in src/bls12381.js with the derivation, and
+// tools/bls-crosscheck.js checks both against cyclotomicSqr and against the
+// elements they claim to recover.
+
+/** Two Fp4 squarings instead of three: c is four Fp2 names, four come back. */
+function emitCompSqr (asm, p, c) {
+  const f4 = (x, y) => {
+    const t0 = op(asm, fp2.sqr, p, [dup(asm, x)])
+    const t1 = op(asm, fp2.sqr, p, [dup(asm, y)])
+    const sq = op(asm, fp2.sqr, p, [op(asm, fp2.add, p, [dup(asm, x), dup(asm, y)])])
+    const even = op(asm, fp2.add, p, [dup(asm, t0), op(asm, fp2.mulXi, p, [dup(asm, t1)])])
+    const odd = op(asm, fp2.sub, p, [op(asm, fp2.sub, p, [sq, t0]), t1])
+    return [even, odd]
+  }
+  const x3 = (v) => op(asm, fp2.add, p, [op(asm, fp2.add, p, [dup(asm, v), dup(asm, v)]), v])
+  const x2 = (v) => op(asm, fp2.add, p, [dup(asm, v), v])
+  const [t2, t3] = f4(c[0], c[1])
+  const [t4, t5] = f4(c[2], c[3])
+  return [
+    op(asm, fp2.add, p, [x3(op(asm, fp2.mulXi, p, [t5])), x2(c[0])]),
+    op(asm, fp2.sub, p, [x3(t4), x2(c[1])]),
+    op(asm, fp2.sub, p, [x3(t2), x2(c[2])]),
+    op(asm, fp2.add, p, [x3(t3), x2(c[3])])
+  ]
+}
+
+/**
+ * Back to twelve, by the two linear equations f·f̄ = 1 gives for c0.
+ *
+ * `wit` names the two coefficients of the determinant's inverse, which the
+ * spender supplies and fp2.inv checks. Both equations are scaled by two so
+ * nothing is halved. Returns the twelve names in `twelve()` order.
+ */
+function emitDecompress (asm, p, c, wit) {
+  const [c1r, c1s, c2r, c2s] = c
+  const norm = (r, sp) => op(asm, fp2.sub, p, [op(asm, fp2.sqr, p, [dup(asm, r)]),
+    op(asm, fp2.mulXi, p, [op(asm, fp2.sqr, p, [dup(asm, sp)])])])
+  const b1 = norm(c1r, c1s)
+  const nb2 = norm(c2r, c2s)
+  const det = (() => {
+    const d = op(asm, fp2.sub, p, [op(asm, fp2.mulXi, p, [op(asm, fp2.mul, p, [dup(asm, c1s), dup(asm, c2s)])]),
+      op(asm, fp2.mul, p, [dup(asm, c1r), dup(asm, c2r)])])
+    return op(asm, fp2.add, p, [dup(asm, d), d])
+  })()
+  const di = op(asm, fp2.inv, p, [det], undefined, wit)
+  const b2 = op(asm, fp2.neg, p, [nb2])
+  //  [ c2r   −ξc2s ] [x]   [b1]
+  //  [ c1s   −c1r  ] [y] = [b2]
+  const x = op(asm, fp2.mul, p, [
+    op(asm, fp2.sub, p, [
+      op(asm, fp2.mul, p, [dup(asm, b2), op(asm, fp2.mulXi, p, [dup(asm, c2s)])]),
+      op(asm, fp2.mul, p, [dup(asm, b1), dup(asm, c1r)])
+    ]), dup(asm, di)])
+  const y = op(asm, fp2.mul, p, [
+    op(asm, fp2.sub, p, [op(asm, fp2.mul, p, [dup(asm, c2r), b2]), op(asm, fp2.mul, p, [dup(asm, c1s), b1])]),
+    di])
+  // flat = [x, c1r, c2r, y, c1s, c2s]; twelve() wants A0 A1 A2 B0 B1 B2
+  return [...two(x), ...two(c2r), ...two(c1s), ...two(c1r), ...two(y), ...two(c2s)]
+}
+
+/**
+ * r = f^|x|, the same as fp12.powX, with the squarings done COMPRESSED.
+ *
+ * Four Fp2 coefficients instead of six, two Fp4 squarings instead of three, and
+ * one decompression before each of the five multiplications plus one at the
+ * end. Six decompressions, each costing a witnessed Fp2 inversion.
+ *
+ * The model is the literal f^|x| by general exponentiation — the same
+ * specification fp12.powX has — so the compressed schedule is checked against
+ * something no part of it produced.
+ *
+ * Correct only on the cyclotomic subgroup, twice over: the squaring identities
+ * hold there, and the decompression uses f·f̄ = 1. And INCOMPLETE where the
+ * determinant ξ·c1ₛc2ₛ − c1ᵣc2ᵣ vanishes, which cannot make a wrong answer
+ * verify — only a right one fail.
+ */
+const powXc = defineModule({
+  name: 'fp12.powXc',
+  doc: 'r = f^|x| with compressed squaring — four Fp2 coefficients instead of six',
+  inputs: [
+    ...twelve('a'),
+    ...Array.from({ length: 6 }, (_, k) => [`d${k}i0`, `d${k}i1`]).flat().map((name) => ({ name, witness: true }))
+  ],
+  outputs: twelve('r'),
+  maxWitnessAttacks: 6,
+  requires: inField('fp12.powXc', ...twelve('a')),
+  ensures: ensures12('fp12.powXc'),
+  hint: (v, { n }) => {
+    if (n !== BLS) throw new Error('fp12.powXc: the curve parameter belongs to BLS12-381')
+    const bits = bls.Y.toString(2)
+    const a = load12(v, 'a')
+    let c = bls.compress(a)
+    const out = {}
+    let k = 0
+    const recover = () => {
+      const di = bls.f2inv(detOf(c))
+      out[`d${k}i0`] = di[0]; out[`d${k}i1`] = di[1]
+      k++
+      return bls.decompress(c)
+    }
+    for (let i = 1; i < bits.length; i++) {
+      c = bls.compressedSqr(c)
+      if (bits[i] === '1') c = bls.compress(bls.f12mulRaw(recover(), a))
+    }
+    recover()
+    return out
+  },
+  model: (v, { n }) => {
+    if (n !== BLS) throw new Error('fp12.powXc: the curve parameter belongs to BLS12-381')
+    return store12(bls.f12pow(load12(v, 'a'), bls.Y))
+  },
+  prologue: (asm, { n }) => pushModulus(asm, n),
+  emit: (asm, params) => {
+    const { n } = params
+    const p = inner(params, 'fp12.powXc')
+    const bits = bls.Y.toString(2)
+    // Compression is a CHOICE OF NAMES: flat1, flat4, flat2, flat5, which in
+    // the twelve() layout are B0, A2, A1, B2. It emits nothing at all.
+    const compressed = (pre) => [pre + 'B0', pre + 'A2', pre + 'A1', pre + 'B2']
+    const droppedBy = (pre) => [pre + 'A0', pre + 'B1']
+
+    let k = 0
+    const recover = () => emitDecompress(asm, p, c, [`d${k}i0`, `d${k}i1`])
+
+    let c = compressed('a').map((name) => dup(asm, name))    // the leading bit
+    for (let i = 1; i < bits.length; i++) {
+      c = emitCompSqr(asm, p, c)
+      if (bits[i] !== '1') continue
+      const full = recover(); k++
+      const copy = twelve('a').map((name) => { const t = fresh(); asm.pick(name, t); return t })
+      apply(asm, mul, p, [...full, ...copy], twelve('_m'))
+      c = compressed('_m')
+      // the two coefficients compression drops are live values and have to go
+      for (const pair of droppedBy('_m')) { asm.discard(pair + '0'); asm.discard(pair + '1') }
+      // rename so the next round's names do not collide with the round after
+      c = c.map((name) => { const t = fresh(); asm.roll(name + '0'); asm.rename(t + '0'); asm.roll(name + '1'); asm.rename(t + '1'); return t })
+    }
+    const out = recover()
+    for (const x of SUF12) asm.discard('a' + x)
+    dropModulus(asm, n)
+    out.forEach((name, i) => { asm.roll(name); asm.rename(twelve('r')[i]) })
+  },
+  notes: [
+    'correct only on the cyclotomic subgroup, and incomplete where the decompression determinant vanishes',
+    'six witnessed Fp2 inversions — one per decompression'
+  ],
+  fuzz: (rnd) => spread(randomCyclotomic(rnd), 'a'),
+  cases: [
+    { name: 'cyclotomic', inputs: spread(cyclotomic(2n), 'a'), params: { n: BLS } },
+    { name: 'another', inputs: spread(cyclotomic(7n), 'a'), params: { n: BLS } }
+  ]
+})
+
+module.exports = { mul, sqr, cycSqr, mulLine, conj, frob, inv, powX, powXc, randomCyclotomic,
+  emitCompSqr, emitDecompress, twelve, op6, dup6, park6, unpark6, F12mul, spread, cyclotomic }

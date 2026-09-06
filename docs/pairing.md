@@ -7,15 +7,15 @@ and it is not a number.
 
 This is the number.
 
-**One BLS12-381 pairing is 935,334 bytes of Script — 935 KB, about 93,500
-satoshis at 100 sat/KB. The Groth16 verification equation is 1,346,218 bytes.**
+**One BLS12-381 pairing is 817,031 bytes of Script — about 82,000 satoshis at
+100 sat/KB. A Groth16 verifier is 1,240,810 bytes.**
 
 Neither is an estimate.
 
 | | what it does | bytes | run it |
 | --- | --- | ---: | --- |
-| `pairing.e` | e(P, Q) | 935,334 | `npm run pairing:prove` |
-| `groth16.verify` | e(A,B)·e(−L,γ)·e(−C,δ) = e(α,β) | 1,350,790 | `npm run groth16` |
+| `pairing.e` | e(P, Q) | 817,031 | `npm run pairing:prove` |
+| `groth16.verify` | e(A,B)·e(−L,γ)·e(−C,δ) = e(α,β) | 1,240,810 | `npm run groth16` |
 | `pairing.miller(63)` | the Miller loop alone | 333,676 | **on mainnet** |
 | `fp12.powX` | f ↦ f^\|x\|, one of the exponentiation's five ladders | 99,631 | **on mainnet** |
 
@@ -88,9 +88,9 @@ each.
 
 | pairs | emitted | as separate pairings | saved |
 | ---: | ---: | ---: | ---: |
-| 1 | 935,334 | 935,334 | — |
-| 2 | 1,142,571 | 1,870,668 | 728,097 |
-| 3 | 1,346,218 | 2,806,002 | 1,459,784 |
+| 1 | 817,031 | 817,031 | — |
+| 2 | 1,024,268 | 1,634,062 | 609,794 |
+| 3 | 1,227,915 | 2,451,093 | 1,223,178 |
 
 Each pair after the first costs about 204 KB rather than 935 KB. What goes is
 the 63 squarings it would have duplicated and the 592 KB final exponentiation it
@@ -117,8 +117,8 @@ cheaper. That is why `verify` takes an expected value instead of testing for one
 | stage | what it does | bytes, emitted |
 | --- | --- | ---: |
 | Miller loop | 63 tangents, 5 chords, 68 line products, 63 squarings | 332,977 |
-| final exponentiation | the easy part, then 15 terms over 6 shared ladders | 592,008 |
-| **e(P, Q)** | | **935,334** |
+| final exponentiation | the easy part, then 15 terms over 6 shared ladders | 473,466 |
+| **e(P, Q)** | | **817,031** |
 
 The final exponentiation is two thirds of it, which is why three of the four
 optimisations below live there.
@@ -126,7 +126,10 @@ optimisations below live there.
 ### The model, checked against the thing itself
 
 Before either half was emitted, the pricing model said 314,005 for the loop and
-648,653 for the exponentiation. Emitted, they are 332,977 and 592,008.
+648,653 for the exponentiation. Emitted, they were 332,977 and 592,008. (Those
+are the figures at the time of the comparison; compressed squaring has since
+taken the exponentiation to 473,466. The comparison is kept as it stood, because
+the point of it is what the model got wrong, not what the code costs now.)
 
 | | model | emitted | |
 | --- | ---: | ---: | --- |
@@ -290,26 +293,38 @@ The precise position:
 
 | | bytes | share of a pairing | where |
 | --- | ---: | ---: | --- |
-| Miller loop, complete | 332,977 | 35.6% | **mainnet** |
-| final exponentiation | 592,008 | 63.3% | interpreter |
-| — of which `fp12.powX` | 98,902 | 10.6% | **mainnet** |
-| e(P, Q) | 935,334 | 100% | interpreter |
+| Miller loop, complete | 332,977 | 40.8% | **mainnet** |
+| final exponentiation | 473,466 | 57.9% | under policy, not deployed |
+| e(P, Q) | 817,031 | 100% | interpreter |
+| `fp12.powX`, superseded | 98,902 | — | mainnet |
 
-**46.2% of one pairing, by bytes, has been executed by the Bitcoin network.**
+**40.8% of one pairing, by bytes, has been executed by the Bitcoin network**,
+and it is the Miller-loop stage, complete and byte-identical to what the
+implementation still emits.
 
-The two stages do not sum to the whole: chaining them costs 349 bytes the
-separate measurements do not contain, and the shares are taken against the
-emitted pairing rather than against the sum of its parts. Writing it the other
-way gives 46.7%, and choosing the flattering denominator without saying so is
-the kind of thing this document exists not to do. Every figure here is generated
-into `results.json` by `npm run results`, and `npm test` checks it.
+The last row carries its own caveat. `fp12.powX` — one uncompressed f^|x| ladder
+— was deployed and spent and is correct, and it is no longer what the
+implementation does: `fp12.powXc` replaced it at 73,674 bytes. Counting its
+bytes toward "a pairing on chain" would be counting a version that no longer
+exists, so the figure above does not.
+
+The stages do not sum to the whole either: chaining them costs bytes neither
+separate measurement contains, and the shares are taken against the emitted
+pairing rather than against the sum of its parts, which is smaller and would
+have flattered them. Every figure here is generated into `results.json` by
+`npm run results`, and `npm test` checks it.
+
+**The final exponentiation is now under the 500,000-byte script policy.** Both
+stages of a pairing are individually relayable; only a whole pairing in one
+script is not. Deploying it is a funding question, not a technical one.
 
 The Miller-loop stage is complete and that is the substantive claim. The final
 exponentiation additionally needs four more of those ladders, an easy part —
 f ↦ conj(f)·f⁻¹ then φ²(·)·(·), with the pairing's single witnessed Fp12
 inversion in it — and 15 term combinations over 19 Frobenius applications. At
-592,008 bytes it is itself past the 500 KB script policy and cannot be deployed
-whole, so this is not a funding question.
+473,466 bytes — after §"compressed squaring" below — it is now UNDER the 500 KB
+script policy and could be deployed. That has not been done, and it is a funding
+question rather than a technical one.
 
 A 48-round prefix went out first, when that was what the wallet could pay for,
 and is kept:
@@ -324,7 +339,7 @@ truncated loop a real checkable object rather than a demonstration: the script
 that went on chain is the script the test suite proves, stopped at a bit.
 `npm run verify:chain` rebuilds both byte for byte from the code.
 
-Both are inside the default 500 KB script policy. A whole pairing, at 935,388
+Both are inside the default 500 KB script policy. A whole pairing, at 817,085
 bytes, is not — it is proven against the interpreter and cannot be relayed.
 
 ### What it took to get 334 KB to relay
@@ -343,9 +358,9 @@ sized from the script that is about to be deployed.
 
 ## The honest caveat
 
-At 935 KB a pairing is past the default 500 KB script policy, and so is the
-Groth16 equation at 1.35 MB. The Miller loop, at 333 KB, is not — and is on
-chain. Neither is standard relay today. That is a policy
+At 817 KB a pairing is past the default 500 KB script policy, and so is a
+Groth16 verifier at 1.24 MB. The Miller loop at 333 KB is not, and is on chain;
+the final exponentiation at 473 KB is not either, and has not been deployed. Neither is standard relay today. That is a policy
 number, not a consensus one, and it is the kind of number that moves; the
 arithmetic underneath it is what this measures, and the arithmetic does not
 change when the policy does.

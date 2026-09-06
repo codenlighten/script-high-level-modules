@@ -21,7 +21,8 @@
 | `fp12.conj` | BLS12-381, the p⁶ Frobenius | 223 | 110 |
 | `fp12.frob` | BLS12-381, f ↦ f^p | 798 | 378 |
 | `fp12.inv` | BLS12-381, witnessed | 3,523 | 2,214 |
-| `fp12.powX` | f^|x|, the final exponentiation ladder | 98,985 | 72,002 |
+| `fp12.powX` | f^|x|, uncompressed | 98,985 | 72,002 |
+| `fp12.powXc` | f^|x|, compressed squaring | 73,674 | 54,252 |
 | `int.modexp` | e = 65537, 2048-bit | 355 | 76 |
 | `int.modexp` | e = 3, 2048-bit | 280 | 16 |
 | `bytes.reverse` | a 32-byte digest | 124 | 93 |

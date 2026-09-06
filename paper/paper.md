@@ -25,27 +25,34 @@ spender and verified algebraically: `z = a⁻¹ (mod p)` becomes the constraint
 encodes the same value.
 
 **A complete 63-round BLS12-381 Miller loop was deployed and spent on Bitcoin SV
-mainnet as a 333,676-byte locking script.** A 99,631-byte `f ↦ f^|x|`
-exponentiation ladder — one of the five the final exponentiation runs — was
-deployed and spent independently. Measured against the emitted pairing, 46.2% of
-one pairing by bytes has been executed by the network. The whole pairing
-(935,334 bytes) and the whole final exponentiation (592,008 bytes) are past the
-default 500,000-byte script policy and were validated against
-`bsv.Script.Interpreter` rather than on chain.
+mainnet as a 333,676-byte locking script** — 40.8% of a pairing by bytes, and
+the whole of its first stage. A 99,631-byte `f ↦ f^|x|` exponentiation ladder
+was deployed and spent independently.
 
-We construct a Groth16 verification predicate of 1,350,790 bytes and 862,966
+We then introduce a 2/6 compressed representation of the cyclotomic subgroup
+whose squaring is closed by construction, with a decompression derived from
+f·f̄ = 1 as two linear equations over Fp2. This reduces the final exponentiation
+from 592,008 to **473,466 bytes — below the default 500,000-byte script
+policy** — so both stages of a pairing are now individually relayable. A whole
+pairing in one script is 817,031 bytes and remains above it; it is validated
+against `bsv.Script.Interpreter`.
+
+We construct a Groth16 verification predicate of 1,240,810 bytes and 774,756
 opcodes that accepts a valid proof and rejects invalid proofs whose curve
 membership and inversion witnesses remain valid, isolating failure to the
 pairing equation itself. Multi-pairing compilation reduces size by sharing the
-Miller accumulator, saving 728,097 bytes for two pairings and 1,459,784 for
+Miller accumulator, saving 609,794 bytes for two pairings and 1,223,178 for
 three relative to independent evaluation.
 
 Finally, we identify an **inverted cost model**: because a witnessed inversion
 costs roughly four multiplications to verify rather than hundreds to compute,
 affine coordinates outperform the projective coordinates that conventional
-elliptic-curve implementation practice prescribes. Implementation strategies
-optimal for processors are not necessarily optimal for witness-assisted
-verification.
+elliptic-curve implementation practice prescribes — and compressed cyclotomic
+squaring, whose decompression costs an inversion and which is therefore normally
+reserved for long squaring chains, becomes worth taking at once. Implementation
+strategies optimal for processors are not necessarily optimal for
+witness-assisted verification, and the same reversal appears in more than one
+place.
 
 ---
 
@@ -70,6 +77,8 @@ The contributions are:
    canonicity obligation that makes this sound (§3).
 3. **Empirical mainnet execution** of the complete Miller-loop stage and of one
    exponentiation ladder, with byte-exact reconstruction from source (§8).
+   Compressed squaring subsequently brings the final exponentiation under the
+   script-size policy, making both stages individually relayable (§6.1).
 4. **A multi-pairing result**: k pairings sharing one Miller accumulator, with
    measured savings (§7).
 5. **A Groth16 verifier** and the precise separation between the values a
@@ -239,6 +248,55 @@ recomputes the slope: a second inversion for a number already in hand. Deriving
 the next point from λ directly gives **68 inversions rather than 136**, halving
 the witness.
 
+### 6.1 Compressed squaring, and a second inverted trade
+
+Read the Granger–Scott identities in the Fp4 basis — f = c₀ + c₁w + c₂w² over
+Fp4 = Fp2[s]/(s² − ξ) with s = w³ — and c₁′ and c₂′ depend only on c₁ and c₂.
+So {c₁, c₂} is closed under squaring, c₀ can be dropped, and squaring costs two
+Fp4 squarings instead of three. That is a 2/6 compression obtained by *reading*
+formulas already verified rather than by deriving new ones.
+
+Compression is only useful if one can come back, and decompression is where the
+technique normally stops paying: it costs a field inversion, so it is reserved
+for long runs of squarings. Under witness-assisted verification the inversion is
+four multiplications, and the break-even moves down far enough that it is worth
+taking immediately.
+
+The recovery is derived rather than recalled. For f in the cyclotomic subgroup
+f·f̄ = 1, and with f̄ = c̄₀ − c̄₁w + c̄₂w² two of the three resulting Fp4 equations
+are **linear** in c₀ = x + ys:
+
+```
+w²:  2(c₀c̄₂)₀ = N(c₁)      ⟹   c₂ᵣ·x − ξc₂ₛ·y  =  N(c₁)/2
+w¹:  2(c₁c̄₀)₁ = −N(c₂)     ⟹   c₁ₛ·x −   c₁ᵣ·y  = −N(c₂)/2
+```
+
+writing u = uᵣ + uₛs and N(u) = uᵣ² − ξuₛ². A 2×2 solve over Fp2, one witnessed
+inversion of the determinant, and both equations scaled by two so nothing is
+halved.
+
+| | bytes |
+| --- | ---: |
+| `fp12.powX`, uncompressed ladder | 98,902 |
+| `fp12.powXc`, compressed | 73,674 |
+| final exponentiation, before | 592,008 |
+| final exponentiation, after | **473,466** |
+| e(P, Q), before | 935,334 |
+| e(P, Q), after | 817,031 |
+
+25.5% off a ladder, 20.0% off the final exponentiation, 12.6% off a pairing —
+and the exponentiation crosses the 500,000-byte policy boundary, so both stages
+of a pairing are individually relayable.
+
+The determinant ξ·c₁ₛc₂ₛ − c₁ᵣc₂ᵣ can vanish, and then nothing is recovered.
+That is a **completeness** limit, not a soundness one: it cannot make a wrong
+pairing verify, only a right one fail, and the values it depends on are
+determined by the computation rather than chosen by the spender.
+
+`fp12.powXc` is checked against the literal f^|x| by general exponentiation —
+the same model `fp12.powX` carries — so the compressed schedule is verified
+against a specification no part of it produced.
+
 ## 7. Products of pairings, and Groth16
 
 ### 7.1 Sharing the accumulator
@@ -302,11 +360,12 @@ spent. One `f ↦ f^|x|` ladder was deployed as 99,631 bytes and spent. Each
 deployed script is rebuilt from source and compared byte for byte against the
 chain; 14 of 14 reconstruct exactly.
 
-**Scope.** 46.2% of one pairing by bytes has executed on the network. The
-Miller-loop *stage* is complete. The final exponentiation additionally requires
-four more ladders, an easy part containing the pairing's single witnessed Fp12
-inversion, and 15 term combinations over 19 Frobenius applications; at 592,008
-bytes it exceeds the script-size policy on its own.
+**Scope.** 40.8% of one pairing by bytes has executed on the network, and it is
+the Miller-loop stage, complete and byte-identical to what the implementation
+still emits. The deployed `fp12.powX` is a correct ladder the network executed
+and is no longer on the critical path — §6.1 replaced it — so its bytes are not
+counted toward that figure. The final exponentiation is now 473,466 bytes,
+below the policy boundary, and has not been deployed.
 
 ### 8.1 Systems findings
 
@@ -347,10 +406,13 @@ larger. We state this as the paper's most transferable claim:
 > model. A witness-assisted stack machine has a different cost hierarchy from a
 > processor, and received implementation wisdom does not transfer unexamined.
 
-Two further consequences of the same principle appear above: multiplying by zero
-is free on a processor and costs bytes in a script (§5.3), and an LSB-first
+Three further consequences of the same principle appear above. Multiplying by
+zero is free on a processor and costs bytes in a script (§5.3). An LSB-first
 ladder's multiplication-by-one is free at runtime and costs 3,110 bytes when
-unrolled (Table 1, `fp12.powX`).
+unrolled — the marginal cost of an Fp12 product inside a composition (§5,
+Table 1). And compressed cyclotomic squaring, whose decompression
+inversion normally confines it to long squaring chains, pays immediately here
+(§6.1) — the same reversal, arrived at independently.
 
 ## 10. Correctness methodology
 
@@ -395,10 +457,14 @@ with `results.json`.
 
 ## 11. Limitations
 
-- **A complete pairing has not executed on mainnet** and cannot under a
-  500,000-byte script policy. It is validated against the interpreter.
-- **The final exponentiation has not executed on mainnet.** One of its five
-  ladders has.
+- **A complete pairing has not executed on mainnet** in a single script and
+  cannot at 817,031 bytes under a 500,000-byte script policy. It is validated
+  against the interpreter.
+- **The final exponentiation has not executed on mainnet.** It now fits under
+  the policy at 473,466 bytes; it has not been deployed.
+- **`fp12.powX` is deployed but superseded.** It computes a correct f^|x| and
+  the network executed it; `fp12.powXc` replaced it, so it is not a component of
+  the pairing measured here and its bytes are not counted as such.
 - **The Groth16 verifier is for a fixed statement.** Spend-time public inputs
   need on-chain scalar multiplication, priced at about 40,000 bytes per input
   but not emitted.
@@ -414,11 +480,13 @@ with `results.json`.
 
 ## 12. Roadmap
 
-The final exponentiation is 63.3% of a pairing and is where remaining effort
-belongs. Compression of the cyclotomic subgroup, better addition chains,
-further witness-assisted subcomputations, and transaction-level decomposition
-across several outputs are all open. Whether a whole pairing can be brought
-under the policy boundary is an engineering question, not an expressiveness one.
+The final exponentiation is 57.9% of a pairing and is still where remaining
+effort belongs, though §6.1 has taken it below the policy boundary. Better
+addition chains, further witness-assisted subcomputations and transaction-level
+decomposition across several outputs are all open. Whether a whole pairing can
+be brought under the boundary in one script is an engineering question, not an
+expressiveness one; the immediate next step is simply to deploy the final
+exponentiation, which now fits.
 
 Beyond BLS12-381: BLS signature verification is a two-pairing product; KZG
 opening is likewise. Both land directly on the multi-pairing predicate in §7.1.

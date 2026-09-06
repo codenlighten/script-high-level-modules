@@ -154,7 +154,21 @@ async function main () {
     const l2 = b.lineAdd(b.g2mul(3n), b.G2, b.G1)
     assert.ok(b.f12eq(b.f12mulLine(ml, l2), b.f12mulRaw(ml, b.lineDense(l2))), 'f12mulLine != f12mulRaw (add)')
     checks += 2
+    // compressed squaring and the decompression derived from f·f̄ = 1
+    for (const k of [2n, 3n, 7n, 12345n]) {
+      const g = b.millerLoop(b.g1mul(k), b.g2mul(k + 1n))
+      let z = b.f12mulRaw(b.f12conj(g), b.f12inv(g))
+      z = b.f12mulRaw(b.f12frobN(z, 2), z)
+      const comp = b.compress(z)
+      const sq = b.compressedSqr(comp)
+      const want = b.compress(b.cyclotomicSqr(z))
+      assert.ok(sq.every((u, i) => u[0] === want[i][0] && u[1] === want[i][1]),
+        `compressedSqr disagrees with cyclotomicSqr at k = ${k}`)
+      assert.ok(b.f12eq(b.decompress(comp), z), `decompress(compress(f)) != f at k = ${k}`)
+      checks += 2
+    }
     console.log('  cyclotomic squaring, sparse line ok')
+    console.log('  compressed squaring, decompression ok')
   }
 
   console.log(`\n${checks} assertions — src/bls12381.js agrees with @noble/curves.`)

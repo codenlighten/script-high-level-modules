@@ -43,13 +43,14 @@ loop of a BLS12-381 pairing** — a 333,676-byte locking script doing 63 tangent
 Bitcoin has no opcode for. Alongside it is `fp12.powX`, one of the five ladders
 the final exponentiation runs, at 99,631 bytes.
 
-Precisely: the Miller-loop stage is complete on chain, and **46.2% of a whole
+Precisely: the Miller-loop stage is complete on chain, and **40.8% of a whole
 pairing by bytes has been executed by the network** — measured against the
 emitted pairing, not against the sum of its two stages, which is smaller and
-would have flattered the number. The final exponentiation
-(592,008 bytes) is past the 500 KB script policy on its own, and a whole pairing
-at 935,388 is further past it. Two of the deployments are not single spends but
-**sequences** — a
+would have flattered the number. Compressed squaring has since brought the
+final exponentiation to 473,466 bytes, **under the 500 KB script policy**, so
+both stages are now individually relayable; deploying the second is a funding
+question. A whole pairing in one script, at 817,031, is still past it. Two of
+the deployments are not single spends but **sequences** — a
 coin advancing its own counter 0 → 1 → 2 → 3, and a coin paying three different
 people out of an allowance that falls 1500 → 900 → 400 → 0. In each, every
 transaction pays the output the next one consumes, so the state is not recorded
@@ -144,7 +145,7 @@ and are now era-derived and checked after every opcode (released in 9.7.0; see
 [limits.md](docs/limits.md)). They are skipped, with a note, on a library that
 predates it. Nothing else here depends on that fix.
 
-71 modules, 342 cases, 1,279 forgery attempts, all green.
+72 modules, 344 cases, 1,363 forgery attempts, all green.
 
 ## The three claims a module must earn
 
@@ -252,16 +253,16 @@ and 63 of these are what a final exponentiation is. **A BLS12-381 pairing is
 935 KB of Script and a Groth16 verifier is about 1.75 MB.**
 
 It is not an estimate. `npm run pairing:prove` emits `e(P, Q)` as **one
-935,388-byte locking script**, runs it through `bsv.Script.Interpreter` under
+817,085-byte locking script**, runs it through `bsv.Script.Interpreter` under
 relay policy flags, and checks all twelve Fp12 coefficients against a reference
-that matches `@noble/curves` byte for byte — 627,037 opcodes, about thirty
-seconds, part of `npm test`. 148 of the numbers in the unlocking script are
+that matches `@noble/curves` byte for byte — 538,767 opcodes, about thirty
+seconds, part of `npm test`. 208 of the numbers in the unlocking script are
 witnesses the spender chooses, and every one is bounded into [0, p) and checked.
 
 And a **Groth16 verifier** — `e(A,B)·e(−L,γ)·e(−C,δ) = e(α,β)` — is
-`npm run groth16`: three pairings folded onto one accumulator, **1,350,790
-bytes, 862,999 opcodes**, accepting a valid proof and refusing two invalid ones.
-Three separate pairings would be 2.8 MB; as a product they are 1.35, because k
+`npm run groth16`: three pairings folded onto one accumulator, **1,240,810
+bytes, 774,756 opcodes**, accepting a valid proof and refusing two invalid ones.
+Three separate pairings would be 2.45 MB; as a product they are 1.23, because k
 pairings share the 63 squarings and the one final exponentiation.
 
 Its soundness is not the arithmetic, it is who chooses what: **only A, B and C

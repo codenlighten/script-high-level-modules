@@ -95,7 +95,7 @@ function verifier (vk, publicInputs, opts = {}) {
       const out = {}
       w.forEach(([a, b], k) => { out[`w${k}a`] = a; out[`w${k}b`] = b })
       const raw = bls.X < 0n ? bls.f12conj(f) : f
-      return { ...out, ...pairing.spread(bls.f12inv(raw), 'inv') }
+      return { ...out, ...pairing.finalExp.hint(pairing.spread(raw, 'f'), { n: P381, nn: P381 }) }
     },
     model: () => ({}),
     emit: (asm, params) => {

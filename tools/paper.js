@@ -114,18 +114,23 @@ could choose one satisfying the equation for a proof of nothing.
 | | bytes | share of a pairing | status |
 | --- | ---: | ---: | --- |
 | Miller loop, complete | ${n(r.pairing.miller.bytes)} | ${pct(r.pairing.onchain.millerShare)} | **mainnet** |
-| \`fp12.powX\`, one of ${r.pairing.finalExp.ladders} ladders | ${n(M('fp12.powX').bytes)} | ${pct(r.pairing.onchain.ladderShareOfPairing)} | **mainnet** |
-| final exponentiation, whole | ${n(r.pairing.finalExp.bytes)} | ${pct(r.pairing.finalExp.bytes / r.pairing.e.bytes)} | interpreter |
+| final exponentiation, whole | ${n(r.pairing.finalExp.bytes)} | ${pct(r.pairing.finalExp.bytes / r.pairing.e.bytes)} | ${r.pairing.onchain.finalExpDeployable ? 'under policy, not deployed' : 'interpreter'} |
 | e(P, Q), whole | ${n(r.pairing.e.bytes)} | 100% | interpreter |
+| \`fp12.powX\`, superseded | ${n(r.pairing.onchain.supersededOnChain.bytes)} | — | mainnet |
 
-**${pct(r.pairing.onchain.pairingShareOnChain)} of one pairing, by bytes, has been executed by the Bitcoin network.**
-The Miller-loop stage is complete; of the final exponentiation, one of its
-${r.pairing.finalExp.ladders} f^|x| ladders is. Shares are taken against the emitted pairing, not
-against the sum of its stages, which is smaller.
+**${pct(r.pairing.onchain.pairingShareOnChain)} of one pairing, by bytes, has been executed by the Bitcoin network**,
+and it is the Miller-loop stage, complete.
 
-The default script-size policy is ${n(r.scriptPolicyBytes)} bytes, so the final
-exponentiation (${n(r.pairing.finalExp.bytes)}) and the whole pairing (${n(r.pairing.e.bytes)}) cannot be
-relayed as single locking scripts. The Miller loop can, and is.
+The last row needs its caveat. \`fp12.powX\` — one f^|x| ladder, uncompressed —
+was deployed and spent, and it is correct. It is no longer what the
+implementation does: \`fp12.powXc\` replaced it at ${n(r.pairing.onchain.supersededOnChain.replacementBytes)} bytes, and the
+final exponentiation calls that. Counting its bytes toward "a pairing on chain"
+would be counting a version that no longer exists, so the figure above does not.
+
+The default script-size policy is ${n(r.scriptPolicyBytes)} bytes. Compressed squaring brought
+the final exponentiation to ${n(r.pairing.finalExp.bytes)}, **under that boundary**, so both stages
+of a pairing are now individually relayable; only the whole pairing in one
+script (${n(r.pairing.e.bytes)}) is not.
 
 ## Table 6 — field operations per pairing
 

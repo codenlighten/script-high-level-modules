@@ -424,6 +424,78 @@ function cyclotomicSqr (f) {
     f2add(f2x3(t3), f2x2(g[5]))
   ])
 }
+// COMPRESSED SQUARING, and why it is worth more here than on a processor.
+//
+// Read the Granger–Scott formulas above in the Fp4 basis and something falls
+// out: writing f as c0 + c1w + c2w² over Fp4 = Fp2[s]/(s² − ξ) with s = w³,
+//
+//     c0' depends only on c0
+//     c1' depends only on c1 and c2
+//     c2' depends only on c1 and c2
+//
+// so {c1, c2} is CLOSED under squaring and c0 can be dropped. That is a 2/6
+// compression — four Fp2 coefficients instead of six — and its squaring costs
+// two Fp4 squarings rather than three.
+//
+// Compression is only useful if you can come back, and decompression is where
+// this normally stops being worth it: it costs an inversion, so the technique
+// pays only across long runs of squarings. In Script an inversion is a witness
+// and four multiplications, which moves the break-even a long way down. This is
+// the same reversal as affine-beats-projective, in a second place.
+//
+// The recovery is DERIVED rather than recalled. For f in the cyclotomic
+// subgroup f·f̄ = 1, and with f̄ = c̄0 − c̄1w + c̄2w² that gives three Fp4
+// equations. Two of them are LINEAR in c0 = x + ys:
+//
+//     w²:   2(c0c̄2)₀ = N(c1)      ⟹   c2ᵣ·x − ξ·c2ₛ·y =  N(c1)/2
+//     w¹:   2(c1c̄0)₁ = −N(c2)     ⟹   c1ₛ·x −    c1ᵣ·y = −N(c2)/2
+//
+// writing u = uᵣ + uₛ·s and N(u) = uᵣ² − ξuₛ². Solving the 2×2 system needs one
+// Fp2 inversion of its determinant. Both equations are scaled by two so that no
+// halving is emitted.
+//
+// The determinant ξ·c1ₛc2ₛ − c1ᵣc2ᵣ can be zero, and then this recovers nothing.
+// That is a COMPLETENESS limit, not a soundness one: a spender cannot use it to
+// make a wrong pairing verify, only to make a right one fail, and the values it
+// depends on are determined by the computation rather than chosen.
+
+/** (c1, c2) as four Fp2 coefficients: flat indices 1, 4, 2, 5. */
+const compress = (f) => { const g = flat6(f); return [g[1], g[4], g[2], g[5]] }
+
+/** Squaring in the compressed form — two Fp4 squarings, not three. */
+function compressedSqr (c) {
+  const [t2, t3] = f4sqr(c[0], c[1])
+  const [t4, t5] = f4sqr(c[2], c[3])
+  return [
+    f2add(f2x3(f2mulXi(t5)), f2x2(c[0])),
+    f2sub(f2x3(t4), f2x2(c[1])),
+    f2sub(f2x3(t2), f2x2(c[2])),
+    f2add(f2x3(t3), f2x2(c[3]))
+  ]
+}
+
+/** The Fp4 norm N(uᵣ + uₛs) = uᵣ² − ξuₛ². */
+const f4norm = (r, sPart) => f2sub(f2sqr(r), f2mulXi(f2sqr(sPart)))
+
+/**
+ * Back to twelve coefficients. Returns null when the determinant vanishes,
+ * which the caller must treat as "this element cannot be recovered" rather
+ * than as an answer.
+ */
+function decompress (c) {
+  const [c1r, c1s, c2r, c2s] = c
+  const det = f2x2(f2sub(f2mulXi(f2mul(c1s, c2s)), f2mul(c1r, c2r)))
+  if (det[0] === 0n && det[1] === 0n) return null
+  const b1 = f4norm(c1r, c1s)                                  // = 2·(rhs of w²)
+  const b2 = f2sub(F2_ZERO, f4norm(c2r, c2s))                  // = 2·(rhs of w¹)
+  const di = f2inv(det)
+  //  [ c2r   −ξc2s ] [x]   [b1]
+  //  [ c1s   −c1r  ] [y] = [b2]
+  const x = f2mul(f2sub(f2mul(b2, f2mulXi(c2s)), f2mul(b1, c1r)), di)
+  const y = f2mul(f2sub(f2mul(c2r, b2), f2mul(c1s, b1)), di)
+  return nest6([x, c1r, c2r, y, c1s, c2s])
+}
+
 function cyclotomicPow (a, e) {
   let r = F12_ONE; let b = a; let x = e < 0n ? -e : e
   while (x > 0n) { if (x & 1n) r = f12mulRaw(r, b); b = cyclotomicSqr(b); x >>= 1n }
@@ -501,10 +573,10 @@ function pairing (P, Q) { return finalExponentiate(millerLoop(P, Q)) }
 module.exports = {
   P, R, X, B, B2, G1, G2, ops, ops2, ops12, reset, count, count2, count12,
   mod, fpMul, fpAdd, fpSub, fpInv, fpPow,
-  f2, f2add, f2sub, f2mul, f2sqr, f2inv, f2conj, f2mulXi, f2pow, f2eq, F2_ONE, F2_ZERO, FROB,
+  f2, f2add, f2sub, f2mul, f2sqr, f2inv, f2conj, f2mulXi, f2pow, f2eq, F2_ONE, F2_ZERO, FROB, f2x2, f2x3,
   f6, f6mul, f6sqr, f6inv, F6_ONE,
   f12, f12mulRaw, f12sqr, f12inv, f12conj, f12frob, f12frobN, f12pow, f12eq, F12_ONE,
-  cyclotomicPow, cyclotomicSqr, HARD_TERMS, Y,
+  cyclotomicPow, cyclotomicSqr, compress, compressedSqr, decompress, HARD_TERMS, Y,
   g1add, g1mul, g1neg, g2add, g2mul, g2neg,
   lineDouble, lineAdd, lineDense, f12mulLine,
   millerLoop, finalExponentiate, pairing

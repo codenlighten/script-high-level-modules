@@ -12,10 +12,11 @@
 // extension-field arithmetic of any kind. It has OP_MUL and OP_MOD at
 // arbitrary width, and this is what that turns out to be sufficient for.
 //
-// 148 of the numbers in the unlocking script are witnesses the spender chooses
-// — 136 coefficients of the 68 Fp2 inverses the loop needs, twelve for the one
-// Fp12 inversion — and every one is bounded into [0, p) and checked. A pairing
-// that accepted a second witness for the same input would not be a pairing.
+// Most of the numbers in the unlocking script are witnesses the spender chooses
+// — 136 coefficients for the 68 Fp2 inverses the loop needs, twelve for the one
+// Fp12 inversion, and sixty for the decompressions the compressed ladders make
+// — and every one is bounded into [0, p) and checked. A pairing that accepted a
+// second witness for the same input would not be a pairing.
 
 const { proveAll } = require('../src/testkit')
 const { Asm } = require('../src/asm')
@@ -46,8 +47,9 @@ console.log(`    final exponentiation   ${bytesOf(pairing.finalExp, P).toLocaleS
 console.log(`      easy part, then ${bls.HARD_TERMS.length} terms over 6 shared ladders`)
 console.log('')
 
-const { failures } = proveAll([[pairing.full({ maxWitnessAttacks: attacks }), {}]])
+const whole = pairing.full({ maxWitnessAttacks: attacks })
+const { failures } = proveAll([[whole, {}]])
 
-console.log(`\n  148 witnessed numbers, every one bounded into [0, p) and checked.`)
+console.log(`\n  ${whole.inputs.filter((i) => i.witness).length} witnessed numbers, every one bounded into [0, p) and checked.`)
 console.log(`  ${((Date.now() - started) / 1000).toFixed(1)} s to emit and run.\n`)
 process.exit(failures.length ? 1 : 0)

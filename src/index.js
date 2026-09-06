@@ -95,6 +95,7 @@ const modules = {
   'fp12.frob': fp12.frob,
   'fp12.inv': fp12.inv,
   'fp12.powX': fp12.powX,
+  'fp12.powXc': fp12.powXc,
   // The Miller loop's step function on the twist. These ARE BLS12-381 specific
   // in their test vectors but not in their arithmetic: the curve equation never
   // appears, only the slope through two points and the line it determines.

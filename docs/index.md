@@ -44,11 +44,12 @@ last column is the one to read first.
 **[pairing.md](pairing.md)** — what a BLS12-381 pairing costs in Script. The one
 claim this repository could not put a number on for a long time — "ZK
 verification reduces to field arithmetic" is true and is not a number. It is
-935,334 bytes, and it is not arrived at by counting: `npm run pairing:prove`
+817,031 bytes, and it is not arrived at by counting: `npm run pairing:prove`
 emits the whole pairing as one locking script and runs it through the
-interpreter. A Groth16 verifier is 1,350,790 and `npm run groth16`
-runs that too, accepting a valid proof and refusing two forged ones. The Miller
-loop is on mainnet.
+interpreter. A Groth16 verifier is 1,240,810 and `npm run groth16` runs that
+too, accepting a valid proof and refusing two forged ones. The Miller loop is on
+mainnet, and compressed squaring has brought the final exponentiation under the
+script-size policy as well.
 
 **[../paper/paper.md](../paper/paper.md)** — the preprint draft: what was
 computed, under what assumptions, how correctness was established, what the
