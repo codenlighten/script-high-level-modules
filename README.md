@@ -134,7 +134,7 @@ and are now era-derived and checked after every opcode (released in 9.7.0; see
 [limits.md](docs/limits.md)). They are skipped, with a note, on a library that
 predates it. Nothing else here depends on that fix.
 
-Seventy modules, 340 cases, 1,279 forgery attempts, all green.
+70 modules, 340 cases, 1,279 forgery attempts, all green.
 
 ## The three claims a module must earn
 

@@ -174,6 +174,69 @@ function syncReadme (check) {
   return true
 }
 
+// docs/index.md quotes three of these numbers in a sentence, and quoted them
+// wrongly for a while — 955 where the table said 969, 59,141 where it said
+// 59,191 — because a number written into prose is a number that will drift.
+// The sentence is generated now, for the same reason the README's table is.
+// docs/optimization.md's summary table had the same drift: it claimed ec.add was
+// 139 bytes long after the missing-bound audit had made it 167. The BEFORE
+// column is history and lives here as a constant; the AFTER column is measured,
+// so the table cannot describe a version of the code that no longer exists.
+const OPTIMIZED = [
+  ['ec.add', 'secp256k1, witnessed inverse', 191],
+  ['ec.double', 'secp256k1, witnessed inverse', 191],
+  ['ec.mul', 'k·P, 256-bit, both runtime', 116127],
+  ['ec.mulG', 'k·G, 256-bit, base fixed', 80216],
+  ['ecdsa.verify', 'arbitrary message, secp256k1', 196778]
+]
+
+function optimizationTable () {
+  const rows = OPTIMIZED.map(([name, note, before]) => {
+    const r = measured.find((x) => x.name === name && x.note === note)
+    if (!r) throw new Error(`cost-report: docs/optimization.md wants ${name} / ${note}, which is not measured here`)
+    const pct = Math.round(((r.bytes - before) / before) * 100)
+    return `| \`${name}\` | ${before.toLocaleString()} | ${r.bytes.toLocaleString()} | ${pct}% |`
+  })
+  return ['<!-- cost:optimized -->', '| | before | now | |', '| --- | ---: | ---: | ---: |',
+    ...rows, '<!-- /cost:optimized -->'].join('\n')
+}
+
+function syncOptimization (check) {
+  const file = path.join(__dirname, '..', 'docs', 'optimization.md')
+  const text = fs.readFileSync(file, 'utf8')
+  const block = /<!-- cost:optimized -->[\s\S]*?<!-- \/cost:optimized -->/
+  if (!block.test(text)) throw new Error('cost-report: docs/optimization.md has no <!-- cost:optimized --> markers')
+  const next = text.replace(block, optimizationTable())
+  if (check) return next === text
+  fs.writeFileSync(file, next)
+  return true
+}
+
+function indexLine () {
+  const of = (name) => {
+    const r = measured.find((x) => x.name === name)
+    if (!r) throw new Error(`cost-report: docs/index.md wants ${name}, which is not measured here`)
+    return r.bytes.toLocaleString()
+  }
+  return ['<!-- cost:line -->',
+    `RSA verification is ${of('rsa.verify')} bytes; SHA-256 rebuilt from primitives is ` +
+    `${of('sha256.block')}; ECDSA over an arbitrary message is ${of('ecdsa.verify')}. Reading ` +
+    'those three against each other is most of what there is to know about lowering an ' +
+    'algorithm into Script.',
+    '<!-- /cost:line -->'].join('\n')
+}
+
+function syncIndex (check) {
+  const file = path.join(__dirname, '..', 'docs', 'index.md')
+  const text = fs.readFileSync(file, 'utf8')
+  const block = /<!-- cost:line -->[\s\S]*?<!-- \/cost:line -->/
+  if (!block.test(text)) throw new Error('cost-report: docs/index.md has no <!-- cost:line --> markers')
+  const next = text.replace(block, indexLine())
+  if (check) return next === text
+  fs.writeFileSync(file, next)
+  return true
+}
+
 const out = path.join(__dirname, '..', 'docs', 'cost.md')
 const check = process.argv.includes('--check')
 const existing = fs.existsSync(out) ? fs.readFileSync(out, 'utf8') : ''
@@ -188,9 +251,19 @@ if (check) {
     console.log('cost-report: the README table is out of date — run `npm run cost`')
     process.exit(1)
   }
+  if (!syncIndex(true)) {
+    console.log('cost-report: the docs/index.md cost line is out of date — run `npm run cost`')
+    process.exit(1)
+  }
+  if (!syncOptimization(true)) {
+    console.log('cost-report: the docs/optimization.md table is out of date — run `npm run cost`')
+    process.exit(1)
+  }
   console.log(`cost-report: docs/cost.md and the README match the code (${measured.length} modules)`)
 } else {
   fs.writeFileSync(out, doc)
   syncReadme(false)
+  syncIndex(false)
+  syncOptimization(false)
   console.log(doc)
 }

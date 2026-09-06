@@ -48,7 +48,7 @@ const vault = compose.all('vault', [
   }]
 })
 
-const { failures } = proveAll([
+const { failures, reports } = proveAll([
   [int.modadd, {}],
   [int.modsub, {}],
   [int.modmul, {}],
@@ -128,6 +128,25 @@ const { failures } = proveAll([
   [stateMod.limit({ stateWidth: 8 }), {}],
   [recipes.budgetCoin({ allowance: 1000n }), {}]
 ])
+
+// ── the README's own numbers ────────────────────────────────────────────────
+//
+// The cost tables are generated because a transcribed number drifts. So do
+// these: the README says how many modules, cases and forgery attempts this
+// suite runs, and that sentence has been wrong before. It is cheaper to check
+// it here than to notice it in a year.
+{
+  const fs = require('fs')
+  const cases = reports.reduce((s, r) => s + r.cases.length, 0)
+  const attacks = reports.reduce((s, r) => s + r.attacks.length, 0)
+  const want = `${reports.length} modules, ${cases.toLocaleString()} cases, ${attacks.toLocaleString()} forgery attempts`
+  const readme = fs.readFileSync(require('path').join(__dirname, 'README.md'), 'utf8')
+  if (!readme.includes(want)) {
+    console.log(`\n  README.md does not say "${want}" — update it, or say why the suite shrank`)
+    process.exit(1)
+  }
+  console.log(`\n  README.md agrees: ${want}`)
+}
 
 // ── the one Groth16 property that must never regress ────────────────────────
 //

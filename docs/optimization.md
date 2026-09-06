@@ -2,20 +2,40 @@
 
 Fees are bytes. Everything in this document is a measured before-and-after on
 the real interpreter, and every one of them left the suite green — the point of
-having 179 cases and 648 forgeries is to be able to restructure code like this
-and know immediately whether it still refuses what it used to.
+attacking every witnessed input on every run is to be able to restructure code
+like this and know immediately whether it still refuses what it used to.
 
-| | before | after | |
+The **before** column is history. The **now** column is measured from the code
+every time `npm run cost` runs, because this table once claimed `ec.add` was 139
+bytes long after a missing-bound audit had made it 167.
+
+<!-- cost:optimized -->
+| | before | now | |
 | --- | ---: | ---: | ---: |
-| `ec.add` | 191 | 139 | −27% |
-| `ec.double` | 191 | 139 | −27% |
-| `ec.mul` (256-bit) | 116,127 | 42,086 | −64% |
-| `ec.mulG` (256-bit) | 80,216 | 39,833 | −50% |
-| `ecdsa.verify` | 196,778 | 59,141 | −70% |
+| `ec.add` | 191 | 167 | -13% |
+| `ec.double` | 191 | 153 | -20% |
+| `ec.mul` | 116,127 | 42,112 | -64% |
+| `ec.mulG` | 80,216 | 39,833 | -50% |
+| `ecdsa.verify` | 196,778 | 59,191 | -70% |
+<!-- /cost:optimized -->
 
 The standalone figures for `ec.add` and `ec.double` are mostly the two 33-byte
 modulus constants they push for themselves; inside a ladder, where those are
-hoisted, each is about 65 bytes.
+hoisted, each is about 65 bytes. They grew back a little when the audit in
+[witnesses.md](witnesses.md) found that the coordinate range they documented was
+not enforced — a bound that is emitted costs bytes, and a bound that is only
+documented costs correctness.
+
+The pairing tower, built later, is the same techniques at a different scale:
+
+| | |
+| --- | ---: |
+| one BLS12-381 pairing | 935,334 |
+| three pairings, as a product | 1,346,218 |
+| the same three, separately | 2,806,002 |
+
+§10 to §16 below are what makes the difference between those last two lines, and
+§16 is the one worth reading if you read only one.
 
 ## 1. Reduce only where it must be canonical
 
@@ -210,6 +230,115 @@ directly above it in the callee's argument order. After the selection, one
 either. Extracting the bits first would bury the accumulator and cost ten bytes
 a step to dig it out.
 
+## 10. Share the accumulator: the squaring belongs to the bit
+
+A Miller loop squares its accumulator once per bit of the curve parameter and
+multiplies in one line per point-step. That is a correctness statement before it
+is an economic one — a set bit contributes *two* lines and still only one square,
+and squaring again before the chord gives f² where f was wanted. It cost 2,375
+extra bytes to compute the wrong answer, and every component test passed while
+it did.
+
+Read the other way round, it is the whole economics of a multi-pairing. k
+pairings on one accumulator pay for 63 squarings **between them**:
+
+| pairs | emitted | as separate pairings | saved |
+| ---: | ---: | ---: | ---: |
+| 1 | 935,334 | 935,334 | — |
+| 2 | 1,142,571 | 1,870,668 | 728,097 |
+| 3 | 1,346,218 | 2,806,002 | 1,459,784 |
+
+Each pair after the first costs about 204 KB instead of 935 KB. What goes is the
+squarings it would have duplicated and the 592 KB final exponentiation it would
+have repeated. This is why every pairing-based protocol is written as a *product*
+of pairings and never as pairings compared one at a time.
+
+## 11. An exponent is an addition chain, and p is free
+
+The final exponentiation raises to λ = 3(p⁴ − p² + 1)/r, which is 1,270 bits.
+Done directly that is 1,270 squarings. Two structural facts collapse it:
+
+- **p is a Frobenius map, not an exponentiation.** Write λ in base p and its
+  four digits are applied by φ, which is six conjugations and seven Fp2
+  multiplications — 798 bytes.
+- **each digit is a small polynomial in the 63-bit curve parameter.** Write the
+  digits in base y = |x| and every coefficient comes out with |a| ≤ 3, so what
+  remains is five exponentiations by a 63-bit number, *shared* across all four
+  digits.
+
+1,270 squarings → 887 with the base-p step alone → **315** with both. The digits
+are derived at load time by the same arithmetic everything else uses, so a
+mistranscribed constant is not a thing that can happen.
+
+## 12. Present the tower flat to find the right basis
+
+Squaring in the cyclotomic subgroup costs half a general squaring — `fp12.sqr`
+is 2,375 bytes and `fp12.cycSqr` is 1,342, and the final exponentiation does 342
+of them. Two attempts at the formula disagreed with general squaring and were
+thrown away.
+
+What made the third work was changing the *presentation*, not the algebra.
+Fp12 = Fp6[w]/(w² − v) over Fp2[v]/(v³ − ξ) means w² = v and w⁶ = ξ, so it is
+equally Fp2[w]/(w⁶ − ξ) with basis 1, w, …, w⁵. And since (w³)² = ξ, the element
+is three Fp4 coefficients — **(g0,g3), (g1,g4), (g2,g5)**.
+
+Those pairs are what the nested indexing hides. Both failed attempts had them
+wrong. The lesson generalises past this one formula: when a published identity
+will not reproduce, suspect the basis before the algebra.
+
+## 13. Multiplying by zero is still an OP_MUL
+
+Nine of a Miller line's twelve Fp2 coefficients are zero. A general Fp12 product
+multiplies all twelve, and on a CPU that is nearly free because the zeros cost
+nothing to skip at runtime. In a locking script the multiplication is *bytes*,
+present whether or not it does anything.
+
+Writing the product against the three live coefficients takes it from eighteen
+Fp2 multiplications to fourteen: `fp12.mul` is 3,248 bytes and `fp12.mulLine`
+is 2,178. The Miller loop does 68 of them.
+
+## 14. If you already have λ, do not ask for it again
+
+The obvious factoring computes the line from the slope and then asks a general
+point-addition routine for the next point — and that routine finds the slope
+again, which is a second modular inversion for a number the caller is holding.
+The reference implementation here had exactly that shape.
+
+Deriving the next point from the λ already in hand: **68 inversions where there
+were 136.** Each is a witness the spender supplies and the script bounds and
+checks, so halving them halves 136 numbers down to 68.
+
+## 15. MSB-first, so nothing is multiplied by one
+
+Square-and-multiply written LSB-first starts from an accumulator of one and
+multiplies into it, so the first multiplication is by one. At runtime that is
+free. Unrolled into a script it is a full Fp12 multiplication — 3,110 bytes —
+that provably does nothing.
+
+MSB-first consumes the leading bit as the initial value instead: 63 squarings
+and 5 multiplications per exponentiation by the curve parameter, where the
+reference pays 64 and 6. Over the five ladders in the final exponentiation that
+is most of why the emitted script came out **8.7% smaller than the model built
+from the reference's operation counts** — the model was counting a schedule the
+emitter improved on.
+
+## 16. In Script, affine beats projective — the trade inverts
+
+Every fast pairing implementation uses projective coordinates specifically to
+*avoid* inversions, paying several extra multiplications at every step, because
+on a CPU an inversion is hundreds of multiplications.
+
+In Script an inversion is four. The spender supplies a⁻¹ off chain and the
+script checks a·a⁻¹ = 1, which is one Fp2 multiplication written out —
+`fp2.inv` is 145 bytes including the two `OP_WITHIN`s that pin the answer. So
+the usual trade reverses and **affine arithmetic is the cheap choice**: the
+formulas everyone reaches for would make this bigger, not smaller.
+
+This is the most transferable thing in this document. The cost model of a
+locking script is not the cost model of a CPU, and an optimisation that is
+received wisdom in one is sometimes backwards in the other. The way to find out
+is to emit both and count.
+
 ## What was tried and rejected
 
 **Reversing bytes arithmetically.** `bytes.reverse` is 4 bytes per byte
@@ -217,6 +346,22 @@ reversed — a split, a swap, a concatenation. Reconstructing the value from
 individual bytes with multiplications is 32 bytes per four, which is worse, and
 the altstack does not help: pushing n items and popping them reverses the order
 twice, which is the order you started with.
+
+**Granger–Scott cyclotomic squaring, twice.** Two versions of the formula, both
+written from the nested Fp6[w] indexing, both of which disagreed with general
+squaring on an element known to be in the subgroup. Neither was kept: a pairing
+cost derived from an unverified optimisation is worth less than a conservative
+one that can be checked, and for a while `docs/pairing.md` said exactly that and
+named the ~25% it was leaving on the table. The third attempt worked and is
+§12 above. **What made it publishable was that the two failures were checked
+against `f12sqr` rather than against a test that could pass either way.**
+
+**A hard-part chain remembered rather than derived.** The first final
+exponentiation used an addition chain written from memory. It was wrong, and it
+was wrong in a way that still produced an order-r element — so it looked right.
+Replacing it with a balanced base-p decomposition derived at load time made it
+correct and slower (887 squarings), and only then was it worth optimising into
+§11's 315. Deriving before optimising is what made the second step safe.
 
 **Storing 32-bit words little-endian.** It would make `u32.add` about four times
 cheaper by removing two byte reversals per addition. It also makes every
