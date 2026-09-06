@@ -49,15 +49,27 @@ const f2inv = (a, n) => {
   return [mod(a[0] * d, n), mod(-a[1] * d, n)]
 }
 
-/** Which steps a given number of rounds performs, in order. */
-function schedule (rounds) {
+/**
+ * Which steps a given number of rounds performs, in order, for `pairs` pairings
+ * run together.
+ *
+ * The SQUARING BELONGS TO THE BIT. That is a correctness point for one pairing
+ * — squaring again before a chord gives f² where f was wanted — and it is the
+ * entire economics of a multi-pairing: k pairings sharing one accumulator pay
+ * for 63 squarings between them, not 63 each. `first` marks the step a bit
+ * opens with, which is the one that squares.
+ */
+function schedule (rounds, pairs = 1) {
   const plan = []
   for (let i = 1; i <= rounds; i++) {
-    plan.push({ kind: 'double', bit: i })
-    if (BITS[i] === '1') plan.push({ kind: 'add', bit: i })
+    for (let j = 0; j < pairs; j++) plan.push({ kind: 'double', bit: i, pair: j, first: j === 0 })
+    if (BITS[i] === '1') for (let j = 0; j < pairs; j++) plan.push({ kind: 'add', bit: i, pair: j, first: false })
   }
   return plan
 }
+/** The name prefix for pair j — empty when there is only one, so a single
+ *  pairing's script is byte for byte what it was before multi-pairings existed. */
+const pre = (j, pairs) => (pairs === 1 ? '' : `p${j}_`)
 
 /**
  * Run the loop in JavaScript: the accumulator it ends on, and the inverse each
@@ -65,24 +77,49 @@ function schedule (rounds) {
  * them, which is the only reason a 136-value unlocking script can be built by
  * hand at all.
  */
-function replay (P, Q, rounds, n) {
+function replay (pairsIn, rounds, n) {
+  const list = Array.isArray(pairsIn) ? pairsIn : [pairsIn]
   let f = bls.F12_ONE
-  let T = Q
+  const T = list.map((pq) => pq.Q)
   const witnesses = []
   for (let i = 1; i <= rounds; i++) {
     f = bls.f12sqr(f)
-    witnesses.push(f2inv([mod(T.y[0] + T.y[0], n), mod(T.y[1] + T.y[1], n)], n))
-    const d = bls.lineDouble(T, P)
-    T = d.next
-    f = bls.f12mulLine(f, d)
+    list.forEach((pq, j) => {
+      witnesses.push(f2inv([mod(T[j].y[0] + T[j].y[0], n), mod(T[j].y[1] + T[j].y[1], n)], n))
+      const d = bls.lineDouble(T[j], pq.P)
+      T[j] = d.next
+      f = bls.f12mulLine(f, d)
+    })
     if (BITS[i] === '1') {
-      witnesses.push(f2inv([mod(Q.x[0] - T.x[0], n), mod(Q.x[1] - T.x[1], n)], n))
-      const a = bls.lineAdd(T, Q, P)
-      T = a.next
-      f = bls.f12mulLine(f, a)
+      list.forEach((pq, j) => {
+        witnesses.push(f2inv([mod(pq.Q.x[0] - T[j].x[0], n), mod(pq.Q.x[1] - T[j].x[1], n)], n))
+        const a = bls.lineAdd(T[j], pq.Q, pq.P)
+        T[j] = a.next
+        f = bls.f12mulLine(f, a)
+      })
     }
   }
   return { f, T, witnesses }
+}
+/** The old one-pairing signature, kept because tools/targets.js pins scripts built with it. */
+const replay1 = (P, Q, rounds, n) => replay([{ P, Q }], rounds, n)
+
+/** Read k (P, Q) pairs out of a flat input object, and write them back. */
+function readPairs (v, pairs) {
+  return Array.from({ length: pairs }, (_, j) => {
+    const q = pre(j, pairs)
+    return { P: { x: v[q + 'Px'], y: v[q + 'Py'] }, Q: { x: [v[q + 'Qx0'], v[q + 'Qx1']], y: [v[q + 'Qy0'], v[q + 'Qy1']] } }
+  })
+}
+function writePairs (list, pairs) {
+  const out = {}
+  list.forEach((pq, j) => {
+    const q = pre(j, pairs)
+    out[q + 'Px'] = pq.P.x; out[q + 'Py'] = pq.P.y
+    out[q + 'Qx0'] = pq.Q.x[0]; out[q + 'Qx1'] = pq.Q.x[1]
+    out[q + 'Qy0'] = pq.Q.y[0]; out[q + 'Qy1'] = pq.Q.y[1]
+  })
+  return out
 }
 
 const unspread = (v, p) => {
@@ -96,20 +133,42 @@ const spread = (f, p) => {
 }
 
 /**
+ * The Miller loop for one or several pairings at once.
+ *
+ * k pairings sharing one accumulator cost 63 squarings BETWEEN them, because
+ * the squaring belongs to the bit. Three separate loops would pay 189 and then
+ * three separate final exponentiations besides; run together they pay 63 and
+ * one. That is the difference between a Groth16 verifier that is 2.5 MB and one
+ * that is 1.4 MB, and it is the reason every pairing-based protocol is checked
+ * as a PRODUCT of pairings rather than as pairings compared one at a time.
+ *
+ * With one pair the emitted script is byte for byte what it was before this
+ * generalisation existed — `pre()` makes the names identical, and the deployed
+ * loops on chain still rebuild exactly (`npm run verify:chain`).
+ *
  * @param rounds  how many bits of |x| to run — FULL (63) is the whole loop
+ * @param opts.pairs      how many pairings share the accumulator, default 1
  * @param opts.conjugate  whether to take the final conjugate; defaults to
  *                        "yes when the loop is complete", because x is negative
  */
 function miller (rounds = FULL, opts = {}) {
-  const plan = schedule(rounds)
+  const pairs = opts.pairs || 1
+  const plan = schedule(rounds, pairs)
+  const at = (j) => pre(j, pairs)
+  const ptNames = []
+  for (let j = 0; j < pairs; j++) {
+    ptNames.push(`${at(j)}Px`, `${at(j)}Py`, `${at(j)}Qx0`, `${at(j)}Qx1`, `${at(j)}Qy0`, `${at(j)}Qy1`)
+  }
   const conjugate = opts.conjugate === undefined ? (rounds === FULL && bls.X < 0n) : opts.conjugate
   const wit = plan.flatMap((_, k) => [`w${k}a`, `w${k}b`])
 
   return defineModule({
-    name: `pairing.miller${rounds}`,
-    doc: `the Miller loop over ${rounds} bit(s) of the BLS parameter — ${plan.length} lines, ${plan.length} witnessed inverses`,
+    name: pairs === 1 ? `pairing.miller${rounds}` : `pairing.miller${rounds}x${pairs}`,
+    doc: pairs === 1
+      ? `the Miller loop over ${rounds} bit(s) of the BLS parameter — ${plan.length} lines, ${plan.length} witnessed inverses`
+      : `${pairs} Miller loops over ${rounds} bit(s), sharing one accumulator — ${plan.length} lines, ${rounds} squarings between them`,
     inputs: [
-      'Px', 'Py', 'Qx0', 'Qx1', 'Qy0', 'Qy1',
+      ...ptNames,
       ...wit.map((name) => ({ name, witness: true }))
     ],
     outputs: twelve('f'),
@@ -117,7 +176,7 @@ function miller (rounds = FULL, opts = {}) {
     requires: ({ nn = P381 }) => {
       const r = { range: { lo: 0n, hi: nn } }
       const out = {}
-      for (const k of ['Px', 'Py', 'Qx0', 'Qx1', 'Qy0', 'Qy1']) out[k] = r
+      for (const k of ptNames) out[k] = r
       return out
     },
     ensures: ({ nn = P381 }) => {
@@ -126,14 +185,14 @@ function miller (rounds = FULL, opts = {}) {
       for (const k of twelve('f')) out[k] = r
       return out
     },
-    hint: ({ Px, Py, Qx0, Qx1, Qy0, Qy1 }, { nn = P381 }) => {
-      const { witnesses } = replay({ x: Px, y: Py }, { x: [Qx0, Qx1], y: [Qy0, Qy1] }, rounds, nn)
+    hint: (v, { nn = P381 }) => {
+      const { witnesses } = replay(readPairs(v, pairs), rounds, nn)
       const out = {}
       witnesses.forEach(([a, b], k) => { out[`w${k}a`] = a; out[`w${k}b`] = b })
       return out
     },
-    model: ({ Px, Py, Qx0, Qx1, Qy0, Qy1 }, { nn = P381 }) => {
-      const { f } = replay({ x: Px, y: Py }, { x: [Qx0, Qx1], y: [Qy0, Qy1] }, rounds, nn)
+    model: (v, { nn = P381 }) => {
+      const { f } = replay(readPairs(v, pairs), rounds, nn)
       return spread(conjugate ? bls.f12conj(f) : f, 'f')
     },
     prologue: (asm, { n = P381 }) => pushModulus(asm, n),
@@ -144,11 +203,15 @@ function miller (rounds = FULL, opts = {}) {
       // ξ·y_P is the line's w⁰ coefficient and does not depend on T, so it is
       // the same value on all 68 iterations. Hoisting it out of the loop is one
       // fp2.mulXi instead of sixty-eight.
-      asm.num(0n, '_zero')
-      apply(asm, fp2.mulXi, p, ['Py', '_zero'], ['H0', 'H1'])
+      for (let j = 0; j < pairs; j++) {
+        asm.num(0n, `_zero${j}`)
+        apply(asm, fp2.mulXi, p, [`${at(j)}Py`, `_zero${j}`], [`${at(j)}H0`, `${at(j)}H1`])
+      }
 
       // T starts at Q, which the loop also keeps for its chords
-      dup(asm, 'Qx', 'Tx'); dup(asm, 'Qy', 'Ty')
+      for (let j = 0; j < pairs; j++) {
+        dup(asm, `${at(j)}Qx`, `${at(j)}Tx`); dup(asm, `${at(j)}Qy`, `${at(j)}Ty`)
+      }
 
       // f starts at one
       for (const name of twelve('f')) asm.num(name === 'fA00' ? 1n : 0n, name)
@@ -158,18 +221,20 @@ function miller (rounds = FULL, opts = {}) {
         // contributes two lines and still only one square, and squaring again
         // before the chord gives f² where f was wanted — a wrong answer that
         // costs 2,375 extra bytes to arrive at.
-        if (step.kind === 'double') apply(asm, fp12.sqr, p, twelve('f'), twelve('f'))
+        if (step.first) apply(asm, fp12.sqr, p, twelve('f'), twelve('f'))
+        const q = at(step.pair)
+        const T = [`${q}Tx0`, `${q}Tx1`, `${q}Ty0`, `${q}Ty1`]
         // Px is a base-field scalar, not an Fp2 pair, so it is picked directly.
-        const px = () => { asm.pick('Px', `_px${k}`); return `_px${k}` }
+        const px = () => { asm.pick(`${q}Px`, `_px${k}`); return `_px${k}` }
         const args = step.kind === 'double'
-          ? ['Tx0', 'Tx1', 'Ty0', 'Ty1', px()]
-          : ['Tx0', 'Tx1', 'Ty0', 'Ty1',
-              ...two(dup(asm, 'Qx', `_qx${k}`)), ...two(dup(asm, 'Qy', `_qy${k}`)), px()]
+          ? [...T, px()]
+          : [...T,
+              ...two(dup(asm, `${q}Qx`, `_qx${k}`)), ...two(dup(asm, `${q}Qy`, `_qy${k}`)), px()]
         apply(asm, step.kind === 'double' ? g2mod.stepDouble : g2mod.stepAdd, p,
           [...args, `w${k}a`, `w${k}b`],
-          ['Tx0', 'Tx1', 'Ty0', 'Ty1', 'L10', 'L11', 'L20', 'L21'])
+          [...T, 'L10', 'L11', 'L20', 'L21'])
         apply(asm, fp12.mulLine, p,
-          [...twelve('f'), ...two(dup(asm, 'H', `_h${k}`)), 'L10', 'L11', 'L20', 'L21'],
+          [...twelve('f'), ...two(dup(asm, `${q}H`, `_h${k}`)), 'L10', 'L11', 'L20', 'L21'],
           twelve('f'))
       })
 
@@ -180,7 +245,11 @@ function miller (rounds = FULL, opts = {}) {
       // everything the loop was carrying, gone; then the twelve results rolled
       // into their declared order, which twelve OP_ROLLs guarantee and no
       // amount of reasoning about the altstack does.
-      for (const name of ['Tx0', 'Tx1', 'Ty0', 'Ty1', 'Px', 'Qx0', 'Qx1', 'Qy0', 'Qy1', 'H0', 'H1']) asm.discard(name)
+      for (let j = 0; j < pairs; j++) {
+        for (const suffix of ['Tx0', 'Tx1', 'Ty0', 'Ty1', 'Px', 'Qx0', 'Qx1', 'Qy0', 'Qy1', 'H0', 'H1']) {
+          asm.discard(at(j) + suffix)
+        }
+      }
       if (typeof n !== 'string') asm.discard('_pn')
       for (const name of twelve('f')) asm.roll(name)
     },
@@ -189,19 +258,17 @@ function miller (rounds = FULL, opts = {}) {
       'the G1 point is affine and so is T: in Script a witnessed inverse is cheaper than the extra multiplications projective coordinates would cost to avoid one'
     ],
     cases: (() => {
-      const one = (k, j, name) => ({
+      const one = (scalars, name) => ({
         name,
-        inputs: (() => {
-          const P = bls.g1mul(k); const Q = bls.g2mul(j)
-          return { Px: P.x, Py: P.y, Qx0: Q.x[0], Qx1: Q.x[1], Qy0: Q.y[0], Qy1: Q.y[1] }
-        })(),
+        inputs: writePairs(scalars.map(([a, b]) => ({ P: bls.g1mul(a), Q: bls.g2mul(b) })), pairs),
         params: { n: P381, nn: P381 }
       })
-      return [
-        one(1n, 1n, 'the generators'),
-        one(2n, 3n, '2G1, 3G2'),
-        one(12345n, 6789n, 'a random pair')
-      ]
+      const spread1 = [[1n, 1n], [2n, 3n], [12345n, 6789n]]
+      if (pairs === 1) {
+        return [one([spread1[0]], 'the generators'), one([spread1[1]], '2G1, 3G2'), one([spread1[2]], 'a random pair')]
+      }
+      const pick = (o) => Array.from({ length: pairs }, (_, j) => spread1[(j + o) % spread1.length])
+      return [one(pick(0), `${pairs} pairings at once`), one(pick(1), 'a different set')]
     })()
   })
 }
@@ -318,26 +385,38 @@ const finalExp = defineModule({
 })
 
 /**
- * THE PAIRING. e(P, Q), as one locking script.
+ * A PRODUCT OF PAIRINGS: Π e(Pᵢ, Qᵢ), as one locking script.
  *
- * The Miller loop and the final exponentiation, chained: the twelve values the
- * loop leaves on the stack are the twelve the exponentiation reads, so nothing
- * joins them but a rename. 148 witnessed numbers — 136 Fp2 inverse coefficients
- * for the loop's 68 lines, twelve for the single Fp12 inversion — and every one
- * of them is bounded into [0, p) and checked.
+ * With one pair this is the pairing. With several it is what pairing-based
+ * protocols actually ask for — nobody computes two pairings and compares them,
+ * because a product costs one Miller accumulator and ONE final exponentiation
+ * instead of two of each. A Groth16 verification is a product of three; a BLS
+ * signature check is a product of two.
  *
- * There is no opcode in Bitcoin Script for any part of this. There is OP_MUL
- * and OP_MOD at arbitrary width, and that is the whole of what it needs.
+ * The saving is not small. Three separate pairings are 3 × 333 KB of loop and
+ * 3 × 592 KB of exponentiation, 2.8 MB in all. As a product they are 793 KB of
+ * loop and one 592 KB exponentiation: 1.39 MB, half the size, and the half that
+ * goes is the half that was doing the same 63 squarings three times.
+ *
+ * 148 witnessed numbers for one pair — 136 Fp2 inverse coefficients for the
+ * loop's 68 lines, twelve for the single Fp12 inversion — and 68 more Fp2
+ * inverses for every pair after the first. Every one is bounded into [0, p) and
+ * checked. A pairing that accepted a second witness for the same input would
+ * not be a pairing.
  */
-function full (opts = {}) {
-  const loop = miller(FULL)
+function product (pairs = 1, opts = {}) {
+  const loop = miller(FULL, { pairs })
+  const loopIn = loop.inputs.map((i) => i.name)
   const loopWit = loop.inputs.filter((i) => i.witness).map((i) => i.name)
+  const points = loopIn.filter((name) => !loopWit.includes(name))
 
   return defineModule({
-    name: 'pairing.e',
-    doc: 'e(P, Q) on BLS12-381 — the optimal ate pairing, as one script',
+    name: pairs === 1 ? 'pairing.e' : `pairing.product${pairs}`,
+    doc: pairs === 1
+      ? 'e(P, Q) on BLS12-381 — the optimal ate pairing, as one script'
+      : `Π e(Pᵢ, Qᵢ) over ${pairs} pairs on BLS12-381 — one accumulator, one final exponentiation`,
     inputs: [
-      'Px', 'Py', 'Qx0', 'Qx1', 'Qy0', 'Qy1',
+      ...points,
       ...loopWit.map((name) => ({ name, witness: true })),
       ...twelve('inv').map((name) => ({ name, witness: true }))
     ],
@@ -346,7 +425,7 @@ function full (opts = {}) {
     requires: ({ nn = P381 }) => {
       const r = { range: { lo: 0n, hi: nn } }
       const out = {}
-      for (const k of ['Px', 'Py', 'Qx0', 'Qx1', 'Qy0', 'Qy1']) out[k] = r
+      for (const k of points) out[k] = r
       return out
     },
     ensures: ({ nn = P381 }) => {
@@ -357,36 +436,89 @@ function full (opts = {}) {
     },
     hint: (v, params) => {
       const nn = params.nn === undefined ? P381 : params.nn
-      const P = { x: v.Px, y: v.Py }
-      const Q = { x: [v.Qx0, v.Qx1], y: [v.Qy0, v.Qy1] }
-      const { witnesses } = replay(P, Q, FULL, nn)
+      const { f, witnesses } = replay(readPairs(v, pairs), FULL, nn)
       const out = {}
       witnesses.forEach(([a, b], k) => { out[`w${k}a`] = a; out[`w${k}b`] = b })
-      const f = bls.X < 0n ? bls.f12conj(replay(P, Q, FULL, nn).f) : replay(P, Q, FULL, nn).f
-      return { ...out, ...spread(bls.f12inv(f), 'inv') }
+      const raw = bls.X < 0n ? bls.f12conj(f) : f
+      return { ...out, ...spread(bls.f12inv(raw), 'inv') }
     },
     model: (v, params) => {
-      const P = { x: v.Px, y: v.Py }
-      const Q = { x: [v.Qx0, v.Qx1], y: [v.Qy0, v.Qy1] }
-      return spread(bls.pairing(P, Q), 'r')
+      const nn = params.nn === undefined ? P381 : params.nn
+      const { f } = replay(readPairs(v, pairs), FULL, nn)
+      return spread(bls.finalExponentiate(bls.X < 0n ? bls.f12conj(f) : f), 'r')
     },
     prologue: (asm, { n = P381 }) => pushModulus(asm, n),
     emit: (asm, params) => {
       const n = params.n === undefined ? P381 : params.n
-      const p = { n: modulusName(n), nn: params.nn === undefined ? numericModulus({ n }, 'pairing.e') : params.nn }
-      apply(asm, loop, p, ['Px', 'Py', 'Qx0', 'Qx1', 'Qy0', 'Qy1', ...loopWit], twelve('f'))
+      const p = { n: modulusName(n), nn: params.nn === undefined ? numericModulus({ n }, 'pairing.product') : params.nn }
+      apply(asm, loop, p, loopIn, twelve('f'))
       apply(asm, finalExp, p, [...twelve('f'), ...twelve('inv')], twelve('r'))
       if (typeof n !== 'string') asm.discard('_pn')
       for (const name of twelve('r')) asm.roll(name)
     },
-    cases: [
-      {
-        name: 'e(G1, G2)',
-        inputs: { Px: bls.G1.x, Py: bls.G1.y, Qx0: bls.G2.x[0], Qx1: bls.G2.x[1], Qy0: bls.G2.y[0], Qy1: bls.G2.y[1] },
+    cases: (() => {
+      const sets = [
+        [[1n, 1n], [2n, 3n], [12345n, 6789n], [7n, 11n]],
+        [[3n, 5n], [1n, 1n], [99n, 101n], [2n, 2n]]
+      ]
+      const one = (set, name) => ({
+        name,
+        inputs: writePairs(set.slice(0, pairs).map(([a, b]) => ({ P: bls.g1mul(a), Q: bls.g2mul(b) })), pairs),
         params: { n: P381, nn: P381 }
-      }
-    ]
+      })
+      return pairs === 1
+        ? [one(sets[0], 'e(G1, G2)')]
+        : [one(sets[0], `a product of ${pairs}`), one(sets[1], 'a different product')]
+    })()
   })
 }
 
-module.exports = { miller, finalExp, full, schedule, replay, FULL, BITS }
+/** The pairing. Kept as its own name because that is what it is. */
+const full = (opts = {}) => product(1, opts)
+
+/**
+ * THE PAIRING CHECK, as a predicate: Π e(Pᵢ, Qᵢ) = a constant fixed at compile
+ * time. Asserts and returns nothing, so it composes with `all()` and becomes a
+ * coin through `predicate()` like anything else here.
+ *
+ * This is the shape every pairing-based protocol reduces to. A BLS signature is
+ * e(H(m), pk)·e(−σ, G2) = 1. A Groth16 verification is
+ * e(A,B)·e(−L,γ)·e(−C,δ) = e(α,β), where the right-hand side is fixed by the
+ * verifying key and so is exactly the constant this compares against — which is
+ * why comparing against a constant, rather than folding e(α,β) in as a fourth
+ * pair, is 68 fewer lines and 177 KB cheaper.
+ */
+function verify (pairs, expected, opts = {}) {
+  const prod = product(pairs, opts)
+  const want = spread(expected, 'r')
+
+  return defineModule({
+    name: `pairing.verify${pairs}`,
+    doc: `Π e(Pᵢ, Qᵢ) over ${pairs} pair(s) equals a constant fixed in the script`,
+    inputs: prod.inputs,
+    outputs: [],
+    maxWitnessAttacks: opts.maxWitnessAttacks || 3,
+    requires: prod.requires,
+    hint: prod.hint,
+    model: () => ({}),
+    prologue: (asm, { n = P381 }) => pushModulus(asm, n),
+    emit: (asm, params) => {
+      const n = params.n === undefined ? P381 : params.n
+      const p = { n: modulusName(n), nn: params.nn === undefined ? numericModulus({ n }, 'pairing.verify') : params.nn }
+      apply(asm, prod, p, prod.inputs.map((i) => i.name), twelve('r'))
+      for (const name of twelve('r')) {
+        asm.roll(name)
+        asm.num(want[name], '_want')
+        asm.numEqualVerify()
+      }
+      if (typeof n !== 'string') asm.discard('_pn')
+    },
+    notes: [
+      'a predicate: it asserts the product and returns nothing, so all() and predicate() take it',
+      'the expected value is a compile-time constant — 576 bytes of Fp12 in the locking script'
+    ],
+    cases: opts.cases || []
+  })
+}
+
+module.exports = { miller, finalExp, product, full, verify, schedule, replay, replay1, readPairs, writePairs, pre, spread, unspread, FULL, BITS }

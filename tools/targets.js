@@ -323,7 +323,7 @@ function millerTarget (rounds) {
   const P = bls.G1
   const Q = bls.G2
   const values = { Px: P.x, Py: P.y, Qx0: Q.x[0], Qx1: Q.x[1], Qy0: Q.y[0], Qy1: Q.y[1] }
-  const { witnesses } = pairingMod.replay(P, Q, rounds, bls.P)
+  const { witnesses } = pairingMod.replay1(P, Q, rounds, bls.P)
   witnesses.forEach(([a, b], k) => { values[`w${k}a`] = a; values[`w${k}b`] = b })
   const want = m.model(values, { n: bls.P, nn: bls.P })
   const order = m.inputs.map((i) => i.name)

@@ -134,7 +134,7 @@ and are now era-derived and checked after every opcode (released in 9.7.0; see
 [limits.md](docs/limits.md)). They are skipped, with a note, on a library that
 predates it. Nothing else here depends on that fix.
 
-Sixty-nine modules, 338 cases, 1,111 forgery attempts, all green.
+Seventy modules, 340 cases, 1,279 forgery attempts, all green.
 
 ## The three claims a module must earn
 
@@ -248,9 +248,16 @@ that matches `@noble/curves` byte for byte — 627,037 opcodes, about thirty
 seconds, part of `npm test`. 148 of the numbers in the unlocking script are
 witnesses the spender chooses, and every one is bounded into [0, p) and checked.
 
-The pricing model that preceded it was low by 6% on the Miller loop and high by
-8.7% on the final exponentiation, for two different and identifiable reasons.
-See [docs/pairing.md](docs/pairing.md).
+And the equation a **Groth16 verifier** checks —
+`e(A,B)·e(−L,γ)·e(−C,δ) = e(α,β)` — is `npm run groth16`: three pairings folded
+onto one accumulator, **1,350,472 bytes, 863,033 opcodes**, accepting a valid
+proof and refusing two invalid ones. Three separate pairings would be 2.8 MB; as
+a product they are 1.35, because k pairings share the 63 squarings and the one
+final exponentiation.
+
+The pricing model that preceded all of it was low by 6% on the Miller loop and
+high by 8.7% on the final exponentiation, for two different and identifiable
+reasons. See [docs/pairing.md](docs/pairing.md).
 
 `ecdsa.verify` is the expensive end of that judgement, and worth stating plainly.
 `OP_CHECKSIG` answers one question — is this a valid signature over *this*

@@ -8,14 +8,27 @@ and it is not a number.
 This is the number.
 
 **One BLS12-381 pairing is 935,334 bytes of Script — 935 KB, about 93,500
-satoshis at 100 sat/KB. A Groth16 verification with four public inputs is about
-1.75 MB and roughly 175,000 satoshis.**
+satoshis at 100 sat/KB. The Groth16 verification equation is 1,346,218 bytes.**
 
-The pairing figure is not an estimate. `npm run pairing:prove` **emits e(P, Q)
-as a single locking script — 935,388 bytes, 627,037 opcodes — hands it to
-`bsv.Script.Interpreter` under relay policy flags, and checks all twelve Fp12
-coefficients that come back against a reference that matches `@noble/curves`
-byte for byte.** It runs in about thirty seconds and it is part of `npm test`.
+Neither is an estimate.
+
+| | what it does | bytes | run it |
+| --- | --- | ---: | --- |
+| `pairing.e` | e(P, Q) | 935,334 | `npm run pairing:prove` |
+| `pairing.verify(3, …)` | e(A,B)·e(−L,γ)·e(−C,δ) = e(α,β) | 1,346,218 | `npm run groth16` |
+| `pairing.miller(63)` | the Miller loop alone | 333,676 | **on mainnet** |
+
+Each of those emits a locking script, hands it to `bsv.Script.Interpreter`
+under relay policy flags, and checks the result against a reference that matches
+`@noble/curves` byte for byte. The pairing runs in about thirty seconds and is
+part of `npm test`; the Groth16 equation takes about a minute and is on demand.
+
+`npm run groth16` accepts a valid proof and **refuses two invalid ones** — an
+A and a C each off by one generator, with every point still on the curve and
+every witnessed inverse still correct for the points supplied, so that nothing
+fails until the equation itself does. A verifier that accepts a valid proof and
+does not notice an invalid one is not a verifier, and forged *witnesses* are a
+different question from a forged *proof*.
 
 Bitcoin Script has no pairing opcode. No Fp12, no Fp6, no Fp2, no
 extension-field arithmetic of any kind. It has `OP_MUL` and `OP_MOD` at
@@ -64,6 +77,39 @@ they do not need it applied. Only the leftovers are priced at the Fp2 floor.
 The decomposition is checked rather than asserted: the Fp2 operations a pairing
 performs, minus the ones the four Fp12 modules account for, must come out
 non-negative in every component. `tools/pairing-cost.js` throws if it does not.
+
+## Products of pairings, which is what protocols actually check
+
+Nobody computes two pairings and compares them. Every pairing-based protocol
+checks a *product* — and a product shares the Miller accumulator, so k pairings
+pay for 63 squarings **between them** and **one** final exponentiation, not k of
+each.
+
+| pairs | emitted | as separate pairings | saved |
+| ---: | ---: | ---: | ---: |
+| 1 | 935,334 | 935,334 | — |
+| 2 | 1,142,571 | 1,870,668 | 728,097 |
+| 3 | 1,346,218 | 2,806,002 | 1,459,784 |
+
+Each pair after the first costs about 204 KB rather than 935 KB. What goes is
+the 63 squarings it would have duplicated and the 592 KB final exponentiation it
+would have repeated.
+
+That is `pairing.product(k)`, and `pairing.verify(k, expected)` wraps it as a
+**predicate** — it asserts and returns nothing, so `all()` composes it and
+`predicate()` turns it into a coin, like anything else here.
+
+The protocols land on it directly:
+
+| | as a product |
+| --- | --- |
+| BLS signature | e(H(m), pk) · e(−σ, G₂) = 1 |
+| Groth16 | e(A,B) · e(−L,γ) · e(−C,δ) = e(α,β) |
+
+Groth16's right-hand side is fixed by the verifying key, so it is a compile-time
+constant in the locking script — 576 bytes of Fp12. Comparing against it rather
+than folding e(α,β) in as a fourth pair is 68 fewer lines and about 204 KB
+cheaper. That is why `verify` takes an expected value instead of testing for one.
 
 ## Where the cost is
 
@@ -147,13 +193,23 @@ Together the four take one pairing from roughly 4 MB to under 1 MB.
 
 ## What is left on the table
 
-Nothing in the pairing itself: both halves are emitted and executed. The Fp2
-floor still appears in the tables above because the *model* is kept alongside
-the measurement as a cross-check, not because anything depends on it.
+Nothing in the pairing itself, and nothing in the Groth16 *equation*: all of it
+is emitted and executed. The Fp2 floor still appears in the tables above because
+the model is kept alongside the measurement as a cross-check, not because
+anything depends on it.
 
-The Groth16 figure does still contain estimates: the four public-input scalar
-multiplications are priced from `ec.mulG` retargeted to the 381-bit prime rather
-than emitted, and the three Miller loops are counted as three copies of one.
+What a complete Groth16 verifier still needs is the **public-input binding**.
+`pairing.verify` checks the equation for the L it is given; a verifier must also
+establish that L = IC₀ + Σ xᵢ·ICᵢ. That is ℓ fixed-base scalar multiplications
+on G1 at about 39,910 bytes each, so a four-input verifier is about 160 KB more
+— priced, not emitted, because `src/ec.js` is written for secp256k1 and
+generalising it to an arbitrary short Weierstrass curve is its own piece of work.
+The equation is the hard nine tenths and it is done; this is the tenth, and it is
+ordinary elliptic-curve arithmetic that this repository already does elsewhere.
+
+Stating it plainly: **`pairing.verify(3, e(α,β))` is not by itself a Groth16
+verifier.** It is the equation a Groth16 verifier checks, and it is sound for
+exactly the statement it makes.
 
 The Fp2 leftovers — G2 point arithmetic, the line coefficients, the Frobenius
 maps, the single Fp12 inversion — are priced at the sum of their module bodies
@@ -218,8 +274,8 @@ sized from the script that is about to be deployed.
 
 ## The honest caveat
 
-At 935 KB a pairing is past the default 500 KB script policy, and so is a
-Groth16 verifier at 1.75 MB. The Miller loop, at 333 KB, is not — and is on
+At 935 KB a pairing is past the default 500 KB script policy, and so is the
+Groth16 equation at 1.35 MB. The Miller loop, at 333 KB, is not — and is on
 chain. Neither is standard relay today. That is a policy
 number, not a consensus one, and it is the kind of number that moves; the
 arithmetic underneath it is what this measures, and the arithmetic does not
@@ -233,3 +289,32 @@ arbitrary width, and that turns out to be sufficient.
 
 The absence of an opcode is not the absence of the computation. It is a price,
 and now it is one that has been paid and counted rather than argued about.
+
+## Reproducing all of it
+
+```
+npm test                # everything, including one whole pairing (~65 s)
+npm run pairing         # the cost report: model and measurement side by side
+npm run pairing:prove   # emit e(P, Q), run it, check twelve coefficients
+npm run groth16         # the Groth16 equation, one valid proof and two forged
+npm run verify:chain    # rebuild every deployed script and compare to the chain
+```
+
+The order these were built in matters, because each step could have been the one
+that failed:
+
+1. a BLS12-381 in BigInt, agreeing with `@noble/curves` on all twelve Fp12
+   coefficients — not on bilinearity, which a wrong pairing can also satisfy;
+2. `fp2`, `fp6`, `fp12` as modules, each proven against the interpreter at the
+   BLS prime, composed through the same `apply()` as everything else here so
+   that stack traffic is measured rather than assumed;
+3. the operation counts and module sizes multiplied into a model;
+4. the Miller loop emitted whole and run — the model was low by 6%;
+5. the final exponentiation emitted whole and run — the model was high by 8.7%,
+   for a different and identifiable reason;
+6. the two chained into one pairing;
+7. the loop deployed to mainnet and spent;
+8. k pairings folded onto one accumulator, and the Groth16 equation checked.
+
+No step was taken on the strength of the one before it. Every one was verified
+against something that did not come from this repository.

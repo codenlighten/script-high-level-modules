@@ -81,6 +81,11 @@ const { failures } = proveAll([
   // the accumulator surviving a round trip through both.
   // tools/pairing-prove.js runs the whole pairing.
   [pairingMod.miller(2), {}],
+  // Two pairings sharing one accumulator. The structural risk a multi-pairing
+  // adds is the squaring: it belongs to the BIT, so k pairs pay for 63 between
+  // them and not 63 each, and getting that wrong is a wrong answer rather than
+  // a slow one. tools/groth16.js runs three at full depth.
+  [pairingMod.miller(2, { pairs: 2 }), {}],
   [bytes.reverse, {}],
   [bytes.beToNum, {}],
   [rsa.verifier(rsa.fixtureKey()), {}],

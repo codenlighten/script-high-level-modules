@@ -120,7 +120,9 @@ const factories = {
   'state.limit': stateMod.limit,
   'recipes.budgetCoin': recipes.budgetCoin,
   'pairing.miller': pairingMod.miller,
-  'pairing.e': pairingMod.full
+  'pairing.e': pairingMod.full,
+  'pairing.product': pairingMod.product,
+  'pairing.verify': pairingMod.verify
 }
 
 /** What a consumer needs to decide whether a module fits. */

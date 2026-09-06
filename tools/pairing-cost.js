@@ -222,20 +222,38 @@ const g1add = size(ec.add, { p: P, pn: P })
 const inputs = ELL * (g1mul + g1add)
 const groth = 3 * millerEmitted + finalEmitted + inputs
 
+console.log('WHAT A PRODUCT OF PAIRINGS COSTS\n')
+console.log('  Nobody computes two pairings and compares them. Protocols check a')
+console.log('  PRODUCT, and a product shares the accumulator — so k pairings pay for')
+console.log('  63 squarings between them and one final exponentiation, not k of each.\n')
+console.log('  pairs        emitted    vs separate       saved')
+for (const k of [1, 2, 3]) {
+  const one = emitted(pairingMod.product(k))
+  const sep = k * pairingEmitted
+  console.log(`  ${k}      ${String(one).padStart(11)}    ${String(sep).padStart(11)}   ${String(sep - one).padStart(9)}`)
+}
+console.log('')
+
 console.log('WHAT A GROTH16 VERIFIER COSTS\n')
+const equation = emitted(pairingMod.product(3))
+const grothTotal = equation + inputs
 console.log('  e(A,B)·e(−L,γ)·e(−C,δ) = e(α,β), the right side a verifying-key constant')
-console.log(`    3 Miller loops        ${String(3 * millerEmitted).padStart(9)} bytes  (emitted, not estimated)`)
-console.log(`    1 final exponentiation${String(finalEmitted).padStart(9)} bytes  (emitted, not estimated)`)
-console.log(`    ${ELL} public inputs        ${String(inputs).padStart(9)} bytes  (${g1mul} for x·IC, ${g1add} to add it in)`)
+console.log(`    the equation          ${String(equation).padStart(9)} bytes  (emitted and executed: npm run groth16)`)
+console.log(`    ${ELL} public inputs        ${String(inputs).padStart(9)} bytes  (${g1mul} for x·IC, ${g1add} to add it in — priced, not emitted)`)
 console.log(`    ─────────────────────────────────────────`)
-console.log(`    at least              ${String(groth).padStart(9)} bytes   ${kb(groth)}   ${sats(groth)} sat\n`)
+console.log(`                          ${String(grothTotal).padStart(9)} bytes   ${kb(grothTotal)}   ${sats(grothTotal)} sat\n`)
+console.log('  The equation is the hard nine tenths and it is done. Binding L to the')
+console.log('  public inputs is ordinary G1 arithmetic, priced from ec.mulG retargeted')
+console.log('  to the 381-bit prime; src/ec.js is written for secp256k1 and')
+console.log('  generalising it is its own piece of work.\n')
 
 console.log('WHAT TO READ OUT OF THIS\n')
 console.log(`  A pairing is ${kb(PAIRING_TOTAL())} of Script and about ${sats(PAIRING_TOTAL())} satoshis of fee,`)
 console.log('  and it is not a projection: npm run pairing:prove emits the whole')
 console.log('  thing, runs it through the interpreter, and checks all twelve Fp12')
 console.log('  coefficients against a reference that matches @noble/curves exactly.')
-console.log(`  A Groth16 verification is ${kb(groth)} and about ${sats(groth)} satoshis.`)
+console.log(`  The Groth16 equation is ${kb(equation)}, emitted and executed; a complete`)
+console.log(`  verifier with ${ELL} public inputs is about ${kb(grothTotal)}.`)
 console.log('')
 console.log('  Bitcoin Script has no pairing opcode, no Fp12, no extension field')
 console.log('  arithmetic of any kind. It has OP_MUL and OP_MOD at arbitrary width,')
