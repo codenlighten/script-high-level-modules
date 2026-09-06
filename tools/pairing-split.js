@@ -24,7 +24,9 @@
 // input 0's changes input 1's preimage and vice versa. Two independent grinds
 // therefore invalidate each other. The search has to be over the PAIR, and it
 // is: set both sequences, recompute both preimages, accept when both pass.
-// Each passes about half the time, so it lands in a handful of tries.
+// About one preimage in fifty is canonical (measured: 2.01%), so a PAIR lands
+// about once in 2,500 tries — cheap here, but see tools/groth16-split.js for
+// what the same search costs when there are three of them.
 //
 // What the network verifies, in one transaction:
 //

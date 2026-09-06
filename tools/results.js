@@ -170,6 +170,25 @@ const onchain = {
     feeSat: 164997,
     note: 'two inputs of one spend, bound by a shared OP_RETURN commitment'
   },
+  // The same decomposition, three ways, for a whole Groth16 verifier. The
+  // Miller loop of three pairings is 705,838 bytes on its own — over the
+  // policy before the final exponentiation is considered — so the loop itself
+  // is cut, at round 31 of 63. Built and verified by tools/groth16-split.js;
+  // not deployed.
+  grothVerifierInOneTransaction: {
+    stages: 3,
+    cutRound: 31,
+    millerLoopThreePairs: 705838,
+    lockBytes: [384240, 372456, 476147],
+    unlockBytes: [395669, 383888, 481994],
+    blobBytes: 2156,
+    blobValues: 44,
+    txBytes: 1263868,
+    grindField: 'nLockTime',
+    grindTries: 27409,
+    deployed: false,
+    note: 'three inputs of one spend; every stage commits to the same 44-element blob'
+  },
   supersededOnChain: {
     module: 'fp12.powX',
     bytes: modules['fp12.powX'].bytes,
@@ -259,5 +278,5 @@ if (check) {
   console.log(`results: wrote results.json — ${Object.keys(modules).length} modules, ${deployments.length} deployments`)
   console.log(`  one pairing            ${e.bytes.toLocaleString()} bytes, ${e.opcodes.toLocaleString()} opcodes`)
   console.log(`  a Groth16 verifier     ${groth.bytes.toLocaleString()} bytes, ${groth.opcodes.toLocaleString()} opcodes`)
-  console.log(`  on mainnet             ${(onchain.pairingShareOnChain * 100).toFixed(1)}% of a pairing, by bytes`)
+  console.log(`  on mainnet             ${(onchain.stagesShareOnChain * 100).toFixed(1)}% of a pairing, by bytes`)
 }

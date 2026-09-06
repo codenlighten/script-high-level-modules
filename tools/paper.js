@@ -187,6 +187,7 @@ ${r.deployments.map((d) => `| \`${d.name}\` | ${d.lockBytes ? n(d.lockBytes) : '
 // some unrelated number contained "16". A two-digit substring is not evidence
 // of anything. Short figures are therefore checked in the phrase they appear
 // in, and anything below four digits needs one.
+const G = r.pairing.onchain.grothVerifierInOneTransaction
 const PROSE = {
   'one pairing, bytes': n(r.pairing.e.bytes),
   'final exponentiation, bytes': n(r.pairing.finalExp.bytes),
@@ -208,7 +209,19 @@ const PROSE = {
   'Miller loop, standalone': n(r.sizes.millerStandalone),
   'Miller loop, composed': n(r.sizes.millerComposed),
   'final exponentiation, standalone': n(r.sizes.finalExpStandalone),
-  'final exponentiation, composed': n(r.sizes.finalExpComposed)
+  'final exponentiation, composed': n(r.sizes.finalExpComposed),
+  // §8.3, the three-way split. G is the whole-verifier decomposition recorded
+  // by tools/groth16-split.js.
+  'three-pairing Miller loop': n(G.millerLoopThreePairs),
+  'split stage 1, lock': n(G.lockBytes[0]),
+  'split stage 2, lock': n(G.lockBytes[1]),
+  'split stage 3, lock': n(G.lockBytes[2]),
+  'split stage 3, unlock': n(G.unlockBytes[2]),
+  'the blob': `${n(G.blobBytes)} bytes`,
+  'the blob, in values': `${G.blobValues} field elements`,
+  'the cut round, in context': `round ${G.cutRound} of 63`,
+  'the split transaction': n(G.txBytes),
+  'the triple grind': n(G.grindTries)
 }
 
 function checkProse () {

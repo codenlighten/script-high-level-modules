@@ -482,11 +482,109 @@ covenant and nonsense for a script whose fee alone is 33,389. Both are fixed in
 `src/onchain.js`: largest-first within each confirmation status, and the fee
 sized from the script that is about to be deployed.
 
+## Three ways: a whole Groth16 verifier across one transaction
+
+Cutting a pairing in two worked because a pairing already comes in two pieces. A
+Groth16 verifier does not. It is 1,241,011 bytes, and its Miller loop — three
+pairings sharing one accumulator — is **705,838 on its own**, which is 205,838
+over the policy before the final exponentiation is even considered. There is no
+two-way cut. The loop has to be cut.
+
+It is cut at round 31 of 63. Round 31 is not a seam in the mathematics; it is
+simply where the halves are each small enough. What makes an arbitrary cut
+legal is that the state there is small — the accumulator f, twelve Fp
+coefficients, plus each pairing's running point T, four apiece. Twenty-four
+values.
+
+```
+input 0   rounds 1–31 of three loops, publishes S₁
+input 1   rounds 32–63, resuming from S₁, publishes S₂
+input 2   the final exponentiation of S₂, against e(α, β)
+```
+
+`npm run groth16:split` proves all three stages against the interpreter — with
+forged witnesses substituted and refused — and then builds the transaction:
+
+```
+input 0   rounds 1–31, publishes S₁         384,240 lock   395,669 unlock   ACCEPTED
+input 1   rounds 32–63, publishes S₂        372,456 lock   383,888 unlock   ACCEPTED
+input 2   final exponentiation vs e(α,β)    476,147 lock   481,994 unlock   ACCEPTED
+output    the blob all three commit to        2,156 bytes — 44 field elements
+```
+
+The proof being verified is a real one: snarkjs generated it from a circuit
+asserting *"the holder was at least 21 years old as of 2026"*, and nothing in
+this repository produced it. The transaction is 1,263,868 bytes.
+
+**This one has not been deployed**, and the reason is money rather than
+policy — every locking script here is under the 500 KB limit and so is every
+unlocking script. At 100 sat/kB, funding the three coins costs about 123,325
+satoshis and spending them about 126,411, so ~249,700 against a wallet holding
+97,257. The two-way pairing split above *is* on mainnet; this is an interpreter
+result and is labelled as one.
+
+### Why every stage carries the whole blob
+
+Each stage computes its own transition and **witnesses** everything else. A
+witness may be anything the spender likes; what removes the freedom is that all
+three inputs see the same `hashOutputs`, and each requires it to be the data
+output *it* builds. So all three built the same bytes, and stage i's witnessed
+input is stage i−1's computed output. Written out for N stages, with s_i the
+state after stage i and B the single output carrying all of them:
+
+```
+P_i(s_{i-1}, s_i) = [ s_i = F_i(s_{i-1}) ] ∧ C(B)
+```
+
+C is a function of the transaction alone, so it holds identically at every
+input, and B determines every s_i. Chaining gives s_N = f(s_0). The blob must
+therefore carry the whole state, not just one stage's endpoints — which is why
+it is kept to 2,156 bytes for a computation of 1,241,011, and why the cut point
+is chosen by the size of the state it exposes rather than by the sizes of the
+pieces.
+
+### Grinding three preimages, and picking the right field
+
+One preimage in fifty is canonical (measured: 2.01%). A pair lands in about
+2,500 tries; a **triple in about 123,000**. The two-way split ground
+`nSequence`, and at three inputs that stops working — for a reason that is
+entirely about BIP-143's byte layout.
+
+`nSequence` appears **twice** in a preimage: as its own field near the end, and
+inside `hashSequence` at offset 36. Move it and every SHA-256 block from byte 36
+onward changes, so each attempt rehashes a ~400 KB preimage. A hundred thousand
+attempts across three inputs is not a search, it is an afternoon.
+
+`nLockTime` appears **once**, eight bytes from the end. Grind that instead and
+every block but the last is untouched, so each input's SHA-256 midstate is
+computed once and copied per attempt. The cost per try drops from hashing 400 KB
+to hashing 64 bytes:
+
+```
+27,409 nLockTimes, 549 cleared input 0, 9 cleared inputs 0 and 1 — 1.2 seconds
+```
+
+Small nLockTime values are block heights already in the past, so the transaction
+stays final. The fast filter is checked against the library's own
+canonicalisation before it is trusted, not after.
+
+The general lesson is not about pairings. "Which field should carry the nonce?"
+has no cryptographic answer at all — it is decided by where the field sits
+relative to a hash function's block boundaries.
+
+### Headroom
+
+Stage 3 unlocks in 481,994 bytes, 18,006 under the policy — the binding
+constraint is again the *unlocking* script. A four-way split would relieve it,
+and nothing in the construction would have to change.
+
 ## The honest caveat
 
 At 817 KB a pairing is past the default 500 KB script policy, and so is a
-Groth16 verifier at 1.24 MB. The Miller loop at 333 KB is not, and is on chain;
-the final exponentiation at 473 KB is not either, and is also on chain. Neither is standard relay today. That is a policy
+Groth16 verifier at 1.24 MB. Neither is ever emitted as a single locking script
+on chain; both are, in pieces, across the inputs of one transaction. The Miller
+loop at 333 KB is under the policy, and is on chain; the final exponentiation at
+473 KB is too, and is also on chain. Neither is standard relay today. That is a policy
 number, not a consensus one, and it is the kind of number that moves; the
 arithmetic underneath it is what this measures, and the arithmetic does not
 change when the policy does.
@@ -507,6 +605,7 @@ npm test                # everything, including one whole pairing (~65 s)
 npm run pairing         # the cost report: model and measurement side by side
 npm run pairing:prove   # emit e(P, Q), run it, check twelve coefficients
 npm run groth16         # the Groth16 equation, one valid proof and two forged
+npm run groth16:split   # the whole verifier across three inputs of one tx
 npm run verify:chain    # rebuild every deployed script and compare to the chain
 ```
 

@@ -28,6 +28,7 @@ const g2mod = require('./modules/g2')
 const pointsMod = require('./modules/points')
 const pairingMod = require('./modules/pairing')
 const groth16 = require('./modules/groth16')
+const groth16split = require('./modules/groth16split')
 
 const { defineModule, apply, instantiate } = require('./module')
 const { Asm } = require('./asm')
@@ -135,7 +136,11 @@ const factories = {
   // shared output commitment — neither script contains the other's code.
   'pairing.publish': pairingMod.publish,
   'pairing.consume': pairingMod.consume,
-  'groth16.verify': groth16.verifier
+  'groth16.verify': groth16.verifier,
+  // The same verifier cut into three, one stage per input of one transaction.
+  // The whole verifier is 1.24 MB against a 500 KB policy and its Miller loop
+  // alone is 706 KB, so the loop itself is cut, at round 31.
+  'groth16.split': groth16split.verifier
 }
 
 /** What a consumer needs to decide whether a module fits. */
@@ -162,7 +167,7 @@ function catalog () {
 
 module.exports = {
   int, bytes, u32, sha256, rsa, hmac, totp, ec, ecdsa, schnorr: schnorrMod, merkle, tx: txmod, state: stateMod,
-  fp2, fp6, fp12, g2: g2mod, points: pointsMod, pairing: pairingMod, groth16, bls12381: require('./bls12381'),
+  fp2, fp6, fp12, g2: g2mod, points: pointsMod, pairing: pairingMod, groth16, groth16split, bls12381: require('./bls12381'),
   modules, factories, catalog, describe,
   defineModule, apply, instantiate, predicate, compose, recipes, Asm,
   evaluate, evaluateSpend, policyFlags,

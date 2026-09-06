@@ -61,9 +61,9 @@ const f2inv = (a, n) => {
  * for 63 squarings between them, not 63 each. `first` marks the step a bit
  * opens with, which is the one that squares.
  */
-function schedule (rounds, pairs = 1) {
+function schedule (rounds, pairs = 1, first = 1) {
   const plan = []
-  for (let i = 1; i <= rounds; i++) {
+  for (let i = first; i <= rounds; i++) {
     for (let j = 0; j < pairs; j++) plan.push({ kind: 'double', bit: i, pair: j, first: j === 0 })
     if (BITS[i] === '1') for (let j = 0; j < pairs; j++) plan.push({ kind: 'add', bit: i, pair: j, first: false })
   }
@@ -79,12 +79,17 @@ const pre = (j, pairs) => (pairs === 1 ? '' : `p${j}_`)
  * them, which is the only reason a 136-value unlocking script can be built by
  * hand at all.
  */
-function replay (pairsIn, rounds, n) {
+function replay (pairsIn, rounds, n, opts = {}) {
   const list = Array.isArray(pairsIn) ? pairsIn : [pairsIn]
-  let f = bls.F12_ONE
-  const T = list.map((pq) => pq.Q)
+  const first = opts.first || 1
+  // Resuming means starting from a state somebody else left rather than from
+  // (1, Q). That is what makes the loop splittable across transaction inputs:
+  // the accumulator and the running points ARE the state, and there is nothing
+  // else to carry.
+  let f = opts.f || bls.F12_ONE
+  const T = opts.T ? opts.T.map((t) => ({ x: t.x, y: t.y })) : list.map((pq) => pq.Q)
   const witnesses = []
-  for (let i = 1; i <= rounds; i++) {
+  for (let i = first; i <= rounds; i++) {
     f = bls.f12sqr(f)
     list.forEach((pq, j) => {
       witnesses.push(f2inv([mod(T[j].y[0] + T[j].y[0], n), mod(T[j].y[1] + T[j].y[1], n)], n))
@@ -128,6 +133,16 @@ const unspread = (v, p) => {
   const g = (i) => v[twelve(p)[i]]
   return [[[g(0), g(1)], [g(2), g(3)], [g(4), g(5)]], [[g(6), g(7)], [g(8), g(9)], [g(10), g(11)]]]
 }
+/** The state a resuming segment starts from, read out of its own inputs. */
+function resumeState (v, pairs, first, resume) {
+  if (!resume) return { first }
+  const T = Array.from({ length: pairs }, (_, j) => {
+    const q = pre(j, pairs)
+    return { x: [v[`${q}Tx0`], v[`${q}Tx1`]], y: [v[`${q}Ty0`], v[`${q}Ty1`]] }
+  })
+  return { first, f: unspread(v, 'f'), T }
+}
+
 const spread = (f, p) => {
   const out = {}
   twelve(p).forEach((name, i) => { out[name] = f[i < 6 ? 0 : 1][Math.floor((i % 6) / 2)][i % 2] })
@@ -155,12 +170,29 @@ const spread = (f, p) => {
  */
 function miller (rounds = FULL, opts = {}) {
   const pairs = opts.pairs || 1
-  const plan = schedule(rounds, pairs)
+  // A SEGMENT of the loop, not necessarily the whole of it.
+  //
+  // `first` says which bit to start at and `resume` says the accumulator and
+  // the running points arrive as inputs rather than being initialised. Those
+  // two together are what let the loop be cut across transaction inputs: the
+  // state between any two bits is f and one point per pair, and there is
+  // nothing else to carry.
+  //
+  // With the defaults — first = 1, no resume, no emitted state — the script is
+  // byte for byte what it was before segments existed, which the deployed
+  // loops depend on.
+  const first = opts.first || 1
+  const resume = opts.resume === undefined ? first > 1 : opts.resume
+  const emitState = !!opts.emitState
+  const plan = schedule(rounds, pairs, first)
   const at = (j) => pre(j, pairs)
   const ptNames = []
   for (let j = 0; j < pairs; j++) {
     ptNames.push(`${at(j)}Px`, `${at(j)}Py`, `${at(j)}Qx0`, `${at(j)}Qx1`, `${at(j)}Qy0`, `${at(j)}Qy1`)
   }
+  const tNames = []
+  for (let j = 0; j < pairs; j++) tNames.push(`${at(j)}Tx0`, `${at(j)}Tx1`, `${at(j)}Ty0`, `${at(j)}Ty1`)
+  const stateIn = resume ? [...twelve('f'), ...tNames] : []
   const conjugate = opts.conjugate === undefined ? (rounds === FULL && bls.X < 0n) : opts.conjugate
   const wit = plan.flatMap((_, k) => [`w${k}a`, `w${k}b`])
 
@@ -171,31 +203,40 @@ function miller (rounds = FULL, opts = {}) {
       : `${pairs} Miller loops over ${rounds} bit(s), sharing one accumulator — ${plan.length} lines, ${rounds} squarings between them`,
     inputs: [
       ...ptNames,
+      ...stateIn,
       ...wit.map((name) => ({ name, witness: true }))
     ],
-    outputs: twelve('f'),
+    outputs: emitState ? [...twelve('r'), ...tNames.map((n) => `r${n}`)] : twelve('f'),
     maxWitnessAttacks: opts.maxWitnessAttacks || 12,
     requires: ({ nn = P381 }) => {
       const r = { range: { lo: 0n, hi: nn } }
       const out = {}
-      for (const k of ptNames) out[k] = r
+      for (const k of [...ptNames, ...stateIn]) out[k] = r
       return out
     },
     ensures: ({ nn = P381 }) => {
       const r = { range: { lo: 0n, hi: nn } }
       const out = {}
-      for (const k of twelve('f')) out[k] = r
+      for (const k of (emitState ? [...twelve('r'), ...tNames.map((n) => `r${n}`)] : twelve('f'))) out[k] = r
       return out
     },
     hint: (v, { nn = P381 }) => {
-      const { witnesses } = replay(readPairs(v, pairs), rounds, nn)
+      const { witnesses } = replay(readPairs(v, pairs), rounds, nn, resumeState(v, pairs, first, resume))
       const out = {}
       witnesses.forEach(([a, b], k) => { out[`w${k}a`] = a; out[`w${k}b`] = b })
       return out
     },
     model: (v, { nn = P381 }) => {
-      const { f } = replay(readPairs(v, pairs), rounds, nn)
-      return spread(conjugate ? bls.f12conj(f) : f, 'f')
+      const { f, T } = replay(readPairs(v, pairs), rounds, nn, resumeState(v, pairs, first, resume))
+      const done = conjugate ? bls.f12conj(f) : f
+      if (!emitState) return spread(done, 'f')
+      const out = spread(done, 'r')
+      T.forEach((t, j) => {
+        const q = at(j)
+        out[`r${q}Tx0`] = t.x[0]; out[`r${q}Tx1`] = t.x[1]
+        out[`r${q}Ty0`] = t.y[0]; out[`r${q}Ty1`] = t.y[1]
+      })
+      return out
     },
     prologue: (asm, { n = P381 }) => pushModulus(asm, n),
     emit: (asm, params) => {
@@ -210,13 +251,14 @@ function miller (rounds = FULL, opts = {}) {
         apply(asm, fp2.mulXi, p, [`${at(j)}Py`, `_zero${j}`], [`${at(j)}H0`, `${at(j)}H1`])
       }
 
-      // T starts at Q, which the loop also keeps for its chords
-      for (let j = 0; j < pairs; j++) {
-        dup(asm, `${at(j)}Qx`, `${at(j)}Tx`); dup(asm, `${at(j)}Qy`, `${at(j)}Ty`)
+      // T starts at Q, which the loop also keeps for its chords — unless this
+      // segment is resuming, in which case both it and f arrived as inputs.
+      if (!resume) {
+        for (let j = 0; j < pairs; j++) {
+          dup(asm, `${at(j)}Qx`, `${at(j)}Tx`); dup(asm, `${at(j)}Qy`, `${at(j)}Ty`)
+        }
+        for (const name of twelve('f')) asm.num(name === 'fA00' ? 1n : 0n, name)
       }
-
-      // f starts at one
-      for (const name of twelve('f')) asm.num(name === 'fA00' ? 1n : 0n, name)
 
       plan.forEach((step, k) => {
         // The squaring belongs to the BIT, not to the line. A set bit
@@ -247,24 +289,44 @@ function miller (rounds = FULL, opts = {}) {
       // everything the loop was carrying, gone; then the twelve results rolled
       // into their declared order, which twelve OP_ROLLs guarantee and no
       // amount of reasoning about the altstack does.
-      for (let j = 0; j < pairs; j++) {
-        for (const suffix of ['Tx0', 'Tx1', 'Ty0', 'Ty1', 'Px', 'Qx0', 'Qx1', 'Qy0', 'Qy1', 'H0', 'H1']) {
-          asm.discard(at(j) + suffix)
-        }
-      }
+      const gone = emitState
+        ? ['Px', 'Qx0', 'Qx1', 'Qy0', 'Qy1', 'H0', 'H1']
+        : ['Tx0', 'Tx1', 'Ty0', 'Ty1', 'Px', 'Qx0', 'Qx1', 'Qy0', 'Qy1', 'H0', 'H1']
+      for (let j = 0; j < pairs; j++) for (const suffix of gone) asm.discard(at(j) + suffix)
       if (typeof n !== 'string') asm.discard('_pn')
-      for (const name of twelve('f')) asm.roll(name)
+      if (!emitState) { for (const name of twelve('f')) asm.roll(name); return }
+      // The state this segment hands on: the accumulator, then one running
+      // point per pair, in the order the next segment reads them.
+      for (const name of twelve('f')) { asm.roll(name); asm.rename(name.replace(/^f/, 'r')) }
+      for (const name of tNames) { asm.roll(name); asm.rename('r' + name) }
     },
     notes: [
       `${plan.length} witnessed Fp2 inverses, every coefficient bounded into [0, p)`,
       'the G1 point is affine and so is T: in Script a witnessed inverse is cheaper than the extra multiplications projective coordinates would cost to avoid one'
     ],
     cases: (() => {
-      const one = (scalars, name) => ({
-        name,
-        inputs: writePairs(scalars.map(([a, b]) => ({ P: bls.g1mul(a), Q: bls.g2mul(b) })), pairs),
-        params: { n: P381, nn: P381 }
-      })
+      // A resuming segment cannot be given a case that is only points: it needs
+      // the state it resumes from, which is what the rounds before it produced.
+      // So the case runs them, in JavaScript, and hands over the result.
+      const stateFor = (list) => {
+        if (!resume) return {}
+        const { f, T } = replay(list, first - 1, P381)
+        const out = spread(f, 'f')
+        T.forEach((t, j) => {
+          const q = at(j)
+          out[`${q}Tx0`] = t.x[0]; out[`${q}Tx1`] = t.x[1]
+          out[`${q}Ty0`] = t.y[0]; out[`${q}Ty1`] = t.y[1]
+        })
+        return out
+      }
+      const one = (scalars, name) => {
+        const list = scalars.map(([a, b]) => ({ P: bls.g1mul(a), Q: bls.g2mul(b) }))
+        return {
+          name,
+          inputs: { ...writePairs(list, pairs), ...stateFor(list) },
+          params: { n: P381, nn: P381 }
+        }
+      }
       const spread1 = [[1n, 1n], [2n, 3n], [12345n, 6789n]]
       if (pairs === 1) {
         return [one([spread1[0]], 'the generators'), one([spread1[1]], '2G1, 3G2'), one([spread1[2]], 'a random pair')]

@@ -53,7 +53,17 @@ bytes, past the policy. So the composition moves out of the script and into the
 **transaction** — `npm run pairing:split` puts the Miller loop in input 0 and
 the final exponentiation in input 1 of one spend, bound by a shared output
 commitment, and the interpreter accepts both. Neither script contains the
-other's code. Two of the deployments are not single spends but **sequences** —
+other's code. That is on mainnet.
+
+The same idea takes a **whole Groth16 verifier** across three inputs.
+`npm run groth16:split` cuts the Miller loop itself, at round 31 of 63 — it has
+to, because three pairings sharing one accumulator are 705,838 bytes of loop
+alone, over the policy before the final exponentiation is considered. The three
+stages lock in 384,240 / 372,456 / 476,147 bytes, all three are accepted, and
+the 2,156-byte output they all commit to is what makes them one computation. The
+proof being verified is snarkjs's, for *"at least 21 years old as of 2026"*.
+That one is an interpreter result, not a deployment — it would cost ~249,700
+satoshis to fund and spend, and the wallet holds 97,257. Two of the deployments are not single spends but **sequences** —
 a
 coin advancing its own counter 0 → 1 → 2 → 3, and a coin paying three different
 people out of an allowance that falls 1500 → 900 → 400 → 0. In each, every
@@ -318,6 +328,15 @@ And a **Groth16 verifier** — `e(A,B)·e(−L,γ)·e(−C,δ) = e(α,β)` — i
 bytes, 774,895 opcodes**, accepting a valid proof and refusing two invalid ones.
 Three separate pairings would be 2.45 MB; as a product they are 1.23, because k
 pairings share the 63 squarings and the one final exponentiation.
+
+`npm run groth16:split` runs that verifier as three stages across three inputs
+of one transaction — proving each stage against the interpreter with forged
+witnesses refused, then building the spend the network would see. It also
+changes which transaction field carries the OP_PUSH_TX nonce: one preimage in
+fifty is canonical, so a *triple* lands once in ~123,000, and `nSequence` is the
+wrong knob because it also sits inside `hashSequence` at offset 36. `nLockTime`
+appears once, eight bytes from the end, so every SHA-256 block but the last is
+reusable — 27,409 tries in 1.2 seconds instead of rehashing 400 KB apiece.
 
 `npm run groth16:external` runs the same verifier against a proof **snarkjs**
 generated over BLS12-381 — an independent trusted setup, prover and field

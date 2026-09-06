@@ -204,4 +204,61 @@ const { failures, reports } = proveAll([
   console.log('\n  groth16.verify: the spender chooses only A, B, C — γ and δ are in the script')
 }
 
+// THE THREE-WAY SPLIT. tools/groth16-split.js proves all three stages against
+// the interpreter and builds the transaction, and takes over two minutes. What
+// is checked here is the part that is cheap and that everything else rests on:
+// that the chain actually composes, and that no stage can quietly stop carrying
+// the whole commitment.
+//
+// The soundness of the decomposition is that every stage commits to the SAME
+// blob, so a witnessed state is some other stage's computed one. If a stage's
+// blob were a subset — its own two endpoints, say — that argument would fail
+// silently and every test that only runs one stage would still pass.
+{
+  const split = require('./src/modules/groth16split')
+  const bls = require('./src/bls12381')
+  const fx = groth16.fixture([3n, 5n])
+  const v = split.verifier(fx.vk, fx.publicInputs, { proof: fx.proof })
+  const st = v.stateFor(fx.proof)
+
+  // does cutting the Miller loop at round 31 reproduce the uncut answer?
+  if (!bls.f12eq(bls.finalExponentiate(st.s2), v.expected)) {
+    console.log('\n  groth16.split: the three stages do not compose to the whole verifier')
+    process.exit(1)
+  }
+  // The blob is the proof and both cut states, and nothing else.
+  const blob = new Set(split.BLOB_NAMES)
+  if (blob.size !== 44 || split.BLOB_BYTES !== 44 * 49) {
+    console.log(`\n  groth16.split: the blob is ${blob.size} values / ${split.BLOB_BYTES} bytes, expected 44 / ${44 * 49}`)
+    process.exit(1)
+  }
+  // Every stage builds the whole blob; what distinguishes them is which part
+  // they COMPUTE and which they take in. A stage must not take in the state it
+  // is supposed to compute — that is the whole of its job, and an input would
+  // let the spender supply the answer instead. Conversely it must take in every
+  // part it does not compute, or it could not build the same bytes as the
+  // others and the shared commitment would not bind them.
+  const ins = (m) => new Set(m.inputs.map((i) => i.name))
+  const S1 = split.S1_NAMES; const S2 = split.S2_NAMES
+  const duty = [
+    ['stage1', v.stage1, S1, [...split.PROOF_NAMES, ...S2]],
+    ['stage2', v.stage2, S2, [...split.PROOF_NAMES, ...S1]],
+    ['stage3', v.stage3, [], split.BLOB_NAMES]
+  ]
+  for (const [name, m, computes, takes] of duty) {
+    const has = ins(m)
+    const supplied = computes.filter((k) => has.has(k))
+    if (supplied.length) {
+      console.log(`\n  groth16.split: ${name} takes ${supplied.join(', ')} as input — it is supposed to compute them`)
+      process.exit(1)
+    }
+    const missing = takes.filter((k) => !has.has(k))
+    if (missing.length) {
+      console.log(`\n  groth16.split: ${name} never sees ${missing.join(', ')} — it cannot build the same blob as the others`)
+      process.exit(1)
+    }
+  }
+  console.log(`  groth16.split: cut at round ${split.CUT} of 63, all three stages commit to the same ${split.BLOB_BYTES}-byte blob`)
+}
+
 process.exit(failures.length ? 1 : 0)
