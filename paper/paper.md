@@ -85,6 +85,9 @@ The contributions are:
    measured savings (§7).
 5. **A Groth16 verifier** and the precise separation between the values a
    spender may choose and the values the locking script fixes (§7.2).
+5a. **Transaction-level decomposition**: a computation exceeding the script-size
+   policy split across two inputs of one spend, bound by a shared output
+   commitment, with both halves verified by the interpreter (§8.2).
 6. **An inverted cost model** for elliptic-curve arithmetic under witness-
    assisted verification (§9).
 
@@ -392,6 +395,57 @@ wallet, which is how the first defect acquired its dust.
 Both are ordinary bugs. We report them because they are the kind of assumption
 that only very large scripts falsify, and anyone repeating this work will meet
 them.
+
+## 8.2 Decomposing across a transaction
+
+A pairing in one script is 817,031 bytes against a 500,000-byte policy, and the
+gap is not closable by optimisation. It is closable by putting the composition
+somewhere other than the script.
+
+```
+input 0   the Miller loop            publishes f as an OP_RETURN output
+input 1   the final exponentiation   consumes that same output
+```
+
+Both inputs of a spend observe the same `hashOutputs`. If each requires that
+commitment to be the data output *it* constructs, the two must have constructed
+identical bytes, so input 1's f is input 0's f — enforced by the transaction
+rather than assumed. Neither script contains the other's code, which is the
+necessary property: a covenant can only commit to a successor whose bytes it can
+build, and a 344 KB script cannot carry a 475 KB one.
+
+| | lock | unlock | verdict |
+| --- | ---: | ---: | --- |
+| input 0, `pairing.publish` | 343,799 | 350,922 | accepted |
+| input 1, `pairing.consume` | 475,017 | 479,302 | accepted |
+| output, `OP_RETURN` | 588 | — | twelve Fp12 coefficients |
+
+Both inputs are verified by `bsv.Script.Interpreter` under relay policy flags.
+What the network establishes, in one transaction, is that the Miller loop ran
+correctly on P and Q, that its twelve outputs were published, that the same
+twelve were consumed, and that their final exponentiation is e(P, Q).
+
+**Joint grinding.** OP_PUSH_TX requires each preimage to satisfy a canonical
+low-S condition, ordinarily obtained by grinding that input's `nSequence`. But
+`hashSequence` commits to *every* input's sequence, so grinding input 0
+invalidates input 1's preimage and conversely: independent grinds do not
+compose. The search is over the pair. About one preimage in fifty passes, so a
+pair lands in a few thousand attempts — 733 in the reported run. Rebuilding a
+preimage carrying a 344 KB `scriptCode` that many times is unnecessary: only 36
+bytes change, so each preimage is constructed once and `hashSequence` and
+`nSequence` are patched in place, then checked against the ones the library
+produces.
+
+**A constraint this surfaces.** OP_PUSH_TX's preimage *contains the script it
+unlocks*, so a covenant's unlocking script is as large as its locking script.
+`pairing.consume` locks in 475,017 bytes and unlocks in 479,302 — 20,698 under
+the policy. For covenants of this size the binding limit is the **unlocking**
+script, not the locking one, which is not where one would look for it.
+
+This generalises past pairings. Any computation too large for one script can be
+cut at a point where the intermediate state is small, with each piece requiring
+the same commitment to that state. The state here is 588 bytes for a computation
+of 817,031, and the cut is where the two stages of the pairing already meet.
 
 ## 9. An inverted cost model
 

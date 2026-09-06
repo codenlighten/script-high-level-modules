@@ -114,6 +114,7 @@ const factories = {
   'schnorr.verify': schnorrMod.verifier,
   'merkle.verify': merkle.verify,
   'tx.requireOutputs': txmod.requireOutputs,
+  'tx.commitData': txmod.commitData,
   'recipes.authorityPays': recipes.authorityPays,
   'recipes.timelockedTotp': recipes.timelockedTotp,
   'recipes.counterCoin': recipes.counterCoin,
@@ -126,6 +127,10 @@ const factories = {
   'pairing.e': pairingMod.full,
   'pairing.product': pairingMod.product,
   'pairing.verify': pairingMod.verify,
+  // The two halves of a pairing split across one transaction, bound by a
+  // shared output commitment — neither script contains the other's code.
+  'pairing.publish': pairingMod.publish,
+  'pairing.consume': pairingMod.consume,
   'groth16.verify': groth16.verifier
 }
 

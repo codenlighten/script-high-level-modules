@@ -63,6 +63,7 @@
 | `schnorr.verify(…)` | *built per key or width* | | | |
 | `merkle.verify(…)` | *built per key or width* | | | |
 | `tx.requireOutputs(…)` | *built per key or width* | | | |
+| `tx.commitData(…)` | *built per key or width* | | | |
 | `recipes.authorityPays(…)` | *built per key or width* | | | |
 | `recipes.timelockedTotp(…)` | *built per key or width* | | | |
 | `recipes.counterCoin(…)` | *built per key or width* | | | |
@@ -75,6 +76,8 @@
 | `pairing.e(…)` | *built per key or width* | | | |
 | `pairing.product(…)` | *built per key or width* | | | |
 | `pairing.verify(…)` | *built per key or width* | | | |
+| `pairing.publish(…)` | *built per key or width* | | | |
+| `pairing.consume(…)` | *built per key or width* | | | |
 | `groth16.verify(…)` | *built per key or width* | | | |
 
 A module with **no outputs** is a predicate: it asserts and returns nothing, and

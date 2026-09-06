@@ -129,6 +129,7 @@ npm run catalog         # regenerate catalog.md from the registry
 npm run results         # measure everything into results.json
 npm run paper           # results.json, then the paper's tables
 npm run select          # prove two implementations agree, then price them
+npm run pairing:split   # a whole pairing across two inputs of one transaction
 npm run verify:chain    # every deployed txid, against the chain (needs network)
 npm run deploy          # list the deployable targets; --broadcast to send one
 node bin/sequence.js counter|budget   # run a stateful coin on chain, step by step

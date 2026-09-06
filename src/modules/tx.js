@@ -285,6 +285,101 @@ function requireOutputs (outputs, { cases } = {}) {
 const cloneOutput = (o, delta = 0) =>
   new bsv.Transaction.Output({ script: o.script, satoshis: o.satoshis + delta })
 
+/**
+ * REQUIRE THE SPEND TO PUBLISH A VALUE — and nothing else.
+ *
+ * `tx.requireOutputs` pins a set of outputs chosen at compile time.
+ * `tx.transition` recreates the script it lives in. This does neither: it takes
+ * a value the script COMPUTED and requires the transaction's only output to be
+ * `OP_FALSE OP_RETURN <that value>`.
+ *
+ * The point is composition ACROSS INPUTS. Two coins spent in the same
+ * transaction see the same `hashOutputs`, so if both require that commitment to
+ * be the data output they each construct, they must have constructed the same
+ * bytes. One coin can compute a value and another can consume it, with the
+ * transaction itself as the channel — and neither has to contain the other's
+ * code, which is what makes it possible to split a computation that no single
+ * script may be large enough to hold.
+ *
+ * Everything but the data is a compile-time constant once the width is fixed:
+ * eight zero bytes of value, the output's length prefix, and
+ * `OP_FALSE OP_RETURN PUSHDATA2 <width>`. So the whole check is one
+ * concatenation, one OP_HASH256 and one comparison.
+ *
+ * A width of 588 — twelve 49-byte field elements — makes the pushdata two-byte
+ * and the output length prefix three-byte; both are baked in, and `commitPrefix`
+ * derives them rather than hard-coding a table.
+ */
+function commitPrefix (width) {
+  if (width < 76 || width > 0xffff) throw new Error(`tx.commitData: ${width} bytes needs a pushdata this does not build`)
+  const script = Buffer.from([0x00, 0x6a, 0x4d, width & 0xff, (width >> 8) & 0xff])
+  const scriptLen = script.length + width
+  const prefix = Buffer.concat([
+    Buffer.alloc(8),                                        // zero satoshis, 8-byte LE
+    scriptLen < 0xfd
+      ? Buffer.from([scriptLen])
+      : Buffer.from([0xfd, scriptLen & 0xff, (scriptLen >> 8) & 0xff]),
+    script
+  ])
+  return prefix
+}
+
+/** The output such a spend has to carry — for whoever builds the transaction. */
+const dataOutput = (width, data) => new bsv.Transaction.Output({
+  script: bsv.Script.fromBuffer(Buffer.concat([Buffer.from([0x00, 0x6a, 0x4d, width & 0xff, (width >> 8) & 0xff]), data])),
+  satoshis: 0
+})
+
+function commitData (width, { cases } = {}) {
+  const prefix = commitPrefix(width)
+  return defineModule({
+    name: 'tx.commitData',
+    doc: `the spend's only output must be OP_RETURN carrying these ${width} bytes`,
+    inputs: [
+      { name: 'preimage', kind: 'bytes', witness: true },
+      { name: 'data', kind: 'bytes', width }
+    ],
+    outputs: [{ name: 'data', kind: 'bytes', width }],
+    contextual: true,
+    witnessFor: locktimeWitnessFor,
+    hint: () => ({}),
+    model: ({ data }) => ({ data: Buffer.from(data) }),
+    emit: (asm) => {
+      asm.pick('preimage', '_pi')
+      asm.clause((s2) => PushTx.pushTxCore(s2), 1, [{ name: '_ok', kind: 'num' }])
+      asm.verify()
+      asm.pick('preimage', '_pf'); right(asm, 4, '_flag')
+      asm.data(Buffer.from([SIGHASH_ALL_FORKID, 0, 0, 0]), '_want'); asm.equalVerify()
+
+      asm.data(prefix, '_prefix')
+      asm.pick('data', '_d'); asm.cat('_txout')
+      asm.hash256('_h')
+
+      asm.roll('preimage'); right(asm, 40, '_t40'); left(asm, 32, '_committed')
+      asm.equalVerify()
+      asm.roll('data')
+    },
+    attacks: preimageAttacks,
+    cases: cases || [
+      {
+        name: 'the value the spend publishes',
+        spend: { outputs: [dataOutput(width, Buffer.alloc(width, 0x11))] },
+        inputs: { data: Buffer.alloc(width, 0x11) }
+      },
+      {
+        name: 'a value the spend does not publish',
+        refuse: 'the output commitment is over the bytes, not over the intent',
+        spend: { outputs: [dataOutput(width, Buffer.alloc(width, 0x11))] },
+        inputs: { data: Buffer.alloc(width, 0x22) }
+      }
+    ],
+    notes: [
+      'two coins in one transaction that both do this must have computed the same bytes',
+      'the output carries zero satoshis: it is a channel, not a payment'
+    ]
+  })
+}
+
 // ── A COIN THAT REWRITES ITSELF ─────────────────────────────────────────────
 //
 // Everything else here is a stateless predicate: it verifies, and the coin
@@ -600,4 +695,5 @@ function payingWitness ({ tx, lockingScript, satoshis, spend = {} }, W, fee) {
   return { preimage: g.preimage, next, amount, payee }
 }
 
-module.exports = { locktime, hashOutputs, requireOutputs, transition, transitionPaying, recreateWitness, payingWitness, leBytes, right, left, grindValue, SIGHASH_ALL_FORKID, FINAL, PushTx }
+module.exports = {
+  commitData, commitPrefix, dataOutput, preimageAttacks, locktime, hashOutputs, requireOutputs, transition, transitionPaying, recreateWitness, payingWitness, leBytes, right, left, grindValue, SIGHASH_ALL_FORKID, FINAL, PushTx }

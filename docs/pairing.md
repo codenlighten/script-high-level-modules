@@ -314,6 +314,62 @@ the policy, and the **10,588 bytes** by which the whole exceeds its two stages
 are exactly that plumbing. "Both stages have executed on mainnet" is the claim.
 "A pairing has executed on mainnet" is not.
 
+## Not one script — one transaction
+
+No amount of shaving gets 817 KB under 500 KB. So the composition moves out of
+the script and into the **transaction**:
+
+```
+input 0   the Miller loop            publishes f as an OP_RETURN output
+input 1   the final exponentiation   consumes that same output
+```
+
+Both inputs of a spend see the same `hashOutputs`. Each requires that commitment
+to be the data output *it* constructs, so they must have constructed the same
+bytes — input 1's f is input 0's f, enforced by the transaction rather than by
+trust. Neither script contains the other's code, which is the whole point: a
+covenant can only commit to a successor whose bytes it can build, and a 344 KB
+script cannot carry a 475 KB one.
+
+`npm run pairing:split` builds it and hands both inputs to the interpreter:
+
+```
+input 0   pairing.publish     343,799 bytes of lock, 350,922 of unlock   ACCEPTED
+input 1   pairing.consume     475,017 bytes of lock, 479,302 of unlock   ACCEPTED
+output    OP_RETURN               588 bytes — twelve Fp12 coefficients
+```
+
+What the network verifies, in one transaction: that the Miller loop ran
+correctly on P and Q, that its twelve outputs were published, that the same
+twelve were consumed, and that their final exponentiation is e(P, Q). That is a
+complete pairing.
+
+### Joint grinding
+
+OP_PUSH_TX needs each preimage to satisfy a canonical low-S condition, and
+`grind` finds one by moving that input's `nSequence`. But `hashSequence` covers
+**every** input's sequence, so moving input 0's changes input 1's preimage and
+vice versa. Two independent grinds invalidate each other; the search has to be
+over the pair. About one preimage in fifty passes, so a pair lands in a couple
+of thousand tries — 733, here.
+
+Rebuilding a preimage that carries a 344 KB scriptCode two thousand times is the
+slow way to find that out. Only 36 bytes of it change, so each preimage is built
+once and `hashSequence` and `nSequence` are patched in place, then checked
+against the ones the library builds. 0.9 seconds instead of minutes.
+
+### The constraint this surfaced
+
+OP_PUSH_TX's preimage **contains the script it unlocks**, so a covenant's
+unlocking script is as large as its locking script. `pairing.consume` locks in
+475,017 bytes and unlocks in **479,302** — under the 500,000-byte policy by
+20,698. The binding constraint on this construction is the *unlocking* script,
+not the locking one, and the final exponentiation has less headroom than its own
+size suggests.
+
+Deploying it costs about 165,000 satoshis: 34,400 to fund input 0's coin, 47,500
+for input 1's, and 83,100 for the spend itself.
+
 The last row carries its own caveat. `fp12.powX` — one uncompressed f^|x| ladder
 — was deployed and spent and is correct, and it is no longer what the
 implementation does: `fp12.powXc` replaced it at 73,674 bytes. Counting its

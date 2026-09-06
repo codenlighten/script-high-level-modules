@@ -5,8 +5,10 @@ const fp2 = require('./fp2')
 const fp6 = require('./fp6')
 const fp12 = require('./fp12')
 const g2mod = require('./g2')
+const txmod = require('./tx')
 const bls = require('../bls12381')
 const { mod, invmod } = require('../bigint')
+const { defaultAttacks } = require('../testkit')
 
 // THE MILLER LOOP, emitted.
 //
@@ -552,4 +554,189 @@ function verify (pairs, expected, opts = {}) {
   })
 }
 
-module.exports = { miller, finalExp, product, full, verify, schedule, replay, replay1, readPairs, writePairs, pre, spread, unspread, FULL, BITS }
+// ── A PAIRING SPLIT ACROSS ONE TRANSACTION ──────────────────────────────────
+//
+// e(P, Q) in one script is 817,031 bytes and the default script-size policy is
+// 500,000. Both STAGES fit under it individually and both are on chain; what is
+// not is the composition, and no amount of shaving gets 817 KB under 500 KB.
+//
+// So do not put them in one script. Put them in one TRANSACTION.
+//
+//     input 0  ── the Miller loop ──► publishes f as an OP_RETURN output
+//     input 1  ── the final exponentiation ──► consumes that same output
+//
+// Both inputs of a spend see the same `hashOutputs`. If each requires that
+// commitment to be the data output IT constructs, then they constructed the
+// same bytes — so input 1's f is input 0's f, enforced by the transaction
+// rather than by trust. Neither script contains the other's code, which is the
+// whole point: a covenant can only commit to a successor whose bytes it can
+// build, and a 333 KB script cannot carry a 474 KB one.
+//
+// What the network then verifies, in one transaction:
+//
+//     the Miller loop ran correctly on P and Q          (input 0)
+//     its twelve outputs were published                 (input 0's covenant)
+//     the same twelve were consumed                     (input 1's covenant)
+//     their final exponentiation is e(P, Q)             (input 1)
+//
+// which is a complete pairing, evaluated by Bitcoin.
+//
+// The twelve coefficients are serialised at 49 bytes each: p is 381 bits, so
+// 392 bits leaves the sign bit clear and OP_NUM2BIN — which writes a SIGNED
+// number — cannot produce a value that reads back negative.
+
+const COEFF_BYTES = 49
+const STATE_BYTES = 12 * COEFF_BYTES
+
+/** Twelve field elements as one blob, the way both halves agree to write them. */
+function serialiseF12 (values, prefix) {
+  return Buffer.concat(twelve(prefix).map((name) => {
+    const b = Buffer.alloc(COEFF_BYTES)
+    let v = values[name]
+    for (let i = 0; i < COEFF_BYTES; i++) { b[i] = Number(v & 0xffn); v >>= 8n }
+    if (v !== 0n) throw new Error('serialiseF12: a coefficient does not fit in 49 bytes')
+    return b
+  }))
+}
+
+/**
+ * Input 0: run the Miller loop and publish what it produced.
+ */
+function publish (opts = {}) {
+  const loop = miller(FULL)
+  const loopIn = loop.inputs.map((i) => i.name)
+  const commit = txmod.commitData(STATE_BYTES)
+
+  return defineModule({
+    name: 'pairing.publish',
+    doc: 'run the Miller loop and require the spend to publish its twelve outputs',
+    inputs: [...loop.inputs, { name: 'preimage', kind: 'bytes', witness: true }],
+    outputs: [],
+    contextual: true,
+    maxWitnessAttacks: opts.maxWitnessAttacks || 2,
+    witnessFor: (ctx) => {
+      const { tx, lockingScript, satoshis, spend = {} } = ctx
+      const P = { x: spend.Px, y: spend.Py }
+      const Q = { x: [spend.Qx0, spend.Qx1], y: [spend.Qy0, spend.Qy1] }
+      const { f, witnesses } = replay([{ P, Q }], FULL, P381)
+      const out = {}
+      witnesses.forEach(([a, b], k) => { out[`w${k}a`] = a; out[`w${k}b`] = b })
+      const data = serialiseF12(spread(bls.X < 0n ? bls.f12conj(f) : f, 'f'), 'f')
+
+      tx.outputs.length = 0
+      tx.addOutput(txmod.dataOutput(STATE_BYTES, data))
+      tx._outputAmount = undefined
+      const g = txmod.PushTx.grind(tx, 0, lockingScript, satoshis, { field: 'sequence' })
+      return { ...out, preimage: g.preimage }
+    },
+    hint: () => ({}),
+    model: () => ({}),
+    // The preimage is transaction-shaped and gets transaction-shaped forgeries;
+    // the other 136 witnesses are Fp2 inverse coefficients and get the kit's
+    // field near-misses. Routing every witness through preimageAttacks was the
+    // first version, and it fails on the first bigint it meets.
+    attacks: (honest, params, name) => (name === 'preimage'
+      ? txmod.preimageAttacks(honest, params, name)
+      : defaultAttacks(honest[name], { n: P381 })),
+    requires: loop.requires,
+    prologue: (asm, { n = P381 }) => pushModulus(asm, n),
+    emit: (asm, params) => {
+      const n = params.n === undefined ? P381 : params.n
+      const p = { n: modulusName(n), nn: params.nn === undefined ? numericModulus({ n }, 'pairing.publish') : params.nn }
+      apply(asm, loop, p, loopIn, twelve('f'))
+      // twelve numbers into one blob, most significant coefficient first
+      twelve('f').forEach((name, i) => {
+        asm.roll(name); asm.num2bin(COEFF_BYTES, `_b${i}`)
+        if (i > 0) asm.cat('_blob')
+      })
+      asm.rename('data', 'bytes', STATE_BYTES)
+      apply(asm, commit, {}, ['preimage', 'data'], ['_published'])
+      asm.drop()
+      if (typeof n !== 'string') asm.discard('_pn')
+    },
+    notes: [
+      'the transaction is the channel: whatever this publishes, another input of the same spend can require',
+      `${STATE_BYTES} bytes of state — twelve coefficients at ${COEFF_BYTES} each, wide enough that OP_NUM2BIN's sign bit stays clear`
+    ],
+    cases: opts.cases || []
+  })
+}
+
+/**
+ * Input 1: consume a published Miller output and finish the pairing.
+ *
+ * The twelve coefficients arrive as a witness and are pinned by the same output
+ * commitment `pairing.publish` makes. A spender who supplies a different f
+ * makes the covenant fail; a spender who supplies the right f but a different
+ * expected value fails the comparison at the end.
+ */
+function consume (expected, opts = {}) {
+  const commit = txmod.commitData(STATE_BYTES)
+  const want = spread(expected, 'r')
+  const expWit = finalExp.inputs.filter((i) => i.witness).map((i) => i.name)
+
+  return defineModule({
+    name: 'pairing.consume',
+    doc: 'consume a published Miller output and require its final exponentiation to be a fixed value',
+    inputs: [
+      { name: 'preimage', kind: 'bytes', witness: true },
+      { name: 'data', kind: 'bytes', width: STATE_BYTES, witness: true },
+      ...expWit.map((name) => ({ name, witness: true }))
+    ],
+    outputs: [],
+    contextual: true,
+    maxWitnessAttacks: opts.maxWitnessAttacks || 2,
+    witnessFor: (ctx) => {
+      const { tx, lockingScript, satoshis, spend = {} } = ctx
+      const f = spend.f
+      const data = serialiseF12(spread(f, 'f'), 'f')
+      tx.outputs.length = 0
+      tx.addOutput(txmod.dataOutput(STATE_BYTES, data))
+      tx._outputAmount = undefined
+      const g = txmod.PushTx.grind(tx, 0, lockingScript, satoshis, { field: 'sequence' })
+      return { preimage: g.preimage, data, ...finalExp.hint(spread(f, 'f'), { n: P381, nn: P381 }) }
+    },
+    hint: () => ({}),
+    model: () => ({}),
+    // Three kinds of witness, three kinds of forgery. The preimage gets the
+    // transaction-shaped attacks; `data` gets a byte flipped, which is the
+    // attack that matters — a spender substituting a Miller output the
+    // transaction did not publish; everything else is a field element and gets
+    // the kit's own near-misses, including the same residue plus p.
+    attacks: (honest, params, name) => {
+      if (name === 'preimage') return txmod.preimageAttacks(honest, params, name)
+      if (name === 'data') {
+        const b = Buffer.from(honest[name]); b[0] ^= 0x01
+        return [{ label: 'a value the transaction did not publish', value: b }]
+      }
+      return defaultAttacks(honest[name], { n: P381 })
+    },
+    prologue: (asm, { n = P381 }) => pushModulus(asm, n),
+    emit: (asm, params) => {
+      const n = params.n === undefined ? P381 : params.n
+      const p = { n: modulusName(n), nn: params.nn === undefined ? numericModulus({ n }, 'pairing.consume') : params.nn }
+      apply(asm, commit, {}, ['preimage', 'data'], ['data'])
+      // the blob back into twelve numbers, in the order publish() wrote them
+      const names = twelve('f')
+      for (let i = 0; i < names.length - 1; i++) {
+        asm.splitAt(COEFF_BYTES, names[i], '_rest')
+        asm.op('OP_SWAP', 2, [{ name: '_rest2', kind: 'bytes' }, { name: names[i], kind: 'bytes' }])
+        asm.bin2num(names[i])
+        asm.op('OP_SWAP', 2, [{ name: names[i], kind: 'num' }, { name: '_rest', kind: 'bytes' }])
+      }
+      asm.bin2num(names[names.length - 1])
+      apply(asm, finalExp, p, [...names, ...expWit], twelve('r'))
+      for (const name of twelve('r')) {
+        asm.roll(name); asm.num(want[name], '_want'); asm.numEqualVerify()
+      }
+      if (typeof n !== 'string') asm.discard('_pn')
+    },
+    notes: [
+      'the data is a witness AND is pinned by the transaction, so it is whatever the other input published',
+      'the expected value is a compile-time constant: this coin is a claim about one specific pairing'
+    ],
+    cases: opts.cases || []
+  })
+}
+
+module.exports = { miller, finalExp, product, full, verify, publish, consume, serialiseF12, STATE_BYTES, COEFF_BYTES, schedule, replay, replay1, readPairs, writePairs, pre, spread, unspread, FULL, BITS }

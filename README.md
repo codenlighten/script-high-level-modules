@@ -49,9 +49,12 @@ reached the chain only because compressed cyclotomic squaring took it from
 592,008 bytes to 473,466, across the 500 KB policy boundary.
 
 What has *not* run on chain is the chaining: a pairing in one script is 817,031
-bytes, past the policy, and the 10,588 bytes by which the whole exceeds its two
-stages are exactly that plumbing. Two of the deployments are not single spends
-but **sequences** — a
+bytes, past the policy. So the composition moves out of the script and into the
+**transaction** — `npm run pairing:split` puts the Miller loop in input 0 and
+the final exponentiation in input 1 of one spend, bound by a shared output
+commitment, and the interpreter accepts both. Neither script contains the
+other's code. Two of the deployments are not single spends but **sequences** —
+a
 coin advancing its own counter 0 → 1 → 2 → 3, and a coin paying three different
 people out of an allowance that falls 1500 → 900 → 400 → 0. In each, every
 transaction pays the output the next one consumes, so the state is not recorded
@@ -146,7 +149,7 @@ and are now era-derived and checked after every opcode (released in 9.7.0; see
 [limits.md](docs/limits.md)). They are skipped, with a note, on a library that
 predates it. Nothing else here depends on that fix.
 
-72 modules, 344 cases, 1,363 forgery attempts, all green.
+73 modules, 346 cases, 1,367 forgery attempts, all green.
 
 ## The three claims a module must earn
 

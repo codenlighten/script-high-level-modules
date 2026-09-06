@@ -119,6 +119,7 @@ const { failures, reports } = proveAll([
   [txmod.locktime, {}],
   [recipes.timelockedTotp(Buffer.from('12345678901234567890'), { digits: 6, step: 30, at: 1600000020 }), {}],
   [txmod.hashOutputs, {}],
+  [txmod.commitData(588), {}],
   [txmod.requireOutputs([recipes.instructedOutput(payee, 42)]), {}],
   [recipes.authorityPays(rsaFixture, { cases: recipes.authorityPaysCases(payee, 700, elsewhereAddr) }), {}],
   [schnorr.liftX, {}],
