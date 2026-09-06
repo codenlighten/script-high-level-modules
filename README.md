@@ -112,6 +112,56 @@ At the 100 sat/KB this wallet now pays, about 29,000.
 - **[paper/paper.md](paper/paper.md)** — the preprint draft, with its tables
   generated from `results.json` and its prose figures checked against the code.
 
+## What it is for
+
+```
+npm run demo
+```
+
+A coin that only moves for someone over 21.
+
+```
+the statement    "I am at least 21 years old as of 2026."
+public           the year, and the age required
+private          the birth year — never on chain, never in the proof
+
+the prover       snarkjs, Groth16 over BLS12-381
+the verifier     Bitcoin Script — 1,241,012 bytes, no pairing opcode
+```
+
+| | |
+| --- | --- |
+| a valid proof of the right statement | the coin moves |
+| a proof from someone underage | the coin does not move |
+| a valid proof of a **different** statement | the coin does not move |
+
+The third is the one worth looking at twice. It is the *same* proof, from the
+same prover, and it is valid — for a claim the second coin did not make. The
+public inputs are compiled into the locking script, so "at least 21" and "at
+least 30" are different coins and a proof of one is not a key to the other.
+
+The underage case is worth a second look too: snarkjs's prover does not check
+the constraints, so someone underage **can** produce a proof-shaped object. It
+does not verify, and Bitcoin is what notices.
+
+Nothing about the birth year reaches the chain. The network learned that a
+person was old enough, and nothing else, and enforced payment on that basis.
+
+**This is verified against the interpreter, not deployed.** At 1,241,012 bytes
+the verifier is past the 500 KB script policy. Deploying it needs the same
+transaction-level split that put a whole pairing on chain, in three parts
+rather than two:
+
+| | |
+| --- | ---: |
+| rounds 1–31 of three Miller loops | ~347 KB |
+| rounds 32–63 of three Miller loops | ~359 KB |
+| the final exponentiation | 473 KB |
+| state carried between the first two | ~1.2 KB |
+
+Each part is under the policy. That is the next piece of work, and it is
+engineering rather than a question.
+
 ## What is here
 
 ```

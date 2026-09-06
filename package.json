@@ -23,6 +23,7 @@
     "pairing:prove": "node tools/pairing-prove.js",
     "groth16": "node tools/groth16.js",
     "groth16:external": "node tools/groth16-external.js",
+    "demo": "node tools/demo-proof-of-age.js",
     "rfc6238": "node tools/rfc6238-check.js && node tools/bip340-check.js && node tools/ec-crosscheck.js && node tools/merkle-crosscheck.js"
   },
   "author": "codenlighten <greg@smartledger.technology>",
