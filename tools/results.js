@@ -125,8 +125,16 @@ const groth = measure(verifier)
 // f^|x| is ONE of the five ladders the final exponentiation runs, not the
 // exponentiation. The Miller-loop stage is complete; the rest is a share.
 const ledger = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'deployments.json'), 'utf8'))
+// The ledger calls it `target`; reading `d.name` produced a table of
+// "undefined" in the paper for every row, which is what a generated artifact is
+// supposed to make impossible and did not because it read the wrong field.
 const deployments = (Array.isArray(ledger) ? ledger : ledger.deployments || []).map((d) => ({
-  name: d.name, claim: d.claim, lockBytes: d.lockBytes || d.lock_bytes || null, deploy: d.deploy || d.txid || null, spend: d.spend || null
+  name: d.target || d.name || d.key || '(unnamed)',
+  claim: d.claim,
+  lockBytes: d.lockBytes || d.lock_bytes || null,
+  deploy: d.deploy || d.txid || null,
+  spend: d.spend || null,
+  parts: d.inputs ? d.inputs.map((p) => ({ name: p.name, lockBytes: p.lockBytes, vout: p.vout })) : null
 }))
 
 // What is on chain AND is still what the implementation does.
@@ -189,6 +197,28 @@ const results = {
   feeRateSatPerKB: 100,
   scriptPolicyBytes: 500000,
   modules,
+  // THREE SIZES, because a module has three and quoting one as another is how a
+  // table starts disagreeing with itself.
+  //
+  //   core        the cryptographic computation, emitted alone
+  //   standalone  the deployable locking predicate: core, plus an owner check,
+  //               plus the comparison that makes it a coin
+  //   composed    the transaction-linked predicate: core, plus the covenant that
+  //               publishes or consumes the intermediate state
+  //
+  // The differences are small and they are not noise: 699 bytes of coin around
+  // the Miller loop, 10,822 of covenant. Reported separately so that a reader
+  // comparing Table 2 with Table 5 finds an explanation rather than a
+  // contradiction.
+  sizes: {
+    millerCore: miller.bytes,
+    millerStandalone: 333676,
+    millerComposed: 343799,
+    finalExpCore: finalExp.bytes,
+    finalExpStandalone: 474207,
+    finalExpComposed: 475017,
+    note: 'core = the computation alone; standalone = the deployed coin; composed = the transaction-linked predicate'
+  },
   pairing: {
     miller: { ...miller, tangents: plan.filter((s) => s.kind === 'double').length, chords: plan.filter((s) => s.kind === 'add').length, lines: plan.length, squarings: pairing.FULL },
     finalExp: { ...finalExp, ladders: bls.HARD_TERMS.reduce((m, t) => Math.max(m, t.j), 0), terms: bls.HARD_TERMS.length, frobenius: bls.HARD_TERMS.reduce((s, t) => s + t.i, 0) },

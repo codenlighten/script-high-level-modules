@@ -124,6 +124,7 @@ npm run cost            # regenerate cost.md from the code
 npm run pairing         # what a BLS12-381 pairing costs, from first principles
 npm run pairing:prove   # emit e(P, Q) and run it through the interpreter
 npm run groth16         # emit a Groth16 verifier and run it, valid proof and two forged
+npm run groth16:external # the same verifier, against a proof snarkjs made
 npm run catalog         # regenerate catalog.md from the registry
 npm run results         # measure everything into results.json
 npm run paper           # results.json, then the paper's tables

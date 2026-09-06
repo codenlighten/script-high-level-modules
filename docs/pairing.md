@@ -24,6 +24,19 @@ under relay policy flags, and checks the result against a reference that matches
 `@noble/curves` byte for byte. The pairing runs in about thirty seconds and is
 part of `npm test`; the Groth16 equation takes about a minute and is on demand.
 
+`npm run groth16:external` runs the verifier against a proof **snarkjs** made
+over BLS12-381 — its own setup, its own prover, its own arithmetic — for the
+circuit c = a·b with c public. It is accepted. A displaced proof is refused. And
+the same valid proof is refused by a verifier built for a different public
+input, which is the case worth having: L is a compile-time constant, so a
+different statement is a different locking script, and the statement is bound
+into the coin rather than supplied beside the proof.
+
+Checking it required two agreements neither of which was guaranteed: that
+snarkjs's G2 coordinates are in the same Fp2 basis (tested by putting the
+swapped reading on the twist, where it does not lie), and that its verification
+equation is this one rearranged.
+
 `npm run groth16` accepts a valid proof and **refuses two invalid ones** — an
 A and a C each off by one generator, with every point still on the curve and
 every witnessed inverse still correct for the points supplied, so that nothing

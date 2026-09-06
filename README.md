@@ -269,6 +269,12 @@ bytes, 774,756 opcodes**, accepting a valid proof and refusing two invalid ones.
 Three separate pairings would be 2.45 MB; as a product they are 1.23, because k
 pairings share the 63 squarings and the one final exponentiation.
 
+`npm run groth16:external` runs the same verifier against a proof **snarkjs**
+generated over BLS12-381 — an independent trusted setup, prover and field
+implementation. It is accepted; a displaced proof is refused; and the same valid
+proof is refused by a verifier built for a different public input, because the
+statement is a compile-time constant and therefore a different coin.
+
 Its soundness is not the arithmetic, it is who chooses what: **only A, B and C
 come from the unlocking script**, while γ, δ and L are constants the locking
 script pushes. A spender who could choose γ could choose one that satisfies the

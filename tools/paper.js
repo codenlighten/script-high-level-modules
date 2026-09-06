@@ -161,11 +161,14 @@ routines perform.
 ## Table 7 — mainnet deployments
 
 ${r.deployments.length} deployments, each rebuilt byte for byte from the source and compared against
-the chain by \`npm run verify:chain\`.
+the chain by \`npm run verify:chain\`. The count is generated from the ledger, so
+this table and the prose cannot disagree about how many there are.
 
 | module | locking script | deploy |
 | --- | ---: | --- |
 ${r.deployments.map((d) => `| \`${d.name}\` | ${d.lockBytes ? n(d.lockBytes) : '—'} | \`${(d.deploy || '').slice(0, 16)}…\` |`).join('\n')}
+
+**${r.deployments.length} of ${r.deployments.length} reconstruct exactly.**
 `
 
 // ── the prose, too ──────────────────────────────────────────────────────────
@@ -178,6 +181,12 @@ ${r.deployments.map((d) => `| \`${d.name}\` | ${d.lockBytes ? n(d.lockBytes) : '
 // formatted exactly as they should appear. This does not verify that the
 // sentence around a number is true — nothing can — but it does mean the paper
 // cannot silently claim a size the implementation no longer has.
+//
+// EACH ENTRY MUST BE DISTINCTIVE. The first version checked for the bare string
+// "16" and passed while the paper said "15 of 15 reconstruct exactly", because
+// some unrelated number contained "16". A two-digit substring is not evidence
+// of anything. Short figures are therefore checked in the phrase they appear
+// in, and anything below four digits needs one.
 const PROSE = {
   'one pairing, bytes': n(r.pairing.e.bytes),
   'final exponentiation, bytes': n(r.pairing.finalExp.bytes),
@@ -193,15 +202,26 @@ const PROSE = {
   'fp12.mul, marginal': n(M('fp12.mul').marginal),
   'fp12.sqr, marginal': n(M('fp12.sqr').marginal),
   'Miller loop witnesses': String(r.pairing.miller.witnesses),
-  'deployments': String(r.deployments.length),
-  'ladders in the final exponentiation': String(r.pairing.finalExp.ladders)
+  'deployments, in context': `${r.deployments.length} of ${r.deployments.length} reconstruct exactly`,
+  'ladders, in context': `${r.pairing.finalExp.ladders} shared ladders`,
+  'Miller loop, core': n(r.sizes.millerCore),
+  'Miller loop, standalone': n(r.sizes.millerStandalone),
+  'Miller loop, composed': n(r.sizes.millerComposed),
+  'final exponentiation, standalone': n(r.sizes.finalExpStandalone),
+  'final exponentiation, composed': n(r.sizes.finalExpComposed)
 }
 
 function checkProse () {
   const file = path.join(__dirname, '..', 'paper', 'paper.md')
   if (!fs.existsSync(file)) return []
-  const text = fs.readFileSync(file, 'utf8')
-  return Object.entries(PROSE).filter(([, value]) => !text.includes(value)).map(([what, value]) => `${what} (${value})`)
+  // Prose is wrapped, so a phrase can be split across a line break and a
+  // literal includes() will miss it. Whitespace is collapsed on both sides
+  // before comparing — otherwise the check fails for a reason that has nothing
+  // to do with whether the number is right, which is worse than not checking.
+  const flat = (s) => s.replace(/\s+/g, ' ')
+  const text = flat(fs.readFileSync(file, 'utf8'))
+  return Object.entries(PROSE).filter(([, value]) => !text.includes(flat(value)))
+    .map(([what, value]) => `${what} (${value})`)
 }
 
 const check = process.argv.includes('--check')
