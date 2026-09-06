@@ -95,7 +95,47 @@ async function main () {
     console.log('  order-r, non-degenerate, bilinear ok')
   }
 
-  // 5. the two optimisations that have no counterpart in the reference, checked
+  // 5. RANDOMISED DIFFERENTIAL TESTING against the reference.
+  //
+  // The eight pairs above were chosen, and chosen vectors test what somebody
+  // thought of. These are generated from a printed seed, so a failure is
+  // reproducible rather than a rumour, and they cover the scalars nobody would
+  // write down: full-width, no structure, and the two boundaries where a
+  // reduction mod r either happens or does not.
+  {
+    const seed = Number(process.env.BLS_SEED || 20260906)
+    const rounds = Number(process.env.BLS_ROUNDS || 12)
+    // xorshift128, with state named so it cannot shadow `b`, which is the
+    // whole implementation under test. It did, once, and the failure was a
+    // BigInt/Number type error rather than anything about pairings.
+    let w = seed >>> 0 || 1; let x = 362436069; let y = 521288629; let z = 88675123
+    const rnd = () => {
+      const t = w ^ (w << 11)
+      w = x; x = y; y = z
+      z = (z ^ (z >>> 19)) ^ (t ^ (t >>> 8))
+      return (z >>> 0) / 0x100000000
+    }
+    const scalar = () => {
+      let v = 0n
+      for (let i = 0; i < 8; i++) v = (v << 32n) | BigInt(Math.floor(rnd() * 0x100000000))
+      return (v % (b.R - 1n)) + 1n
+    }
+    // the ones worth naming, then the ones nobody would name
+    const pairs = [[1n, b.R - 1n], [b.R - 1n, 1n], [b.R - 1n, b.R - 1n]]
+    for (let i = 0; i < rounds; i++) pairs.push([scalar(), scalar()])
+
+    for (const [s1, s2] of pairs) {
+      const mine = flat(b.pairing(b.g1mul(s1), b.g2mul(s2)))
+      const theirs = nobleFlat(noble.pairing(G1n.multiply(s1), G2n.multiply(s2)))
+      for (let i = 0; i < 12; i++) {
+        assert.strictEqual(mine[i], theirs[i], `random e(${s1}G1, ${s2}G2) coefficient ${i} (seed ${seed})`)
+      }
+      checks += 12
+    }
+    console.log(`  ${pairs.length} generated pairs, all 12 coefficients ok  (seed ${seed})`)
+  }
+
+  // 6. the two optimisations that have no counterpart in the reference, checked
   //    against the general routines they replace. Both are places where an
   //    earlier version of this file was wrong in a way bilinearity did not catch.
   {

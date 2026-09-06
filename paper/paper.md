@@ -355,19 +355,27 @@ unrolled (Table 1, `fp12.powX`).
 ## 10. Correctness methodology
 
 1. **Independent reference.** The BigInt implementation agrees with
-   `@noble/curves` on all twelve Fp12 coefficients for eight scalar pairs — not
-   merely on bilinearity, which a wrong pairing can also satisfy. An early line
-   function here was non-degenerate, produced order-r values, passed every
-   component test, and was wrong; byte equality caught it.
+   `@noble/curves` on all twelve Fp12 coefficients — not merely on bilinearity,
+   which a wrong pairing can also satisfy. An early line function here was
+   non-degenerate, produced order-r values, passed every component test, and was
+   wrong; byte equality caught it. Eight chosen scalar pairs, three boundary
+   pairs (1 and r−1 in each position), and twelve generated from a printed seed:
+   320 assertions in all.
 2. **Model versus emitter.** Each module's specification is different code from
    its schedule.
 3. **The real interpreter**, under relay policy flags.
-4. **Adversarial witnesses**, on every run.
+4. **Adversarial witnesses**, on every run: 1,279 forged witnesses refused.
 5. **Published vectors** where they exist (RFC 6238, BIP-340), and the host
    library's own secp256k1 and Merkle implementations.
-6. **Boundary values**: 0, 1, p − 1, and both coefficients at p − 1.
-7. **Byte-exact chain reconstruction** of every deployed script.
-8. **Generated figures.** Every number in Table 1–7 is produced by measurement.
+6. **Randomised differential testing of every module** against its own model,
+   on inputs generated from the module's stated domain rather than chosen: 44
+   modules, none disagreeing. The two modules whose domain is a *subgroup* —
+   which an interval cannot state — carry a generator that runs an easy part to
+   produce one, so those rounds test the module where it is defined rather than
+   reporting a disagreement that is the module telling the truth.
+7. **Boundary values**: 0, 1, p − 1, and both coefficients at p − 1.
+8. **Byte-exact chain reconstruction** of every deployed script.
+9. **Generated figures.** Every number in Table 1–7 is produced by measurement.
 
 ### 10.1 Reproducibility of the numbers, not only of the artifact
 

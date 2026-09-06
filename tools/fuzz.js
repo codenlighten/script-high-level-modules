@@ -29,6 +29,11 @@ const u32 = require('../src/modules/u32')
 const ec = require('../src/modules/ec')
 const schnorr = require('../src/modules/schnorr')
 const ecJs = require('../src/ec')
+const fp2mod = require('../src/modules/fp2')
+const fp6mod = require('../src/modules/fp6')
+const fp12mod = require('../src/modules/fp12')
+const g2mod = require('../src/modules/g2')
+const BLS = require('../src/bls12381').P
 
 // A module whose promise is true of the cases somebody wrote and false of the
 // domain it claims. The cases below are the ones a careful author would write —
@@ -141,7 +146,32 @@ const TARGETS = [
   ['hmac.sha1', hmac.sha1, { keyLen: 20, algo: 'sha1' }],
   ['merkle.verify', merkleMod.verify(mtree.root, { depth: 2, leaves: mleaves }), { depth: 2, root: mtree.root }],
   ['sha256.block', sha256.block, {}, 8],
-  ['schnorr.verify', schnorr.verifier(['seed']), {}, 6]
+  ['schnorr.verify', schnorr.verifier(['seed']), {}, 6],
+  // The pairing tower, over the BLS12-381 prime. Every one of these states its
+  // domain as an interval, so the fuzzer samples it rather than guessing —
+  // except the two whose domain is a SUBGROUP, which no interval can say, and
+  // which therefore carry a fuzz hook that runs an easy part to get one.
+  ['fp2.mul', fp2mod.mul, { n: BLS }],
+  ['fp2.sqr', fp2mod.sqr, { n: BLS }],
+  ['fp2.add', fp2mod.add, { n: BLS }],
+  ['fp2.sub', fp2mod.sub, { n: BLS }],
+  ['fp2.neg', fp2mod.neg, { n: BLS }],
+  ['fp2.conj', fp2mod.conj, { n: BLS }],
+  ['fp2.mulXi', fp2mod.mulXi, { n: BLS }],
+  ['fp2.mulFp', fp2mod.mulFp, { n: BLS }],
+  ['fp2.inv', fp2mod.inv, { n: BLS }],
+  ['fp6.mul', fp6mod.mul, { n: BLS }, 8],
+  ['fp6.sqr', fp6mod.sqr, { n: BLS }, 8],
+  ['fp6.mulV', fp6mod.mulV, { n: BLS }, 8],
+  ['fp12.mul', fp12mod.mul, { n: BLS }, 4],
+  ['fp12.sqr', fp12mod.sqr, { n: BLS }, 4],
+  ['fp12.cycSqr', fp12mod.cycSqr, { n: BLS }, 4],
+  ['fp12.mulLine', fp12mod.mulLine, { n: BLS }, 4],
+  ['fp12.conj', fp12mod.conj, { n: BLS }, 4],
+  ['fp12.frob', fp12mod.frob, { n: BLS }, 4],
+  ['fp12.inv', fp12mod.inv, { n: BLS }, 3],
+  ['g2.stepDouble', g2mod.stepDouble, { n: BLS }, 6],
+  ['g2.stepAdd', g2mod.stepAdd, { n: BLS }, 6]
 ]
 
 let checked = 0; let skipped = 0; let failures = 0

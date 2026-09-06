@@ -78,6 +78,34 @@ const cyclotomic = (k) => {
   let e = bls.f12mulRaw(bls.f12conj(f), bls.f12inv(f))
   return bls.f12mulRaw(bls.f12frobN(e, 2), e)
 }
+/**
+ * A random element of the cyclotomic subgroup.
+ *
+ * There is no way to write one down: the subgroup is the image of the easy part
+ * of a final exponentiation, so the only way to get an element of it is to run
+ * one. That is exactly why fp12.cycSqr and fp12.powX declare a `fuzz` hook —
+ * their precondition is membership of a subgroup, which the interval-based
+ * contract system cannot state, so the fuzzer would otherwise generate inputs
+ * outside the domain and report a disagreement that is the module telling the
+ * truth about where it is defined.
+ */
+function randomCyclotomic (rnd) {
+  const rf = () => {
+    let x = 0n
+    for (let i = 0; i < 12; i++) x = (x << 32n) | BigInt(Math.floor(rnd() * 0x100000000))
+    return x % BLS
+  }
+  const g = [[[rf(), rf()], [rf(), rf()], [rf(), rf()]], [[rf(), rf()], [rf(), rf()], [rf(), rf()]]]
+  let e = bls.f12mulRaw(bls.f12conj(g), bls.f12inv(g))
+  e = bls.f12mulRaw(bls.f12frobN(e, 2), e)
+  // f·f̄ = 1 is what being there means; a generator that quietly produced
+  // something else would make the fuzz rounds vacuous.
+  if (!bls.f12eq(bls.f12mulRaw(e, bls.f12conj(e)), bls.F12_ONE)) {
+    throw new Error('randomCyclotomic: the easy part did not land in the subgroup')
+  }
+  return e
+}
+
 const spread = (f, p) => {
   const out = {}
   twelve(p).forEach((name, i) => { out[name] = f[i < 6 ? 0 : 1][Math.floor((i % 6) / 2)][i % 2] })
@@ -235,6 +263,7 @@ const cycSqr = defineModule({
     dropModulus(asm, n)
   },
   notes: ['correct only on the cyclotomic subgroup, which a pairing establishes structurally and no range can express'],
+  fuzz: (rnd) => spread(randomCyclotomic(rnd), 'a'),
   cases: [
     { name: 'cyclotomic', inputs: spread(cyclotomic(2n), 'a'), params: { n: BLS } },
     { name: 'another', inputs: spread(cyclotomic(3n), 'a'), params: { n: BLS } },
@@ -537,10 +566,11 @@ const powX = defineModule({
     'correct only on the cyclotomic subgroup, which a pairing establishes structurally and no range can express',
     '63 squarings and 5 multiplications — MSB-first, so nothing is multiplied by one'
   ],
+  fuzz: (rnd) => spread(randomCyclotomic(rnd), 'a'),
   cases: [
     { name: 'cyclotomic', inputs: spread(cyclotomic(2n), 'a'), params: { n: BLS } },
     { name: 'another', inputs: spread(cyclotomic(7n), 'a'), params: { n: BLS } }
   ]
 })
 
-module.exports = { mul, sqr, cycSqr, mulLine, conj, frob, inv, powX, twelve, op6, dup6, park6, unpark6, F12mul, spread, cyclotomic }
+module.exports = { mul, sqr, cycSqr, mulLine, conj, frob, inv, powX, randomCyclotomic, twelve, op6, dup6, park6, unpark6, F12mul, spread, cyclotomic }
