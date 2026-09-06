@@ -7,11 +7,17 @@ and it is not a number.
 
 This is the number.
 
-**One BLS12-381 pairing is about 978 KB of Script: roughly 98,000 satoshis at
-100 sat/KB. A Groth16 verification with four public inputs is about 1.80 MB and
-roughly 180,000 satoshis.**
+**One BLS12-381 pairing is about 982 KB of Script: roughly 98,000 satoshis at
+100 sat/KB. A Groth16 verification with four public inputs is about 1.81 MB and
+roughly 181,000 satoshis.**
 
 Run `npm run pairing` to reproduce it.
+
+The Miller loop half of that is not a projection. `npm run miller` **emits all
+63 rounds as one locking script — 332,977 bytes, 215,332 opcodes — hands it to
+`bsv.Script.Interpreter` under relay policy flags, and checks all twelve Fp12
+coefficients that come back against the reference implementation.** It runs in
+about fifteen seconds and it is part of `npm test`.
 
 ## How it was arrived at
 
@@ -61,12 +67,23 @@ non-negative in every component. `tools/pairing-cost.js` throws if it does not.
 
 | stage | operations | bytes |
 | --- | --- | ---: |
-| Miller loop | 63 × `fp12.sqr`, 68 × `fp12.mulLine` | 329,406 |
-| final exponentiation | 63 × `fp12.mul`, 342 × `fp12.cycSqr` | 648,653 |
-| **one pairing** | | **978,059** |
+| Miller loop | 63 × `fp12.sqr`, 68 × `fp12.mulLine`, 68 lines | **332,977, emitted** |
+| final exponentiation | 63 × `fp12.mul`, 342 × `fp12.cycSqr` | 648,653, priced |
+| **one pairing** | | **981,630** |
 
 The final exponentiation is two thirds of it, which is why three of the four
 optimisations below live there.
+
+### The estimate, checked against the thing itself
+
+Before the loop was emitted, the pricing model above said 314,005 bytes. Emitted
+it is 332,977 — **the estimate was low by 6.0%**, which is what "prices the
+operations and prices the stack at zero" should look like when it is wrong in
+the direction it is expected to be wrong in. Two completely different routes to
+the same number, and the gap is the part the model admits it does not model.
+
+That comparison is printed every time `npm run pairing` runs, so it cannot
+quietly stop being true.
 
 ## The four things that made it this small
 
@@ -116,11 +133,21 @@ Together the four take one pairing from roughly 4 MB to under 1 MB.
 
 ## What is left on the table
 
+The final exponentiation is still priced rather than emitted. The four modules
+it is made of are measured whole, so the unmodelled part is only its Fp2
+leftovers, and the Miller loop's 6% is the best available guide to how far off
+that is.
+
 The Fp2 leftovers — G2 point arithmetic, the line coefficients, the Frobenius
 maps, the single Fp12 inversion — are priced at the sum of their module bodies
 with the stack at zero, so read ×1.47 onto the 47 KB and 11 KB rows. That is
 about 27 KB unaccounted, under 3% of the total, and it is an underestimate
 rather than an overestimate.
+
+Every inversion the loop needs is a witness — 68 of them, 136 numbers a spender
+chooses. Every one is bounded into [0, p) and checked against a·a⁻¹ = 1, and the
+test kit forges them: `npm test` refuses 943 forged witnesses across the library,
+21 of them against the full loop.
 
 `fp12.cycSqr` is correct **only** on the cyclotomic subgroup. On a general Fp12
 element it returns something that is not the square, and no bound the fact

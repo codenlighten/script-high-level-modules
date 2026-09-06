@@ -333,15 +333,28 @@ function f12mulLine (f, l) {
   const t2 = f6mul(f6add(f[0], f[1]), f6(l.l0, l.l1, l.l2))
   return [f6add(t0, f6mulV(t1)), f6sub(f6sub(t2, t0), t1)]
 }
+/**
+ * The third intersection, from the slope that was already computed.
+ *
+ * g2add would find this too, and would find λ a second time to do it — which is
+ * a second modular inversion for a number the caller is holding. Both line
+ * functions below already have λ, so the loop takes 68 inversions rather than
+ * 136, and in Script an inversion is a witness that has to be supplied,
+ * bounded and checked. Halving them halves that.
+ */
+const chord = (l, T, bx) => {
+  const x = f2sub(f2sub(f2sqr(l), T.x), bx)
+  return { x, y: f2sub(f2mul(l, f2sub(T.x, x)), T.y) }
+}
 /** The tangent at T, evaluated at P. */
 function lineDouble (T, P) {
   const l = f2mul(f2mulFp(f2sqr(T.x), 3n), f2inv(f2add(T.y, T.y)))
-  return lineAt(l, T, P, g2add(T, T))
+  return lineAt(l, T, P, chord(l, T, T.x))
 }
 /** The line through T and Q, evaluated at P. */
 function lineAdd (T, Q, P) {
   const l = f2mul(f2sub(Q.y, T.y), f2inv(f2sub(Q.x, T.x)))
-  return lineAt(l, T, P, g2add(T, Q))
+  return lineAt(l, T, P, chord(l, T, Q.x))
 }
 
 function millerLoop (P, Q) {

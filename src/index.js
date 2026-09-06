@@ -24,6 +24,8 @@ const stateMod = require('./modules/state')
 const fp2 = require('./modules/fp2')
 const fp6 = require('./modules/fp6')
 const fp12 = require('./modules/fp12')
+const g2mod = require('./modules/g2')
+const pairingMod = require('./modules/pairing')
 
 const { defineModule, apply, instantiate } = require('./module')
 const { Asm } = require('./asm')
@@ -74,6 +76,7 @@ const modules = {
   'fp2.sqr': fp2.sqr,
   'fp2.add': fp2.add,
   'fp2.sub': fp2.sub,
+  'fp2.neg': fp2.neg,
   'fp2.mulXi': fp2.mulXi,
   'fp2.mulFp': fp2.mulFp,
   'fp2.inv': fp2.inv,
@@ -85,7 +88,12 @@ const modules = {
   'fp12.mul': fp12.mul,
   'fp12.sqr': fp12.sqr,
   'fp12.cycSqr': fp12.cycSqr,
-  'fp12.mulLine': fp12.mulLine
+  'fp12.mulLine': fp12.mulLine,
+  // The Miller loop's step function on the twist. These ARE BLS12-381 specific
+  // in their test vectors but not in their arithmetic: the curve equation never
+  // appears, only the slope through two points and the line it determines.
+  'g2.stepDouble': g2mod.stepDouble,
+  'g2.stepAdd': g2mod.stepAdd
 }
 
 /** The ones that are built for a particular key, width or scalar set. */
@@ -104,7 +112,8 @@ const factories = {
   'tx.transitionPaying': txmod.transitionPaying,
   'state.counter': stateMod.counter,
   'state.limit': stateMod.limit,
-  'recipes.budgetCoin': recipes.budgetCoin
+  'recipes.budgetCoin': recipes.budgetCoin,
+  'pairing.miller': pairingMod.miller
 }
 
 /** What a consumer needs to decide whether a module fits. */
@@ -131,7 +140,7 @@ function catalog () {
 
 module.exports = {
   int, bytes, u32, sha256, rsa, hmac, totp, ec, ecdsa, schnorr: schnorrMod, merkle, tx: txmod, state: stateMod,
-  fp2, fp6, fp12, bls12381: require('./bls12381'),
+  fp2, fp6, fp12, g2: g2mod, pairing: pairingMod, bls12381: require('./bls12381'),
   modules, factories, catalog, describe,
   defineModule, apply, instantiate, predicate, compose, recipes, Asm,
   evaluate, evaluateSpend, policyFlags,

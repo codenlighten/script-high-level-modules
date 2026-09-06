@@ -7,6 +7,8 @@ const int = require('./src/modules/int')
 const fp2 = require('./src/modules/fp2')
 const fp6 = require('./src/modules/fp6')
 const fp12 = require('./src/modules/fp12')
+const g2mod = require('./src/modules/g2')
+const pairingMod = require('./src/modules/pairing')
 const bytes = require('./src/modules/bytes')
 const rsa = require('./src/modules/rsa')
 const u32 = require('./src/modules/u32')
@@ -57,6 +59,7 @@ const { failures } = proveAll([
   [fp2.sub, {}],
   [fp2.mulXi, {}],
   [fp2.mulFp, {}],
+  [fp2.neg, {}],
   [fp2.inv, {}],
   [fp6.mul, {}],
   [fp6.sqr, {}],
@@ -67,6 +70,13 @@ const { failures } = proveAll([
   [fp12.sqr, {}],
   [fp12.cycSqr, {}],
   [fp12.mulLine, {}],
+  [g2mod.stepDouble, {}],
+  [g2mod.stepAdd, {}],
+  // Two rounds is enough to exercise every shape the loop has: a tangent, a
+  // chord, the squaring that belongs to the bit rather than to the line, and
+  // the accumulator surviving a round trip through both. tools/miller-full.js
+  // runs all sixty-three.
+  [pairingMod.miller(2), {}],
   [bytes.reverse, {}],
   [bytes.beToNum, {}],
   [rsa.verifier(rsa.fixtureKey()), {}],

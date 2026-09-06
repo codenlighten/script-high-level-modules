@@ -47,9 +47,14 @@ const inner = (params, who) => ({ n: modulusName(params.n), nn: numericModulus(p
 let seq = 0
 const fresh = () => `_t${seq++}`
 
-/** Call an Fp2 module on Fp2-valued names. Returns the output's Fp2 name. */
-function op (asm, m, p, ins, out = fresh()) {
-  apply(asm, m, p, ins.flatMap(two), two(out))
+/**
+ * Call an Fp2 module on Fp2-valued names. Returns the output's Fp2 name.
+ *
+ * `flat` is for the arguments that are NOT Fp2 pairs — fp2.mulFp's base-field
+ * scalar, fp2.inv's two witness coefficients — which are appended verbatim.
+ */
+function op (asm, m, p, ins, out = fresh(), flat = []) {
+  apply(asm, m, p, [...ins.flatMap(two), ...flat], two(out))
   return out
 }
 /** Copy an Fp2 value to a fresh name — for operands with a use still to come. */

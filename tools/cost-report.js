@@ -11,6 +11,7 @@ const int = require('../src/modules/int')
 const fp2 = require('../src/modules/fp2')
 const fp6 = require('../src/modules/fp6')
 const fp12 = require('../src/modules/fp12')
+const g2mod = require('../src/modules/g2')
 const BLS = require('../src/bls12381').P
 const bytes = require('../src/modules/bytes')
 const u32 = require('../src/modules/u32')
@@ -47,6 +48,8 @@ const ROWS = [
   ['fp12.sqr', fp12.sqr, { n: BLS }, 'BLS12-381'],
   ['fp12.cycSqr', fp12.cycSqr, { n: BLS }, 'BLS12-381, cyclotomic subgroup'],
   ['fp12.mulLine', fp12.mulLine, { n: BLS }, 'BLS12-381, a Miller-loop line'],
+  ['g2.stepDouble', g2mod.stepDouble, { n: BLS }, 'a tangent and the point it moves to'],
+  ['g2.stepAdd', g2mod.stepAdd, { n: BLS }, 'a chord and the point it moves to'],
   ['int.modexp', int.modexp, { n: P2048, e: 65537n }, 'e = 65537, 2048-bit'],
   ['int.modexp', int.modexp, { n: P2048, e: 3n }, 'e = 3, 2048-bit'],
   ['bytes.reverse', bytes.reverse, { width: 32 }, 'a 32-byte digest'],

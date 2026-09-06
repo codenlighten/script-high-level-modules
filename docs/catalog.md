@@ -34,6 +34,7 @@
 | `fp2.sqr` | `a0` `a1` | `r0` `r1` | — | 6 |
 | `fp2.add` | `a0` `a1` `b0` `b1` | `r0` `r1` | — | 3 |
 | `fp2.sub` | `a0` `a1` `b0` `b1` | `r0` `r1` | — | 3 |
+| `fp2.neg` | `a0` `a1` | `r0` `r1` | — | 4 |
 | `fp2.mulXi` | `a0` `a1` | `r0` `r1` | — | 3 |
 | `fp2.mulFp` | `a0` `a1` `k` | `r0` `r1` | — | 4 |
 | `fp2.inv` | `a0` `a1` `i0` `i1` | `r0` `r1` | `i0` `i1` | 6 |
@@ -46,6 +47,8 @@
 | `fp12.sqr` | `aA00` `aA01` `aA10` `aA11` `aA20` `aA21` `aB00` `aB01` `aB10` `aB11` `aB20` `aB21` | `rA00` `rA01` `rA10` `rA11` `rA20` `rA21` `rB00` `rB01` `rB10` `rB11` `rB20` `rB21` | — | 3 |
 | `fp12.cycSqr` | `aA00` `aA01` `aA10` `aA11` `aA20` `aA21` `aB00` `aB01` `aB10` `aB11` `aB20` `aB21` | `rA00` `rA01` `rA10` `rA11` `rA20` `rA21` `rB00` `rB01` `rB10` `rB11` `rB20` `rB21` | — | 3 |
 | `fp12.mulLine` | `aA00` `aA01` `aA10` `aA11` `aA20` `aA21` `aB00` `aB01` `aB10` `aB11` `aB20` `aB21` `l00` `l01` `l10` `l11` `l20` `l21` | `rA00` `rA01` `rA10` `rA11` `rA20` `rA21` `rB00` `rB01` `rB10` `rB11` `rB20` `rB21` | — | 3 |
+| `g2.stepDouble` | `Tx0` `Tx1` `Ty0` `Ty1` `Px` `inv0` `inv1` | `x30` `x31` `y30` `y31` `l10` `l11` `l20` `l21` | `inv0` `inv1` | 4 |
+| `g2.stepAdd` | `Tx0` `Tx1` `Ty0` `Ty1` `Qx0` `Qx1` `Qy0` `Qy1` `Px` `inv0` `inv1` | `x30` `x31` `y30` `y31` `l10` `l11` `l20` `l21` | `inv0` `inv1` | 4 |
 | `rsa.verify(…)` | *built per key or width* | | | |
 | `ec.mul(…)` | *built per key or width* | | | |
 | `ec.mulG(…)` | *built per key or width* | | | |
@@ -61,6 +64,7 @@
 | `state.counter(…)` | *built per key or width* | | | |
 | `state.limit(…)` | *built per key or width* | | | |
 | `recipes.budgetCoin(…)` | *built per key or width* | | | |
+| `pairing.miller(…)` | *built per key or width* | | | |
 
 A module with **no outputs** is a predicate: it asserts and returns nothing, and
 `predicate(module, params, { owner })` turns it straight into a locking script

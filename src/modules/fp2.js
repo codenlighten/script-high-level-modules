@@ -246,6 +246,43 @@ const mulXi = defineModule({
 })
 
 /**
+ * r = −a in Fp2, canonically: (p − a0, p − a1) reduced.
+ *
+ * Correct at zero without a branch, which is the only interesting thing about
+ * it: p − 0 is p, and p mod p is 0. The OP_MOD that would otherwise look like
+ * belt-and-braces is what makes the negation of zero come back as zero rather
+ * than as p, and a downstream comparison would notice the difference.
+ */
+const neg = defineModule({
+  name: 'fp2.neg',
+  doc: 'r = −a in Fp2',
+  inputs: ['a0', 'a1'],
+  outputs: ['r0', 'r1'],
+  requires: inField('fp2.neg', 'a0', 'a1'),
+  ensures: (p) => ({ r0: residues(p, 'fp2.neg'), r1: residues(p, 'fp2.neg') }),
+  model: ({ a0, a1 }, { n }) => ({ r0: mod(-a0, n), r1: mod(-a1, n) }),
+  prologue: (asm, { n }) => pushModulus(asm, n),
+  emit: (asm, { n }) => {
+    asm.pick(modulusName(n), '_n'); asm.roll('a1'); asm.sub('_d1')
+    reduce(asm, n, 'r1')
+    asm.toAlt()
+    asm.pick(modulusName(n), '_n'); asm.roll('a0'); asm.sub('_d0')
+    reduce(asm, n, 'r0')
+    asm.fromAlt()
+    dropModulus(asm, n)
+  },
+  cases: (() => {
+    const P381 = 0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaabn
+    return [
+      { name: 'small', inputs: { a0: 3n, a1: 4n }, params: { n: 11n } },
+      { name: 'zero stays zero', inputs: { a0: 0n, a1: 0n }, params: { n: 11n } },
+      { name: 'one coefficient zero', inputs: { a0: 5n, a1: 0n }, params: { n: 11n } },
+      { name: 'BLS12-381', inputs: { a0: P381 - 1n, a1: 1n }, params: { n: P381 } }
+    ]
+  })()
+})
+
+/**
  * r = a·k where k is a plain Fp scalar — two OP_MULs, no cross terms.
  *
  * The Frobenius map and the Miller loop's line function both scale an Fp2
@@ -355,4 +392,4 @@ const inv = defineModule({
   })()
 })
 
-module.exports = { mul, sqr, add: addm, sub: subm, mulXi, mulFp, inv }
+module.exports = { mul, sqr, add: addm, sub: subm, neg, mulXi, mulFp, inv }

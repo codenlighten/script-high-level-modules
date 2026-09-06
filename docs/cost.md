@@ -16,6 +16,8 @@
 | `fp12.sqr` | BLS12-381 | 2,375 | 1,588 |
 | `fp12.cycSqr` | BLS12-381, cyclotomic subgroup | 1,342 | 1,016 |
 | `fp12.mulLine` | BLS12-381, a Miller-loop line | 2,178 | 1,382 |
+| `g2.stepDouble` | a tangent and the point it moves to | 587 | 395 |
+| `g2.stepAdd` | a chord and the point it moves to | 598 | 399 |
 | `int.modexp` | e = 65537, 2048-bit | 355 | 76 |
 | `int.modexp` | e = 3, 2048-bit | 280 | 16 |
 | `bytes.reverse` | a 32-byte digest | 124 | 93 |
