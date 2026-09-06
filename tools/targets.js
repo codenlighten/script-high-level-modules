@@ -18,6 +18,7 @@ const txMod = require('../src/modules/tx')
 const ecJs = require('../src/ec')
 const bls = require('../src/bls12381')
 const fp12 = require('../src/modules/fp12')
+const pairingMod = require('../src/modules/pairing')
 
 // WHAT GOES ON CHAIN.
 //
@@ -296,6 +297,58 @@ targets.pairing = (() => {
     unlock: ({ sign }) => {
       const u = new bsv.Script()
       for (const name of [...F, ...L]) u.add(pushNum(values[name]))
+      return u.add(sign(owner)).add(owner.publicKey.toBuffer())
+    }
+  }
+})()
+
+// ── 9. A Miller loop, on chain ──────────────────────────────────────────────
+//
+// Not one step of one — 48 of the 63 rounds of the optimal ate pairing's Miller
+// loop, run by the Bitcoin network: 53 tangents, 5 chords, 106 witnessed Fp2
+// inverses, and every one of the 212 numbers the spender chooses bounded into
+// [0, p) before it is used.
+//
+// The whole 63-round loop is 332,977 bytes and would cost about 34,000
+// satoshis to deploy and spend. This is what the wallet could afford, and it is
+// the same script truncated — `pairing.miller(n)` takes the round count as a
+// parameter precisely so that the affordable prefix of it is still a real,
+// checkable object rather than a demonstration.
+//
+// At 256,865 bytes the locking script is inside the default 500 KB script
+// policy. The full loop is too. A whole pairing, at 935,388, is not.
+const MILLER_ROUNDS = 48
+targets.miller = (() => {
+  const m = pairingMod.miller(MILLER_ROUNDS)
+  const P = bls.G1
+  const Q = bls.G2
+  const values = { Px: P.x, Py: P.y, Qx0: Q.x[0], Qx1: Q.x[1], Qy0: Q.y[0], Qy1: Q.y[1] }
+  const { witnesses } = pairingMod.replay(P, Q, MILLER_ROUNDS, bls.P)
+  witnesses.forEach(([a, b], k) => { values[`w${k}a`] = a; values[`w${k}b`] = b })
+  const want = m.model(values, { n: bls.P, nn: bls.P })
+  const order = m.inputs.map((i) => i.name)
+
+  const asm = new Asm()
+  asm.given([
+    ...order.map((name) => ({ name, kind: 'num' })),
+    { name: 'sig', kind: 'bytes' }, { name: 'pubkey', kind: 'bytes' }
+  ])
+  ownedBy(asm)
+  m.emit(asm, { n: bls.P, nn: bls.P })
+  for (const name of fp12.twelve('f')) {
+    asm.roll(name)
+    asm.num(want[name], '_want')
+    asm.numEqualVerify()
+  }
+  asm.num(1, 'ok')
+
+  return {
+    name: `pairing.miller${MILLER_ROUNDS}`,
+    claim: `${MILLER_ROUNDS} of the 63 rounds of a BLS12-381 Miller loop, run by the network`,
+    lock: asm.script(),
+    unlock: ({ sign }) => {
+      const u = new bsv.Script()
+      for (const name of order) u.add(pushNum(values[name]))
       return u.add(sign(owner)).add(owner.publicKey.toBuffer())
     }
   }

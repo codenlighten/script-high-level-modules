@@ -149,6 +149,16 @@ one step of a BLS12-381 Miller loop, in a field Bitcoin has no opcode for
 | deploy | [`1bf828187c39d0b5de9856c7b2a6290b2cba6be4062947f86420eb9287b63de5`](https://whatsonchain.com/tx/1bf828187c39d0b5de9856c7b2a6290b2cba6be4062947f86420eb9287b63de5) |
 | spend | [`4ef8a7a70f477b118ffda82e689df0ffd8951ac0176b997c1db446f7132dc16d`](https://whatsonchain.com/tx/4ef8a7a70f477b118ffda82e689df0ffd8951ac0176b997c1db446f7132dc16d) |
 
+### pairing.miller48
+
+48 of the 63 rounds of a BLS12-381 Miller loop, run by the network
+
+| | |
+| --- | --- |
+| locking script | 257,558 bytes |
+| deploy | [`d5395e02a492a7af05e92bb01ee2b0bcc75ba2fda621420f96236e52e87ccdeb`](https://whatsonchain.com/tx/d5395e02a492a7af05e92bb01ee2b0bcc75ba2fda621420f96236e52e87ccdeb) |
+| spend | [`2b81cc0811029f43c75ed9fcb355e0af4a62fbf47e0f6021ee0288d70af7101f`](https://whatsonchain.com/tx/2b81cc0811029f43c75ed9fcb355e0af4a62fbf47e0f6021ee0288d70af7101f) |
+
 ## What this does and does not show
 
 It shows that these scripts are **relayable and spendable on mainnet today**: the

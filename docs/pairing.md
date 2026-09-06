@@ -174,10 +174,31 @@ not a range. In a pairing it is discharged structurally: the easy part raises to
 vectors are real subgroup elements for the same reason — they are produced by
 running an easy part.
 
+## On chain
+
+48 of the 63 rounds are deployed and spent on BSV mainnet: a **257,558-byte
+locking script**, 53 tangents, 5 chords, 106 witnessed Fp2 inverses, 212
+spender-chosen numbers each bounded into [0, p).
+
+```
+deploy  d5395e02a492a7af05e92bb01ee2b0bcc75ba2fda621420f96236e52e87ccdeb
+spend   2b81cc0811029f43c75ed9fcb355e0af4a62fbf47e0f6021ee0288d70af7101f
+```
+
+`pairing.miller(n)` takes the round count as a parameter, so the affordable
+prefix of the loop is still a real checkable object rather than a demonstration
+— the script that went on chain is the script the test suite proves, truncated,
+and `npm run verify:chain` rebuilds it byte for byte from the code.
+
+The whole 63-round loop is 332,977 bytes and would cost about 34,000 satoshis
+to deploy and spend; the wallet held 30,687. Both are inside the default 500 KB
+script policy. A whole pairing, at 935,388 bytes, is not.
+
 ## The honest caveat
 
-At 978 KB a pairing is past the default 500 KB script policy, and so is a
-Groth16 verifier at 1.80 MB. Neither is standard relay today. That is a policy
+At 935 KB a pairing is past the default 500 KB script policy, and so is a
+Groth16 verifier at 1.75 MB. The Miller loop, at 333 KB, is not — and is on
+chain. Neither is standard relay today. That is a policy
 number, not a consensus one, and it is the kind of number that moves; the
 arithmetic underneath it is what this measures, and the arithmetic does not
 change when the policy does.
