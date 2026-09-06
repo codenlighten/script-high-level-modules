@@ -36,7 +36,7 @@ node examples/oracle-lock.js     # a coin an oracle's ordinary secp256k1 key unl
 
 ## On chain
 
-Fifteen of these are deployed and spent on BSV mainnet, and the first five are
+Sixteen of these are deployed and spent on BSV mainnet, and the first five are
 **confirmed in block 965487**. The two largest are the **complete 63-round
 Miller loop of a BLS12-381 pairing** — 333,676 bytes, 63 tangents, 5 chords, 68
 sparse line products and 68 witnessed Fp2 inversions — and the **complete final

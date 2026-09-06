@@ -118,13 +118,24 @@ could choose one satisfying the equation for a proof of nothing.
 | e(P, Q) in one script | ${n(r.pairing.e.bytes)} | 100% | interpreter |
 | \`fp12.powX\`, superseded | ${n(r.pairing.onchain.supersededOnChain.bytes)} | — | mainnet |
 
-**Both stages of a BLS12-381 pairing have executed on the Bitcoin network**, as
-two transactions: ${pct(r.pairing.onchain.stagesShareOnChain)} of one pairing by bytes.
+**A complete BLS12-381 pairing has been evaluated by the Bitcoin network**, as
+two inputs of one transaction:
 
-What has **not** run on chain is the chaining. A single script that runs the
-loop and feeds its twelve outputs to the exponentiation is ${n(r.pairing.e.bytes)} bytes — past
-the ${n(r.scriptPolicyBytes)}-byte policy — and the ${n(r.pairing.onchain.chainingBytesNotOnChain)} bytes by which the whole exceeds
-its two stages are exactly that plumbing. It has run only in the interpreter.
+| | |
+| --- | --- |
+| funding | \`${r.pairing.onchain.wholePairingInOneTransaction.deploy}\` |
+| spend | \`${r.pairing.onchain.wholePairingInOneTransaction.spend}\` |
+| input 0 | \`pairing.publish\`, ${n(r.pairing.onchain.wholePairingInOneTransaction.publishBytes)} bytes |
+| input 1 | \`pairing.consume\`, ${n(r.pairing.onchain.wholePairingInOneTransaction.consumeBytes)} bytes |
+| the spend | ${n(r.pairing.onchain.wholePairingInOneTransaction.spendBytes)} bytes, one OP_RETURN output |
+
+The network verified that the Miller loop ran correctly on P and Q, that its
+twelve outputs were published, that the same twelve were consumed, and that
+their final exponentiation is e(P, Q).
+
+What has **not** run on chain is a pairing in ONE SCRIPT. That is ${n(r.pairing.e.bytes)} bytes
+against a ${n(r.scriptPolicyBytes)}-byte policy, and the ${n(r.pairing.onchain.chainingBytesNotOnChain)} bytes by which the whole
+exceeds its two stages are the plumbing the transaction replaced.
 
 The last row carries its own caveat. \`fp12.powX\` — one f^|x| ladder,
 uncompressed — was deployed and spent and is correct, and it is no longer what
@@ -175,8 +186,9 @@ const PROSE = {
   'script policy': n(r.scriptPolicyBytes),
   'saving on two pairings': n(r.pairing.products[1].saved),
   'saving on three pairings': n(r.pairing.products[2].saved),
-  'stages on chain, as a share': pct(r.pairing.onchain.stagesShareOnChain),
-  'chaining not on chain': n(r.pairing.onchain.chainingBytesNotOnChain),
+  'the mainnet spend': r.pairing.onchain.wholePairingInOneTransaction.spend,
+  'input 0 on chain': n(r.pairing.onchain.wholePairingInOneTransaction.publishBytes),
+  'input 1 on chain': n(r.pairing.onchain.wholePairingInOneTransaction.consumeBytes),
   'final exponentiation as a share': pct(r.pairing.finalExp.bytes / r.pairing.e.bytes),
   'fp12.mul, marginal': n(M('fp12.mul').marginal),
   'fp12.sqr, marginal': n(M('fp12.sqr').marginal),

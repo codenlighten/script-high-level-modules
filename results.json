@@ -1,6 +1,6 @@
 {
   "generated": "2026-09-06",
-  "commit": "0b19b3e0ee9fdf47d6b676e2a0b192f3963db765",
+  "commit": "02e1c0475ef6adf6dbaf66ceb716b0d0fc6d71e9",
   "curve": {
     "name": "BLS12-381",
     "p": "0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab",
@@ -222,11 +222,21 @@
     "onchain": {
       "millerComplete": true,
       "finalExpComplete": true,
+      "wholePairingOnChain": true,
       "millerShare": 0.40754512374683455,
       "finalExpShare": 0.5794957596468188,
       "stagesShareOnChain": 0.9870408833936534,
       "chainingBytesNotOnChain": 10588,
       "wholePairingInOneScript": false,
+      "wholePairingInOneTransaction": {
+        "deploy": "92bb3f0e790ace19f1afec51141f87a3d6a911f10e82e765dba5368a6765667c",
+        "spend": "fd0f553ee9a96b2cb48a4a9712824580910cd6056fc42f93f49eae83da2fb9e2",
+        "publishBytes": 343799,
+        "consumeBytes": 475017,
+        "spendBytes": 830928,
+        "feeSat": 164997,
+        "note": "two inputs of one spend, bound by a shared OP_RETURN commitment"
+      },
       "supersededOnChain": {
         "module": "fp12.powX",
         "bytes": 98902,
@@ -234,7 +244,7 @@
         "replacementBytes": 73582,
         "note": "deployed and spent, correct, and no longer on the critical path"
       },
-      "note": "both stages of a pairing have executed on mainnet as separate transactions; the script that chains them is past the size policy and has run only in the interpreter"
+      "note": "a complete pairing has been evaluated on mainnet — as two inputs of one transaction, since a single script doing both is past the size policy"
     }
   },
   "operations": {
@@ -386,6 +396,12 @@
       "lockBytes": 474207,
       "deploy": "038dbe94167beee28ad273f3e2d66dcda6098a5cbe0c1613109621352088b5f4",
       "spend": "1b1d0f042b863cdc9ce33cdac0893db77da9c05a3eac91bb462364073fae3c90"
+    },
+    {
+      "claim": "a complete BLS12-381 pairing, evaluated across two inputs of one transaction",
+      "lockBytes": 818816,
+      "deploy": "92bb3f0e790ace19f1afec51141f87a3d6a911f10e82e765dba5368a6765667c",
+      "spend": "fd0f553ee9a96b2cb48a4a9712824580910cd6056fc42f93f49eae83da2fb9e2"
     }
   ]
 }

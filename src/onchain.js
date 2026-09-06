@@ -124,6 +124,55 @@ async function spendable (address) {
 /** How many of these outputs are still unconfirmed. */
 const unconfirmed = (utxos) => utxos.filter((u) => !u.height).length
 
+/**
+ * How deep an output's UNCONFIRMED ancestry runs.
+ *
+ * A node limits how many unconfirmed ancestors a transaction may have — 25 by
+ * default — and the limit is over the whole chain behind every input, not over
+ * what this wallet did. Money arriving from a wallet that has been paying itself
+ * carries that history in, and a transaction built on it comes back
+ * `too-long-mempool-chain` no matter how carefully the fee was sized.
+ *
+ * That is how this was found: a 200,000-satoshi funding output looked perfectly
+ * ordinary and was forty links deep in its sender's own mempool chain. The node
+ * said so; the wallet had not looked. It looks now, before broadcasting rather
+ * than after.
+ *
+ * The indexer's UTXO listing lags a block or two behind its transaction
+ * listing, so `height` on an output is not the last word: an output reported
+ * unconfirmed is checked against /tx/hash before its ancestry is walked at all.
+ */
+async function ancestorDepth (txid, limit = 30) {
+  let id = txid
+  for (let depth = 0; depth < limit; depth++) {
+    let info = null
+    try { info = await woc.tx(id) } catch (e) { return depth }        // cannot see it: stop counting
+    if (info && info.blockheight) return depth                        // confirmed: the chain ends here
+    let raw = null
+    try { raw = await woc.rawTx(id) } catch (e) { return depth }
+    const parent = new bsv.Transaction(raw).inputs[0]
+    if (!parent) return depth
+    id = parent.prevTxId.toString('hex')
+  }
+  return limit                                                        // at least this deep
+}
+
+/**
+ * Refuse to build on inputs whose unconfirmed ancestry is already at the limit.
+ *
+ * Returns the deepest chain found, so a caller can say what it is rather than
+ * only that something is wrong.
+ */
+async function deepestAncestry (utxos, limit = 25) {
+  let worst = { txid: null, depth: 0 }
+  for (const u of utxos) {
+    if (u.height) continue
+    const d = await ancestorDepth(u.tx_hash, limit + 2)
+    if (d > worst.depth) worst = { txid: u.tx_hash, depth: d, value: u.value }
+  }
+  return worst
+}
+
 /** Verify a fully-formed spend the way every test in this repository does. */
 function verifyLocally (tx, lockingScript, satoshis, inputIndex = 0) {
   const interp = new bsv.Script.Interpreter()
@@ -228,6 +277,6 @@ function buildUnlock ({ txid, vout, lockingScript, satoshis, unlock, shape = {},
 
 module.exports = {
   loadWallet, ledger, record, feeFor, verifyLocally, buildDeploy, buildUnlock,
-  spendable, unconfirmed, noteSpend, utxoCache, outpoint,
+  spendable, unconfirmed, ancestorDepth, deepestAncestry, noteSpend, utxoCache, outpoint,
   SAT_PER_BYTE, SAT_PER_KB, WALLET, LEDGER, UTXOS, woc
 }

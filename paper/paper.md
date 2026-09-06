@@ -24,10 +24,12 @@ spender and verified algebraically: `z = a⁻¹ (mod p)` becomes the constraint
 `a·z ≡ 1 (mod p)`, with `z` bounded into `[0, p)` so that no second witness
 encodes the same value.
 
-**Both stages of a BLS12-381 pairing were deployed and spent on Bitcoin SV
-mainnet**, as two transactions: the complete 63-round Miller loop as a
-333,676-byte locking script, and the complete final exponentiation as a
-474,207-byte one. That is 98.7% of a pairing by bytes.
+**A complete BLS12-381 pairing was evaluated on Bitcoin SV mainnet.** Its two
+stages were first deployed and spent separately — the 63-round Miller loop as a
+333,676-byte locking script and the final exponentiation as a 474,207-byte one —
+and then composed: a single transaction whose two inputs are the Miller loop and
+the final exponentiation, bound to each other by a shared output commitment, so
+that the network establishes the whole computation rather than its halves.
 
 The second was made possible by a 2/6 compressed representation of the
 cyclotomic subgroup whose squaring is closed by construction, with a
@@ -35,10 +37,9 @@ decompression derived from f·f̄ = 1 as two linear equations over Fp2. It reduc
 the final exponentiation from 592,008 to 473,466 bytes, across the default
 500,000-byte script policy boundary.
 
-What has not executed on chain is the *chaining*: a single script running the
-loop and feeding its twelve outputs to the exponentiation is 817,031 bytes, past
-the policy, and the 10,588 bytes by which the whole exceeds its two stages are
-exactly that plumbing. It is validated against `bsv.Script.Interpreter`.
+What has not executed on chain is a pairing in a *single script*: 817,031 bytes
+against a 500,000-byte policy. The composition moved into the transaction
+instead (§8.2), which is what made the result reachable at all.
 
 We construct a Groth16 verification predicate of 1,240,810 bytes and 774,756
 opcodes that accepts a valid proof and rejects invalid proofs whose curve
@@ -364,16 +365,24 @@ The complete Miller loop was deployed as a 333,676-byte locking script and
 spent. One `f ↦ f^|x|` ladder was deployed as 99,631 bytes and spent. Each deployed script is rebuilt from source and compared byte for byte against
 the chain; 15 of 15 reconstruct exactly.
 
-**Scope.** 98.7% of one pairing by bytes has executed on the network, in two
-transactions: the Miller-loop stage complete, and the final exponentiation
-complete. Neither figure includes the deployed `fp12.powX`, a correct
-uncompressed ladder the network also executed and which §6.1 has since taken off
-the critical path; counting a superseded version would inflate the number.
+**Scope.** A complete pairing has executed on the network, as two inputs of one
+transaction (§8.2):
 
-What remains is the 10,588 bytes of chaining between the stages. A pairing in
-one script is 817,031 bytes and past the policy, so the composition itself has
-run only in the interpreter. "Both stages have executed on mainnet" is the
-claim; "a pairing has executed on mainnet" is not.
+```
+funding  92bb3f0e790ace19f1afec51141f87a3d6a911f10e82e765dba5368a6765667c
+spend    fd0f553ee9a96b2cb48a4a9712824580910cd6056fc42f93f49eae83da2fb9e2
+```
+
+The stages were also deployed and spent individually beforehand. Neither figure
+includes `fp12.powX`, a correct uncompressed ladder the network executed and
+which §6.1 has since taken off the critical path; counting a superseded version
+would inflate the result.
+
+What has *not* executed is a pairing in a single script, which at 817,031 bytes
+is past the policy and always will be without a further 39% reduction. The claim
+is "a complete pairing has been evaluated on mainnet, across two inputs of one
+transaction" — the qualifier is load-bearing and is not dropped anywhere in this
+paper.
 
 ### 8.1 Systems findings
 
@@ -420,10 +429,12 @@ build, and a 344 KB script cannot carry a 475 KB one.
 | input 1, `pairing.consume` | 475,017 | 479,302 | accepted |
 | output, `OP_RETURN` | 588 | — | twelve Fp12 coefficients |
 
-Both inputs are verified by `bsv.Script.Interpreter` under relay policy flags.
-What the network establishes, in one transaction, is that the Miller loop ran
-correctly on P and Q, that its twelve outputs were published, that the same
-twelve were consumed, and that their final exponentiation is e(P, Q).
+Both inputs are verified by `bsv.Script.Interpreter` under relay policy flags,
+**and the transaction is on mainnet**: funding `92bb3f0e…`, spend `fd0f553e…`,
+164,997 satoshis. What the network establishes, in one transaction, is that the
+Miller loop ran correctly on P and Q, that its twelve outputs were published,
+that the same twelve were consumed, and that their final exponentiation is
+e(P, Q).
 
 **Joint grinding.** OP_PUSH_TX requires each preimage to satisfy a canonical
 low-S condition, ordinarily obtained by grinding that input's `nSequence`. But
@@ -563,10 +574,10 @@ with `results.json`.
 
 ## 11. Limitations
 
-- **A complete pairing has not executed on mainnet** in a single script and
-  cannot at 817,031 bytes under a 500,000-byte script policy. Both of its stages
-  have, separately; the 10,588 bytes that chain them have run only in the
-  interpreter.
+- **A complete pairing has not executed on mainnet in a single script** and
+  cannot at 817,031 bytes under a 500,000-byte script policy. It has executed
+  across two inputs of one transaction, which is a different and weaker
+  statement about script size and an identical one about what was computed.
 - **`fp12.powX` is deployed but superseded.** It computes a correct f^|x| and
   the network executed it; `fp12.powXc` replaced it, so it is not a component of
   the pairing measured here and its bytes are not counted as such.

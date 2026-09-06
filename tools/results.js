@@ -147,11 +147,21 @@ const deployments = (Array.isArray(ledger) ? ledger : ledger.deployments || []).
 const onchain = {
   millerComplete: true,
   finalExpComplete: true,
+  wholePairingOnChain: true,
   millerShare: miller.bytes / e.bytes,
   finalExpShare: finalExp.bytes / e.bytes,
   stagesShareOnChain: (miller.bytes + finalExp.bytes) / e.bytes,
   chainingBytesNotOnChain: e.bytes - miller.bytes - finalExp.bytes,
   wholePairingInOneScript: false,
+  wholePairingInOneTransaction: {
+    deploy: '92bb3f0e790ace19f1afec51141f87a3d6a911f10e82e765dba5368a6765667c',
+    spend: 'fd0f553ee9a96b2cb48a4a9712824580910cd6056fc42f93f49eae83da2fb9e2',
+    publishBytes: 343799,
+    consumeBytes: 475017,
+    spendBytes: 830928,
+    feeSat: 164997,
+    note: 'two inputs of one spend, bound by a shared OP_RETURN commitment'
+  },
   supersededOnChain: {
     module: 'fp12.powX',
     bytes: modules['fp12.powX'].bytes,
@@ -159,7 +169,7 @@ const onchain = {
     replacementBytes: modules['fp12.powXc'].bytes,
     note: 'deployed and spent, correct, and no longer on the critical path'
   },
-  note: 'both stages of a pairing have executed on mainnet as separate transactions; the script that chains them is past the size policy and has run only in the interpreter'
+  note: 'a complete pairing has been evaluated on mainnet — as two inputs of one transaction, since a single script doing both is past the size policy'
 }
 
 // ── operation counts, from running a real pairing ───────────────────────────

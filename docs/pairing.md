@@ -298,8 +298,9 @@ The precise position:
 | e(P, Q) in one script | 817,031 | 100% | interpreter |
 | `fp12.powX`, superseded | 98,902 | — | mainnet |
 
-**Both stages of a BLS12-381 pairing have been executed by the Bitcoin
-network**, as two transactions — 98.7% of one pairing by bytes.
+**A complete BLS12-381 pairing has been evaluated by the Bitcoin network** — see
+"Not one script — one transaction" below. Its two stages were also deployed and
+spent individually:
 
 ```
 Miller loop           deploy 10c52d6dfb2831ecff79fe40e827695187d1e8453af845e5ab31f17a84684d20
@@ -331,7 +332,23 @@ trust. Neither script contains the other's code, which is the whole point: a
 covenant can only commit to a successor whose bytes it can build, and a 344 KB
 script cannot carry a 475 KB one.
 
-`npm run pairing:split` builds it and hands both inputs to the interpreter:
+**This is on mainnet.**
+
+```
+funding  92bb3f0e790ace19f1afec51141f87a3d6a911f10e82e765dba5368a6765667c
+spend    fd0f553ee9a96b2cb48a4a9712824580910cd6056fc42f93f49eae83da2fb9e2
+```
+
+164,997 satoshis: 81,904 to fund the two coins in one transaction, 83,093 for
+the spend that consumes them together. The spend carries no change — the
+covenant requires the output set to be exactly the data output — so every
+satoshi the coins hold becomes its fee, and the funding sizes them for it in
+advance. `npm run verify:chain` checks that output 0 is `pairing.publish`, that
+output 1 is `pairing.consume`, that one transaction consumes both, and that it
+publishes the value they agree on.
+
+`npm run pairing:split` builds the same thing offline and hands both inputs to
+the interpreter:
 
 ```
 input 0   pairing.publish     343,799 bytes of lock, 350,922 of unlock   ACCEPTED
@@ -367,8 +384,7 @@ unlocking script is as large as its locking script. `pairing.consume` locks in
 not the locking one, and the final exponentiation has less headroom than its own
 size suggests.
 
-Deploying it costs about 165,000 satoshis: 34,400 to fund input 0's coin, 47,500
-for input 1's, and 83,100 for the spend itself.
+It cost 164,997 satoshis.
 
 The last row carries its own caveat. `fp12.powX` — one uncompressed f^|x| ladder
 — was deployed and spent and is correct, and it is no longer what the

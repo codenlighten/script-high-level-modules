@@ -189,6 +189,16 @@ the whole final exponentiation of a BLS12-381 pairing, run by the network
 | deploy | [`038dbe94167beee28ad273f3e2d66dcda6098a5cbe0c1613109621352088b5f4`](https://whatsonchain.com/tx/038dbe94167beee28ad273f3e2d66dcda6098a5cbe0c1613109621352088b5f4) |
 | spend | [`1b1d0f042b863cdc9ce33cdac0893db77da9c05a3eac91bb462364073fae3c90`](https://whatsonchain.com/tx/1b1d0f042b863cdc9ce33cdac0893db77da9c05a3eac91bb462364073fae3c90) |
 
+### pairing.publish ▸ pairing.consume
+
+a complete BLS12-381 pairing, evaluated across two inputs of one transaction
+
+| | |
+| --- | --- |
+| locking script | 818,816 bytes |
+| deploy | [`92bb3f0e790ace19f1afec51141f87a3d6a911f10e82e765dba5368a6765667c`](https://whatsonchain.com/tx/92bb3f0e790ace19f1afec51141f87a3d6a911f10e82e765dba5368a6765667c) |
+| spend | [`fd0f553ee9a96b2cb48a4a9712824580910cd6056fc42f93f49eae83da2fb9e2`](https://whatsonchain.com/tx/fd0f553ee9a96b2cb48a4a9712824580910cd6056fc42f93f49eae83da2fb9e2) |
+
 ## What this does and does not show
 
 It shows that these scripts are **relayable and spendable on mainnet today**: the

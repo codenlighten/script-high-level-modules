@@ -100,7 +100,18 @@ async function main () {
       const onChainScript = dep.outputs[0].script.toHex()
       const depMeta = await woc.tx(e.deploy)
       rows.push(['deployment exists', true, `${(depRaw.length / 2).toLocaleString()} B, ${depMeta.confirmations || 0} conf`])
-      rows.push(['output 0 is the locking script', onChainScript.length / 2 === e.lockBytes, `${onChainScript.length / 2} B on chain, ${e.lockBytes} B recorded`])
+      // A deployment is usually ONE coin at output 0. The pairing split is two,
+      // spent together, so its record carries an `inputs` list saying which
+      // output holds which script and each is checked where it actually is.
+      if (e.inputs) {
+        for (const part of e.inputs) {
+          const hex = dep.outputs[part.vout].script.toHex()
+          rows.push([`output ${part.vout} is ${part.name}`, hex.length / 2 === part.lockBytes,
+            `${hex.length / 2} B on chain, ${part.lockBytes} B recorded`])
+        }
+      } else {
+        rows.push(['output 0 is the locking script', onChainScript.length / 2 === e.lockBytes, `${onChainScript.length / 2} B on chain, ${e.lockBytes} B recorded`])
+      }
       // What was deployed must match what was recorded. That is a check.
       if (e.lockHex) {
         rows.push(['it is byte for byte what was recorded', e.lockHex === onChainScript, e.lockHex === onChainScript ? 'exactly' : 'THE RECORD IS WRONG'])
@@ -120,8 +131,21 @@ async function main () {
       const spendMeta = await woc.tx(e.spend)
       // A sequence's last spend consumes the step before it, not the deployment.
       const consumes = e.steps ? e.steps[e.steps.length - 2] && e.steps[e.steps.length - 2].txid : e.deploy
-      const refs = spend.inputs.some((v) => v.prevTxId.toString('hex') === (consumes || e.deploy) && v.outputIndex === 0)
-      rows.push(['the spend exists and consumes it', refs, `${(spendRaw.length / 2).toLocaleString()} B, ${spendMeta.confirmations || 0} conf`])
+      if (e.inputs) {
+        // Every coin has to be consumed, and by the SAME transaction — which is
+        // the whole claim: two scripts bound to each other by one spend.
+        for (const part of e.inputs) {
+          const found = spend.inputs.some((v) => v.prevTxId.toString('hex') === e.deploy && v.outputIndex === part.vout)
+          rows.push([`the spend consumes ${part.name}`, found, `input ${part.vout}`])
+        }
+        rows.push(['both in one transaction', spend.inputs.length >= e.inputs.length,
+          `${(spendRaw.length / 2).toLocaleString()} B, ${spendMeta.confirmations || 0} conf, ${spend.inputs.length} inputs`])
+        rows.push(['it publishes the value they agree on', spend.outputs.length === 1 && spend.outputs[0].script.toBuffer()[1] === 0x6a,
+          `${spend.outputs.length} output, OP_RETURN`])
+      } else {
+        const refs = spend.inputs.some((v) => v.prevTxId.toString('hex') === (consumes || e.deploy) && v.outputIndex === 0)
+        rows.push(['the spend exists and consumes it', refs, `${(spendRaw.length / 2).toLocaleString()} B, ${spendMeta.confirmations || 0} conf`])
+      }
       const unlockBytes = spend.inputs[0].script.toBuffer().length
       rows.push(['the unlocking script is present', unlockBytes > 0, `${unlockBytes.toLocaleString()} B`])
     } catch (err) {
