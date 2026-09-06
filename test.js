@@ -77,6 +77,7 @@ const { failures, reports } = proveAll([
   [fp12.conj, {}],
   [fp12.frob, {}],
   [fp12.inv, {}],
+  [fp12.powX, {}],
   // Two rounds is enough to exercise every shape the loop has: a tangent, a
   // chord, the squaring that belongs to the bit rather than to the line, and
   // the accumulator surviving a round trip through both.

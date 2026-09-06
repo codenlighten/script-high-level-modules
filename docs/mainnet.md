@@ -169,6 +169,16 @@ the whole 63-round BLS12-381 Miller loop — 68 lines, 68 witnessed inverses —
 | deploy | [`10c52d6dfb2831ecff79fe40e827695187d1e8453af845e5ab31f17a84684d20`](https://whatsonchain.com/tx/10c52d6dfb2831ecff79fe40e827695187d1e8453af845e5ab31f17a84684d20) |
 | spend | [`f90cc1e3d60eecfb4f1a849dc4798db601b3085ca07a4155c4ae2d0890170d40`](https://whatsonchain.com/tx/f90cc1e3d60eecfb4f1a849dc4798db601b3085ca07a4155c4ae2d0890170d40) |
 
+### fp12.powX
+
+f ↦ f^|x| in Fp12 — the ladder a final exponentiation runs five times
+
+| | |
+| --- | --- |
+| locking script | 99,631 bytes |
+| deploy | [`1caac568ad58e9049ce4760d2998c31cef57045f84cb03c170a3243fdb936958`](https://whatsonchain.com/tx/1caac568ad58e9049ce4760d2998c31cef57045f84cb03c170a3243fdb936958) |
+| spend | [`0025ca4c616f9ea2bd5ccbc7a03e12ed3cf434003bc4b490609cae995c8d2cfb`](https://whatsonchain.com/tx/0025ca4c616f9ea2bd5ccbc7a03e12ed3cf434003bc4b490609cae995c8d2cfb) |
+
 ## What this does and does not show
 
 It shows that these scripts are **relayable and spendable on mainnet today**: the

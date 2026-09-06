@@ -271,6 +271,20 @@ deploy  10c52d6dfb2831ecff79fe40e827695187d1e8453af845e5ab31f17a84684d20
 spend   f90cc1e3d60eecfb4f1a849dc4798db601b3085ca07a4155c4ae2d0890170d40
 ```
 
+And **the other half is there too**. `fp12.powX` is the ladder the final
+exponentiation runs five times — f ↦ f^|x|, 63 cyclotomic squarings and 5 Fp12
+multiplications on a genuine element of the subgroup — in a 99,631-byte locking
+script:
+
+```
+deploy  1caac568ad58e9049ce4760d2998c31cef57045f84cb03c170a3243fdb936958
+spend   0025ca4c616f9ea2bd5ccbc7a03e12ed3cf434003bc4b490609cae995c8d2cfb
+```
+
+So both halves of a BLS12-381 pairing have been executed by the network, which
+the whole pairing cannot be: at 935,388 bytes it is past the 500 KB script
+policy, and the Miller loop at 333,676 is the largest piece that fits.
+
 A 48-round prefix went out first, when that was what the wallet could pay for,
 and is kept:
 

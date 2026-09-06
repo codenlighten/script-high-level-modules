@@ -36,12 +36,14 @@ node examples/oracle-lock.js     # a coin an oracle's ordinary secp256k1 key unl
 
 ## On chain
 
-Thirteen of these are deployed and spent on BSV mainnet, and the first five are
-**confirmed in block 965487**. One of them is **the whole 63-round Miller loop
-of a BLS12-381 pairing** — a 333,676-byte locking script doing 63 tangents, 5
-chords, 68 sparse line products and 68 witnessed Fp2 inversions in a field
-Bitcoin has no opcode for, accepted by the network and spent. Two others are not
-single spends but **sequences** — a
+Fourteen of these are deployed and spent on BSV mainnet, and the first five are
+**confirmed in block 965487**. **Both halves of a BLS12-381 pairing are among
+them**: the whole 63-round Miller loop, a 333,676-byte locking script doing 63
+tangents, 5 chords, 68 sparse line products and 68 witnessed Fp2 inversions; and
+the ladder its final exponentiation runs five times, at 99,631 bytes. The
+network ran both and accepted the spends. The *whole* pairing, at 935,388, is
+past the 500 KB script policy and cannot be relayed. Two others are not single
+spends but **sequences** — a
 coin advancing its own counter 0 → 1 → 2 → 3, and a coin paying three different
 people out of an allowance that falls 1500 → 900 → 400 → 0. In each, every
 transaction pays the output the next one consumes, so the state is not recorded
@@ -134,7 +136,7 @@ and are now era-derived and checked after every opcode (released in 9.7.0; see
 [limits.md](docs/limits.md)). They are skipped, with a note, on a library that
 predates it. Nothing else here depends on that fix.
 
-70 modules, 340 cases, 1,279 forgery attempts, all green.
+71 modules, 342 cases, 1,279 forgery attempts, all green.
 
 ## The three claims a module must earn
 

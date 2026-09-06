@@ -53,6 +53,7 @@ const ROWS = [
   ['fp12.conj', fp12.conj, { n: BLS }, 'BLS12-381, the p⁶ Frobenius'],
   ['fp12.frob', fp12.frob, { n: BLS }, 'BLS12-381, f ↦ f^p'],
   ['fp12.inv', fp12.inv, { n: BLS }, 'BLS12-381, witnessed'],
+  ['fp12.powX', fp12.powX, { n: BLS }, 'f^|x|, the final exponentiation ladder'],
   ['int.modexp', int.modexp, { n: P2048, e: 65537n }, 'e = 65537, 2048-bit'],
   ['int.modexp', int.modexp, { n: P2048, e: 3n }, 'e = 3, 2048-bit'],
   ['bytes.reverse', bytes.reverse, { width: 32 }, 'a 32-byte digest'],

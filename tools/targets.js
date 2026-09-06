@@ -361,4 +361,51 @@ function millerTarget (rounds) {
 targets.miller = millerTarget(48)
 targets.millerFull = millerTarget(pairingMod.FULL)
 
+// ── 10. The other half of a pairing ─────────────────────────────────────────
+//
+// The Miller loop is on chain. This is the ladder the FINAL EXPONENTIATION runs
+// five times: f ↦ f^|x| for the 63-bit curve parameter, 63 cyclotomic squarings
+// and 5 Fp12 multiplications, on a genuine element of the cyclotomic subgroup.
+//
+// Between this and the loop, both halves of a BLS12-381 pairing have been
+// executed by the network — which the whole pairing, at 935,388 bytes, cannot
+// be, because it is past the 500 KB script policy.
+//
+// The input is the easy part of a real final exponentiation, which is the only
+// way to get an element of the subgroup: fp12.cycSqr is wrong anywhere else and
+// no range the fact system can express says so.
+targets.powX = (() => {
+  const ml = bls.millerLoop(bls.G1, bls.G2)
+  let f = bls.f12mulRaw(bls.f12conj(ml), bls.f12inv(ml))
+  f = bls.f12mulRaw(bls.f12frobN(f, 2), f)
+  const values = pairingMod.spread(f, 'a')
+  const want = fp12.powX.model(values, { n: bls.P, nn: bls.P })
+  const order = fp12.twelve('a')
+
+  const asm = new Asm()
+  asm.given([
+    ...order.map((name) => ({ name, kind: 'num' })),
+    { name: 'sig', kind: 'bytes' }, { name: 'pubkey', kind: 'bytes' }
+  ])
+  ownedBy(asm)
+  fp12.powX.emit(asm, { n: bls.P, nn: bls.P })
+  for (const name of fp12.twelve('r')) {
+    asm.roll(name)
+    asm.num(want[name], '_want')
+    asm.numEqualVerify()
+  }
+  asm.num(1, 'ok')
+
+  return {
+    name: 'fp12.powX',
+    claim: 'f ↦ f^|x| in Fp12 — the ladder a final exponentiation runs five times',
+    lock: asm.script(),
+    unlock: ({ sign }) => {
+      const u = new bsv.Script()
+      for (const name of order) u.add(pushNum(values[name]))
+      return u.add(sign(owner)).add(owner.publicKey.toBuffer())
+    }
+  }
+})()
+
 module.exports = { targets, owner, ownerPkh }

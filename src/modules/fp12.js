@@ -19,6 +19,8 @@ const { six, two, dup, park, unpark, fresh, op, numericModulus, residues,
 
 const twelve = (p) => [...six(p + 'A'), ...six(p + 'B')]
 const SUF = ['00', '01', '10', '11', '20', '21']
+/** The twelve suffixes of an Fp12 value, in the order `twelve()` names them. */
+const SUF12 = [...SUF.map((x) => 'A' + x), ...SUF.map((x) => 'B' + x)]
 
 /** The same three helpers as Fp6, a level up. */
 function op6 (asm, m, p, ins, out = fresh()) {
@@ -477,4 +479,68 @@ const inv = defineModule({
   ]
 })
 
-module.exports = { mul, sqr, cycSqr, mulLine, conj, frob, inv, twelve, op6, dup6, park6, unpark6, F12mul, spread, cyclotomic }
+/**
+ * r = f^|x| for the 63-bit BLS curve parameter, f in the cyclotomic subgroup.
+ *
+ * The final exponentiation's whole cost is five of these, chained: λ written in
+ * balanced base p and then in balanced base |x| leaves nothing but a ladder of
+ * r, r^y, r^y², … and a handful of multiplications by coefficients no larger
+ * than 3 (see docs/optimization.md §11).
+ *
+ * MSB-FIRST AND UNROLLED, which is the whole reason it is 96 KB and not 99.
+ * Square-and-multiply written from the least significant bit starts with an
+ * accumulator of one and multiplies into it, so the first multiplication is by
+ * one — free at runtime, and 3,110 bytes of Fp12 multiplication that provably
+ * does nothing when it is unrolled into a script. Consuming the leading bit as
+ * the initial value instead costs 63 squarings and 5 multiplications where the
+ * obvious loop costs 64 and 6.
+ *
+ * CORRECT ONLY ON THE CYCLOTOMIC SUBGROUP, because that is where cycSqr is
+ * correct. In a pairing that is discharged structurally by the easy part of the
+ * final exponentiation, and the cases below are subgroup elements for the same
+ * reason: they are produced by running one. The model is the literal f^|x| by
+ * general exponentiation, so what is proven is that the cheap ladder equals the
+ * thing it is a cheap version of.
+ */
+const powX = defineModule({
+  name: 'fp12.powX',
+  doc: 'r = f^|x| for the BLS12-381 curve parameter, f cyclotomic — the ladder the final exponentiation runs five times',
+  inputs: twelve('a'),
+  outputs: twelve('r'),
+  requires: inField('fp12.powX', ...twelve('a')),
+  ensures: ensures12('fp12.powX'),
+  model: (v, { n }) => {
+    if (n !== BLS) throw new Error('fp12.powX: the curve parameter belongs to BLS12-381')
+    return store12(bls.f12pow(load12(v, 'a'), bls.Y))
+  },
+  prologue: (asm, { n }) => pushModulus(asm, n),
+  emit: (asm, params) => {
+    const { n } = params
+    const p = inner(params, 'fp12.powX')
+    const bits = bls.Y.toString(2)
+    const acc = 'acc'
+    // the leading bit IS the initial value; nothing is multiplied by one
+    for (const x of SUF12) asm.pick('a' + x, acc + x)
+    for (let i = 1; i < bits.length; i++) {
+      apply(asm, cycSqr, p, twelve(acc), twelve(acc))
+      if (bits[i] === '1') {
+        const c = `_c${i}`
+        for (const x of SUF12) asm.pick('a' + x, c + x)
+        apply(asm, mul, p, [...twelve(acc), ...twelve(c)], twelve(acc))
+      }
+    }
+    for (const x of SUF12) asm.discard('a' + x)
+    dropModulus(asm, n)
+    for (const x of SUF12) { asm.roll(acc + x); asm.rename('r' + x) }
+  },
+  notes: [
+    'correct only on the cyclotomic subgroup, which a pairing establishes structurally and no range can express',
+    '63 squarings and 5 multiplications — MSB-first, so nothing is multiplied by one'
+  ],
+  cases: [
+    { name: 'cyclotomic', inputs: spread(cyclotomic(2n), 'a'), params: { n: BLS } },
+    { name: 'another', inputs: spread(cyclotomic(7n), 'a'), params: { n: BLS } }
+  ]
+})
+
+module.exports = { mul, sqr, cycSqr, mulLine, conj, frob, inv, powX, twelve, op6, dup6, park6, unpark6, F12mul, spread, cyclotomic }
