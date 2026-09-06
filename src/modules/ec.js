@@ -115,9 +115,16 @@ function doubleModulusOf (asm, p, p2) {
  * and consumed here. A temporary that is never named is one that never has to
  * be dropped.
  */
-function checkInverseOfTop (asm, pName, invName) {
+function checkInverseOfTop (asm, pName, invName, pNum) {
   // 0 ≤ inv < p in one opcode rather than two comparisons and two VERIFYs.
-  asm.pick(invName, '_i0'); asm.num(0, '_zero'); asm.pick(pName, '_pw'); asm.withinVerify()
+  //
+  // Written through asm.bound() rather than by hand, which emits the same
+  // bytes — pushBound finds the modulus already on the stack and picks it, as
+  // the hand-rolled version did — and additionally RECORDS that this witness
+  // was bounded. A bound nothing can see is a bound an audit reports as
+  // missing, and this one did.
+  if (typeof pNum !== 'bigint') throw new Error('ec: the field prime must be known as a number to bound a witnessed inverse')
+  asm.bound(invName, 0n, pNum, '_ci')
   asm.pick(invName, '_i2'); asm.mul('_prod')
   asm.num(1, '_one'); asm.sub('_pm1')
   asm.pick(pName, '_pm'); asm.mod('_res')
@@ -149,13 +156,14 @@ const add = defineModule({
   // ends with exactly its two results live and no cleanup at all — where the
   // same code with picks throughout needed eleven bytes of altstack and
   // OP_2DROP to clear what it had left lying about.
-  emit: (asm, { p = P, p2 = null }) => {
+  emit: (asm, { p = P, p2 = null, pn = null }) => {
     const floor = asm.mark(5 + (typeof p === 'string' ? 0 : 2))
     const N = { name: typeof p === 'string' ? p : '_p', pushed: typeof p !== 'string' }
     const N2 = { name: typeof p2 === 'string' ? p2 : '_p2' }
+    const pNum = typeof p === 'bigint' ? p : (pn === null ? P : pn)
     // dx is never named: it is built on top, checked, and consumed there
     asm.pick('x2', '_a'); asm.pick('x1', '_b'); asm.sub('_dx')
-    checkInverseOfTop(asm, N.name, 'invdx')
+    checkInverseOfTop(asm, N.name, 'invdx', pNum)
 
     asm.roll('y2'); asm.pick('y1', '_d'); asm.sub('_dy')             // y₂ last used here
     asm.roll('invdx'); asm.mul('_lam')                               // λ = dy·inv, unreduced
@@ -227,12 +235,13 @@ const double = defineModule({
     const r = ecJs.double({ x: x1, y: y1 })
     return { x3: r.x, y3: r.y }
   },
-  emit: (asm, { p = P, p2 = null }) => {
+  emit: (asm, { p = P, p2 = null, pn = null }) => {
     const floor = asm.mark(3 + (typeof p === 'string' ? 0 : 2))
     const N = { name: typeof p === 'string' ? p : '_p', pushed: typeof p !== 'string' }
     const N2 = { name: typeof p2 === 'string' ? p2 : '_p2' }
+    const pNum = typeof p === 'bigint' ? p : (pn === null ? P : pn)
     asm.pick('y1', '_a'); asm.op('OP_DUP', 0, ['_b']); asm.add('_2y')  // 2y, unnamed
-    checkInverseOfTop(asm, N.name, 'inv2y')
+    checkInverseOfTop(asm, N.name, 'inv2y', pNum)
 
     asm.pick('x1', '_c'); asm.op('OP_DUP', 0, ['_d']); asm.mul('_xx')
     asm.num(3, '_three'); asm.mul('_3xx')

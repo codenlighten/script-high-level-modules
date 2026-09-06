@@ -149,7 +149,7 @@ and are now era-derived and checked after every opcode (released in 9.7.0; see
 [limits.md](docs/limits.md)). They are skipped, with a note, on a library that
 predates it. Nothing else here depends on that fix.
 
-73 modules, 346 cases, 1,367 forgery attempts, all green.
+75 modules, 357 cases, 1,367 forgery attempts, all green.
 
 ## The three claims a module must earn
 
@@ -264,8 +264,8 @@ seconds, part of `npm test`. 208 of the numbers in the unlocking script are
 witnesses the spender chooses, and every one is bounded into [0, p) and checked.
 
 And a **Groth16 verifier** — `e(A,B)·e(−L,γ)·e(−C,δ) = e(α,β)` — is
-`npm run groth16`: three pairings folded onto one accumulator, **1,240,810
-bytes, 774,756 opcodes**, accepting a valid proof and refusing two invalid ones.
+`npm run groth16`: three pairings folded onto one accumulator, **1,241,011
+bytes, 774,895 opcodes**, accepting a valid proof and refusing two invalid ones.
 Three separate pairings would be 2.45 MB; as a product they are 1.23, because k
 pairings share the 63 squarings and the one final exponentiation.
 
@@ -274,6 +274,20 @@ generated over BLS12-381 — an independent trusted setup, prover and field
 implementation. It is accepted; a displaced proof is refused; and the same valid
 proof is refused by a verifier built for a different public input, because the
 statement is a compile-time constant and therefore a different coin.
+
+`npm run audit` is this repository trying to break its own soundness
+assumptions, and three of its findings changed the code. **All 722 numeric
+witnesses in the library are bounded**, checked by provenance rather than by
+sampling attacks — a slot carries the input it descends from, and every bound
+records it. Chasing a false positive from that check exposed a true one: the
+attack generator looked for the modulus under `params.n` and the curve modules
+call it `p`, so the *same-residue* attacks were silently skipped for every
+`ec.*` module for as long as they have existed.
+
+The audit also found that A, B and C were never checked to be **on the curve**.
+They are now, at 201 bytes. **Subgroup membership is still not checked**, which
+Groth16 requires — that is stated as an open gap with its price rather than
+glossed, in [docs/pairing.md](docs/pairing.md) and the paper.
 
 Its soundness is not the arithmetic, it is who chooses what: **only A, B and C
 come from the unlocking script**, while γ, δ and L are constants the locking

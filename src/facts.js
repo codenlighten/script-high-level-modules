@@ -75,6 +75,12 @@ function discharge (asm, name, need) {
     pushBound(asm, lo, '_flo')
     pushBound(asm, hi, '_fhi')
     asm.withinVerify()
+    // Record which INPUT this bound landed on, so that "is every witness
+    // bounded" is answerable by structure rather than by sampling attacks.
+    // tools/audit-soundness.js reads it; without this line a bound emitted by
+    // the framework is invisible to the audit and reports as a hole.
+    const slot = asm.slot(name)
+    if (slot && slot.origin) asm.boundedOrigins.add(slot.origin)
     return null
   }
   return `'${name}' carries a requirement this framework does not know how to check`

@@ -45,7 +45,11 @@ const m = g16.verifier(f.vk, f.publicInputs, {
   cases: [
     { name: 'a valid proof', inputs: f.proof, params: { n: P381, nn: P381 } },
     { name: 'A off by one generator', refuse: 'the equation does not hold for this A', inputs: bend('a', 1n), params: { n: P381, nn: P381 } },
-    { name: 'C off by one generator', refuse: 'the equation does not hold for this C', inputs: bend('c', 1n), params: { n: P381, nn: P381 } }
+    { name: 'C off by one generator', refuse: 'the equation does not hold for this C', inputs: bend('c', 1n), params: { n: P381, nn: P381 } },
+    // Not a wrong proof — not a proof. Before the curve checks these were
+    // refused by the equation, which is the wrong reason to refuse them.
+    { name: 'A not on the curve', refuse: 'a pair of field elements is not a point', inputs: { ...f.proof, Ay: (f.proof.Ay + 1n) % P381 }, params: { n: P381, nn: P381 } },
+    { name: 'B not on the twist', refuse: 'a pair of Fp2 elements is not a twist point', inputs: { ...f.proof, By1: (f.proof.By1 + 1n) % P381 }, params: { n: P381, nn: P381 } }
   ]
 })
 

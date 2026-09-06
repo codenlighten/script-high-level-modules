@@ -48,6 +48,8 @@ const ROWS = [
   ['fp12.sqr', fp12.sqr, { n: BLS }, 'BLS12-381'],
   ['fp12.cycSqr', fp12.cycSqr, { n: BLS }, 'BLS12-381, cyclotomic subgroup'],
   ['fp12.mulLine', fp12.mulLine, { n: BLS }, 'BLS12-381, a Miller-loop line'],
+  ['g1.onCurve', require('../src/modules/points').onCurveG1, { n: BLS }, 'y² = x³ + 4 over Fp'],
+  ['g2.onCurve', require('../src/modules/points').onCurveG2, { n: BLS }, 'y² = x³ + 4(u+1) over Fp2'],
   ['g2.stepDouble', g2mod.stepDouble, { n: BLS }, 'a tangent and the point it moves to'],
   ['g2.stepAdd', g2mod.stepAdd, { n: BLS }, 'a chord and the point it moves to'],
   ['fp12.conj', fp12.conj, { n: BLS }, 'BLS12-381, the p⁶ Frobenius'],

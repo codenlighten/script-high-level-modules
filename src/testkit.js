@@ -262,7 +262,16 @@ function sameValue (a, b) {
  * says so rather than reporting a green run it did not earn.
  */
 function defaultAttacks (honest, params) {
-  const n = params && params.n
+  // The modulus is called `n` by the integer modules and `p` by the curve ones,
+  // and this only looked for `n`. So the same-residue attacks — the ones that
+  // test CANONICITY rather than soundness, and the ones the last four bugs
+  // needed — were silently skipped for every ec.* module. They passed their
+  // attack suites without ever being asked the question.
+  const params2 = params || {}
+  const n = typeof params2.n === 'bigint' ? params2.n
+    : typeof params2.nn === 'bigint' ? params2.nn
+      : typeof params2.p === 'bigint' ? params2.p
+        : typeof params2.pn === 'bigint' ? params2.pn : undefined
   if (typeof honest !== 'bigint') return null
   const out = [
     { label: 'off by one (+1)', value: honest + 1n },

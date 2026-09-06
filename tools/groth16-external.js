@@ -67,12 +67,19 @@ if (!agrees) { console.log('\n  the proof does not satisfy the equation here —
 
 // A proof of the same shape that is not this proof.
 const displaced = { ...proof, Ax: bls.g1mul(2n, A).x, Ay: bls.g1mul(2n, A).y }
+// And coordinates that are not points at all. Before the curve checks these
+// were refused by the pairing equation, which is a refusal for the wrong
+// reason: the verifier had no opinion about whether it had been handed a point.
+const offCurveA = { ...proof, Ay: (A.y + 1n) % P }
+const offCurveB = { ...proof, By1: (B.y[1] + 1n) % P }
 
 const m = g16.verifier(vk, publicInputs, {
   maxWitnessAttacks: Number(process.env.GROTH16_ATTACKS || 2),
   cases: [
     { name: 'the proof snarkjs made', inputs: proof, params },
-    { name: 'A doubled', refuse: 'the equation does not hold for this A', inputs: displaced, params }
+    { name: 'A doubled', refuse: 'the equation does not hold for this A', inputs: displaced, params },
+    { name: 'A not on the curve', refuse: 'a pair of field elements is not a point', inputs: offCurveA, params },
+    { name: 'B not on the twist', refuse: 'a pair of Fp2 elements is not a twist point', inputs: offCurveB, params }
   ]
 })
 

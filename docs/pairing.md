@@ -8,14 +8,14 @@ and it is not a number.
 This is the number.
 
 **One BLS12-381 pairing is 817,031 bytes of Script — about 82,000 satoshis at
-100 sat/KB. A Groth16 verifier is 1,240,810 bytes.**
+100 sat/KB. A Groth16 verifier is 1,241,011 bytes.**
 
 Neither is an estimate.
 
 | | what it does | bytes | run it |
 | --- | --- | ---: | --- |
 | `pairing.e` | e(P, Q) | 817,031 | `npm run pairing:prove` |
-| `groth16.verify` | e(A,B)·e(−L,γ)·e(−C,δ) = e(α,β) | 1,240,810 | `npm run groth16` |
+| `groth16.verify` | e(A,B)·e(−L,γ)·e(−C,δ) = e(α,β) | 1,241,011 | `npm run groth16` |
 | `pairing.miller(63)` | the Miller loop alone | 333,676 | **on mainnet** |
 | `fp12.powX` | f ↦ f^\|x\|, one of the exponentiation's five ladders | 99,631 | **on mainnet** |
 
@@ -207,6 +207,36 @@ the identical multiplication, and a downstream module comparing results would be
 comparing numbers that are congruent rather than equal.
 
 Together the four take one pairing from roughly 4 MB to under 1 MB.
+
+## What the verifier does not check
+
+`npm run audit` is this repository trying to break its own soundness
+assumptions. It found that A, B and C were never checked to be **on the curve** —
+bounded into [0, p), which makes each coordinate one field element rather than a
+congruence class, and does not make a pair of them a point. That check is there
+now, at 201 bytes on a 1.24 MB script.
+
+**Subgroup membership is still not checked, and Groth16 requires it.** E(Fp) has
+order h₁·r and the twist h₂·r, so a point can satisfy the curve equation and lie
+outside the r-order subgroup where the pairing is not the bilinear map the
+security argument concerns. No attack on this construction is exhibited and none
+should be inferred from its absence; the honest statement is that a requirement
+is unmet. The remedies, priced:
+
+| | approximate cost |
+| --- | ---: |
+| [r]P = O on G1, via the existing ladder | 40,000 bytes each |
+| [r]Q = O on G2 | considerably more |
+| ψ(Q) = [x]Q on G2, the endomorphism form | 32,000 bytes |
+| φ(P) = [λ]P on G1, the GLV form | 20,000 bytes |
+
+Between 5% and 10% of the verifier. It is affordable and it is not done, because
+the endomorphism forms have to be *derived and verified* rather than recalled —
+this repository twice wrote a cyclotomic squaring formula from memory and twice
+threw it away, and a subgroup check written that way would be worse than none.
+
+The audit carries a list of accepted findings with the reason each is tolerable,
+and fails on anything not on it. Closing this one means deleting a line.
 
 ## The Groth16 verifier, and where its soundness lives
 

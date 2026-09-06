@@ -8,6 +8,7 @@ const fp2 = require('./src/modules/fp2')
 const fp6 = require('./src/modules/fp6')
 const fp12 = require('./src/modules/fp12')
 const g2mod = require('./src/modules/g2')
+const pointsMod = require('./src/modules/points')
 const pairingMod = require('./src/modules/pairing')
 const groth16 = require('./src/modules/groth16')
 const bytes = require('./src/modules/bytes')
@@ -72,6 +73,8 @@ const { failures, reports } = proveAll([
   [fp12.sqr, {}],
   [fp12.cycSqr, {}],
   [fp12.mulLine, {}],
+  [pointsMod.onCurveG1, {}],
+  [pointsMod.onCurveG2, {}],
   [g2mod.stepDouble, {}],
   [g2mod.stepAdd, {}],
   [fp12.conj, {}],

@@ -36,6 +36,17 @@ class Asm {
     // more, so a peak reached by the last push is not missed.
     this.maxStack = 0
     this.maxAlt = 0
+
+    // WHERE A VALUE CAME FROM, and whether it was ever bounded.
+    //
+    // A witnessed value owes canonicity, and the test kit establishes that by
+    // ATTACKING it — which is evidence, and which is sampled once a module has
+    // 136 witnesses. Sampling cannot say "every witness is bounded"; only
+    // structure can. So each slot carries the input name it descends from
+    // through picks, rolls and renames, and `bound()` records that origin.
+    // tools/audit-soundness.js then checks the whole library exhaustively
+    // rather than a sample of it.
+    this.boundedOrigins = new Set()
     const add = this.s.add.bind(this.s)
     this.s.add = (chunk) => { this._peak(); return add(chunk) }
   }
@@ -48,7 +59,7 @@ class Asm {
 
   // ── introducing values ────────────────────────────────────────────────────
   /** Declare what the unlocking script (or a caller) has already left, bottom→top. */
-  given (slots) { for (const v of slots) this.stack.push(norm(v)); return this }
+  given (slots) { for (const v of slots) { const x = norm(v); x.origin = x.name; this.stack.push(x) } return this }
   /** A literal's range is known exactly, so it is recorded. */
   num (value, name, facts) {
     this.s.add(pushNum(value))
@@ -318,7 +329,9 @@ class Asm {
     F.pushBound(this, BigInt(lo), temp + 'lo')
     F.pushBound(this, BigInt(hi), temp + 'hi')
     this.withinVerify()
-    this.slot(name).facts = F.meet(this.slot(name).facts, F.range(lo, hi))
+    const v = this.slot(name)
+    v.facts = F.meet(v.facts, F.range(lo, hi))
+    if (v.origin) this.boundedOrigins.add(v.origin)
     return this
   }
 

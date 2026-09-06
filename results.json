@@ -1,6 +1,6 @@
 {
   "generated": "2026-09-06",
-  "commit": "64080008e132c349781a8496d2804a57255c7615",
+  "commit": "4aaf7ab9c54d0cc8c25e0089e43d7485d68c8328",
   "curve": {
     "name": "BLS12-381",
     "p": "0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab",
@@ -212,9 +212,9 @@
       }
     ],
     "groth16": {
-      "bytes": 1240810,
-      "marginal": 1240810,
-      "opcodes": 774756,
+      "bytes": 1241011,
+      "marginal": 1241011,
+      "opcodes": 774895,
       "witnesses": 480,
       "publicInputs": 2,
       "spenderChooses": [

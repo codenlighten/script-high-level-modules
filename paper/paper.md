@@ -41,7 +41,7 @@ What has not executed on chain is a pairing in a *single script*: 817,031 bytes
 against a 500,000-byte policy. The composition moved into the transaction
 instead (§8.2), which is what made the result reachable at all.
 
-We construct a Groth16 verification predicate of 1,240,810 bytes and 774,756
+We construct a Groth16 verification predicate of 1,241,011 bytes and 774,895
 opcodes that accepts a valid proof and rejects invalid proofs whose curve
 membership and inversion witnesses remain valid, isolating failure to the
 pairing equation itself. Multi-pairing compilation reduces size by sharing the
@@ -810,6 +810,62 @@ proper comparison against them belongs here and has not been written.
      Witness Program. 2016.
 ```
 
+## 10.3 An adversarial audit of our own assumptions
+
+`npm run audit` asks the four questions a reviewer would ask, structurally where
+possible, and reports what does not hold as prominently as what does. Three of
+its findings changed the implementation.
+
+**Witness canonicity, exhaustively.** The test kit attacks witnesses, and
+samples once a module has 136 of them. Sampling cannot establish "every witness
+is bounded"; only structure can. Each stack slot now carries the input it
+descends from through picks, rolls and renames, and every bound records that
+origin, so the question is answered for all **722 numeric witnesses in the
+library at once** rather than for a sample.
+
+The first run reported `ec.add` and `ec.double` as unbounded. They were not:
+they bounded their witnessed inverse with a hand-written `OP_WITHIN` that the
+recorder could not see. That is worth stating because the fix was not to
+special-case them — a bound nothing can observe is a bound an audit reports as
+missing, so they were rewritten to go through the same call everything else
+uses, which emits identical bytes and is visible. Every deployed script still
+reconstructs byte for byte.
+
+**A gap in the attack generator, found the same way.** Chasing that false
+positive exposed a true one: the kit's default attacks look for the modulus
+under `params.n`, and the elliptic-curve modules call it `p`. So the
+*same-residue* attacks — the ones that test canonicity rather than soundness,
+and the ones the earlier four bugs needed — were silently skipped for every
+`ec.*` module. Those modules had been passing an attack suite that never asked
+them the question. Fixed, and they pass it now.
+
+**The subgroup gap, which is not fixed.** The audit's fourth section asks what a
+spender may choose in the Groth16 verifier. γ, δ, L and e(α,β) are constants;
+only A, B and C come from the unlocking script; and — as of this audit — A, B
+and C are checked against their curve equations, at 201 bytes on a 1.24 MB
+script. That check was missing and the audit found it missing.
+
+**Subgroup membership is still not checked.** E(Fp) has order h₁·r and the twist
+h₂·r, so a point can satisfy the curve equation and lie outside the r-order
+subgroup, where the pairing is not the bilinear map the security argument
+concerns. A standard Groth16 verifier checks this; this one does not. No attack
+on this construction is exhibited and none should be inferred from its absence:
+the honest statement is that a requirement is unmet. The remedies and their
+prices, on a 1,241,012-byte verifier:
+
+| | approximate cost |
+| --- | ---: |
+| [r]P = O on G1, via the existing ladder | 40,000 bytes each |
+| [r]Q = O on G2 | considerably more |
+| ψ(Q) = [x]Q on G2, the endomorphism form | 32,000 bytes |
+| φ(P) = [λ]P on G1, the GLV form | 20,000 bytes |
+
+Between 5% and 10%. It is affordable and it is not done, and the reason is that
+the endomorphism forms must be *derived and verified* rather than recalled —
+this work twice wrote a cyclotomic squaring formula from memory and twice threw
+it away (§6.1), and a subgroup check written the same way would be worse than
+none.
+
 ## 11. Limitations
 
 - **A complete pairing has not executed on mainnet in a single script** and
@@ -822,6 +878,10 @@ proper comparison against them belongs here and has not been written.
 - **The Groth16 verifier is for a fixed statement.** Spend-time public inputs
   need on-chain scalar multiplication, priced at about 40,000 bytes per input
   but not emitted.
+- **Subgroup membership of the proof points is not checked.** A, B and C are
+  bounded into [0, p) and checked against their curve equations; they are not
+  checked to lie in the prime-order subgroups, which Groth16 requires. This is
+  the most significant open item and is priced in §10.3.
 - **Groth16's own soundness is out of scope.** The verifier is tested against a
   proof from an independent proving stack (§7.5) and against a fixture built
   from the group law (§7.4); neither says anything about whether Groth16 is
@@ -874,7 +934,7 @@ a complete BLS12-381 pairing was nonetheless evaluated by the network — throug
 two transaction-bound predicates, one computing the Miller loop and publishing
 its Fp12 result, the other consuming that committed result and performing the
 final exponentiation. Each stage was also deployed and spent on its own, and a
-Groth16 verifier for a fixed statement is 1,240,810 bytes and validated against
+Groth16 verifier for a fixed statement is 1,241,011 bytes and validated against
 the interpreter. The prices are measured rather than argued about.
 
 The general lesson is not about pairings. It is that shifting computation into

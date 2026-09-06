@@ -16,6 +16,8 @@
 | `fp12.sqr` | BLS12-381 | 2,375 | 1,588 |
 | `fp12.cycSqr` | BLS12-381, cyclotomic subgroup | 1,342 | 1,016 |
 | `fp12.mulLine` | BLS12-381, a Miller-loop line | 2,178 | 1,382 |
+| `g1.onCurve` | y² = x³ + 4 over Fp | 85 | 25 |
+| `g2.onCurve` | y² = x³ + 4(u+1) over Fp2 | 205 | 118 |
 | `g2.stepDouble` | a tangent and the point it moves to | 587 | 395 |
 | `g2.stepAdd` | a chord and the point it moves to | 598 | 399 |
 | `fp12.conj` | BLS12-381, the p⁶ Frobenius | 223 | 110 |
@@ -47,8 +49,8 @@
 | `state.limit` | the allowance falls by what was paid | 23 | 17 |
 | `ec.add` | secp256k1, witnessed inverse | 167 | 65 |
 | `ec.double` | secp256k1, witnessed inverse | 153 | 58 |
-| `ec.mulG` | k·G, 256-bit, base fixed | 39,833 | 15,553 |
-| `ec.mul` | k·P, 256-bit, both runtime | 42,112 | 29,347 |
+| `ec.mulG` | k·G, 256-bit, base fixed | 39,833 | 15,554 |
+| `ec.mul` | k·P, 256-bit, both runtime | 42,112 | 29,348 |
 | `ecdsa.verify` | arbitrary message, secp256k1 | 59,191 | 38,433 |
 | `schnorr.liftX` | x-only key to a point | 208 | 126 |
 | `schnorr.verify` | BIP-340, x-only key | 59,653 | 38,753 |

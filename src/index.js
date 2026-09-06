@@ -25,6 +25,7 @@ const fp2 = require('./modules/fp2')
 const fp6 = require('./modules/fp6')
 const fp12 = require('./modules/fp12')
 const g2mod = require('./modules/g2')
+const pointsMod = require('./modules/points')
 const pairingMod = require('./modules/pairing')
 const groth16 = require('./modules/groth16')
 
@@ -101,6 +102,9 @@ const modules = {
   // appears, only the slope through two points and the line it determines.
   'g2.stepDouble': g2mod.stepDouble,
   'g2.stepAdd': g2mod.stepAdd,
+  // A pair of field elements is not a point, and bounding it does not make it one.
+  'g1.onCurve': pointsMod.onCurveG1,
+  'g2.onCurve': pointsMod.onCurveG2,
   // The whole final exponentiation, 592 KB of it, as one module.
   'pairing.finalExp': pairingMod.finalExp
 }
@@ -158,7 +162,7 @@ function catalog () {
 
 module.exports = {
   int, bytes, u32, sha256, rsa, hmac, totp, ec, ecdsa, schnorr: schnorrMod, merkle, tx: txmod, state: stateMod,
-  fp2, fp6, fp12, g2: g2mod, pairing: pairingMod, groth16, bls12381: require('./bls12381'),
+  fp2, fp6, fp12, g2: g2mod, points: pointsMod, pairing: pairingMod, groth16, bls12381: require('./bls12381'),
   modules, factories, catalog, describe,
   defineModule, apply, instantiate, predicate, compose, recipes, Asm,
   evaluate, evaluateSpend, policyFlags,

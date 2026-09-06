@@ -4,6 +4,7 @@ const { defineModule, apply } = require('../module')
 const pairing = require('./pairing')
 const bls = require('../bls12381')
 const ecJs = require('../ec')
+const points = require('./points')
 
 // A GROTH16 VERIFIER, for a statement fixed when the coin is locked.
 //
@@ -103,6 +104,23 @@ function verifier (vk, publicInputs, opts = {}) {
       asm.num(n, '_pn')
       const p = { n: '_pn', nn: P381 }
 
+      // THE PROOF IS THREE POINTS, and a pair of field elements is not a point.
+      //
+      // Bounding A, B and C into [0, p) makes each coordinate one field element
+      // rather than a congruence class. It does not make them curve points, and
+      // a verifier reading a proof out of an unlocking script is reading numbers
+      // a spender chose. This was missing: the curve equation is checked now,
+      // for both G1 points and the G2 one, at 375 bytes on a 1.24 MB script.
+      //
+      // Subgroup membership is still NOT checked — see points.js. That is a
+      // real remaining gap and it is documented rather than glossed.
+      for (const [x, y] of [['Ax', 'Ay'], ['Cx', 'Cy']]) {
+        asm.pick(x, '_cx'); asm.pick(y, '_cy')
+        apply(asm, points.onCurveG1, { n: '_pn', nn: P381 }, ['_cx', '_cy'], [])
+      }
+      for (const nm of ['Bx0', 'Bx1', 'By0', 'By1']) asm.pick(nm, '_q' + nm)
+      apply(asm, points.onCurveG2, { n: '_pn', nn: P381 }, ['_qBx0', '_qBx1', '_qBy0', '_qBy1'], [])
+
       // −C: the proof gives C, and the equation wants its negation. One
       // subtraction, and it is p − Cy rather than −Cy because OP_MOD is
       // truncated and a downstream comparison would see the difference.
@@ -132,6 +150,7 @@ function verifier (vk, publicInputs, opts = {}) {
       asm.discard('_pn')
     },
     notes: [
+      'A, B and C are checked to be on their curves; subgroup membership is NOT checked and Groth16 requires it',
       'γ, δ and L are pushed constants, not inputs — a spender who could choose them would not need a proof',
       'the public inputs are fixed when the coin is locked; a verifier taking them at spend time needs ℓ on-chain scalar multiplications on G1',
       `${witnesses.length} witnessed numbers, every one bounded into [0, p) and checked`

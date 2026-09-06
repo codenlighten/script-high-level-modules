@@ -55,6 +55,8 @@
 | `fp12.powXc` | `aA00` `aA01` `aA10` `aA11` `aA20` `aA21` `aB00` `aB01` `aB10` `aB11` `aB20` `aB21` `d0i0` `d0i1` `d1i0` `d1i1` `d2i0` `d2i1` `d3i0` `d3i1` `d4i0` `d4i1` `d5i0` `d5i1` | `rA00` `rA01` `rA10` `rA11` `rA20` `rA21` `rB00` `rB01` `rB10` `rB11` `rB20` `rB21` | `d0i0` `d0i1` `d1i0` `d1i1` `d2i0` `d2i1` `d3i0` `d3i1` `d4i0` `d4i1` `d5i0` `d5i1` | 2 |
 | `g2.stepDouble` | `Tx0` `Tx1` `Ty0` `Ty1` `Px` `inv0` `inv1` | `x30` `x31` `y30` `y31` `l10` `l11` `l20` `l21` | `inv0` `inv1` | 4 |
 | `g2.stepAdd` | `Tx0` `Tx1` `Ty0` `Ty1` `Qx0` `Qx1` `Qy0` `Qy1` `Px` `inv0` `inv1` | `x30` `x31` `y30` `y31` `l10` `l11` `l20` `l21` | `inv0` `inv1` | 4 |
+| `g1.onCurve` | `x` `y` | — | — | 6 |
+| `g2.onCurve` | `x0` `x1` `y0` `y1` | — | — | 5 |
 | `pairing.finalExp` | `fA00` `fA01` `fA10` `fA11` `fA20` `fA21` `fB00` `fB01` `fB10` `fB11` `fB20` `fB21` `invA00` `invA01` `invA10` `invA11` `invA20` `invA21` `invB00` `invB01` `invB10` `invB11` `invB20` `invB21` `L1d0i0` `L1d0i1` `L1d1i0` `L1d1i1` `L1d2i0` `L1d2i1` `L1d3i0` `L1d3i1` `L1d4i0` `L1d4i1` `L1d5i0` `L1d5i1` `L2d0i0` `L2d0i1` `L2d1i0` `L2d1i1` `L2d2i0` `L2d2i1` `L2d3i0` `L2d3i1` `L2d4i0` `L2d4i1` `L2d5i0` `L2d5i1` `L3d0i0` `L3d0i1` `L3d1i0` `L3d1i1` `L3d2i0` `L3d2i1` `L3d3i0` `L3d3i1` `L3d4i0` `L3d4i1` `L3d5i0` `L3d5i1` `L4d0i0` `L4d0i1` `L4d1i0` `L4d1i1` `L4d2i0` `L4d2i1` `L4d3i0` `L4d3i1` `L4d4i0` `L4d4i1` `L4d5i0` `L4d5i1` `L5d0i0` `L5d0i1` `L5d1i0` `L5d1i1` `L5d2i0` `L5d2i1` `L5d3i0` `L5d3i1` `L5d4i0` `L5d4i1` `L5d5i0` `L5d5i1` | `rA00` `rA01` `rA10` `rA11` `rA20` `rA21` `rB00` `rB01` `rB10` `rB11` `rB20` `rB21` | `invA00` `invA01` `invA10` `invA11` `invA20` `invA21` `invB00` `invB01` `invB10` `invB11` `invB20` `invB21` `L1d0i0` `L1d0i1` `L1d1i0` `L1d1i1` `L1d2i0` `L1d2i1` `L1d3i0` `L1d3i1` `L1d4i0` `L1d4i1` `L1d5i0` `L1d5i1` `L2d0i0` `L2d0i1` `L2d1i0` `L2d1i1` `L2d2i0` `L2d2i1` `L2d3i0` `L2d3i1` `L2d4i0` `L2d4i1` `L2d5i0` `L2d5i1` `L3d0i0` `L3d0i1` `L3d1i0` `L3d1i1` `L3d2i0` `L3d2i1` `L3d3i0` `L3d3i1` `L3d4i0` `L3d4i1` `L3d5i0` `L3d5i1` `L4d0i0` `L4d0i1` `L4d1i0` `L4d1i1` `L4d2i0` `L4d2i1` `L4d3i0` `L4d3i1` `L4d4i0` `L4d4i1` `L4d5i0` `L4d5i1` `L5d0i0` `L5d0i1` `L5d1i0` `L5d1i1` `L5d2i0` `L5d2i1` `L5d3i0` `L5d3i1` `L5d4i0` `L5d4i1` `L5d5i0` `L5d5i1` | 2 |
 | `rsa.verify(…)` | *built per key or width* | | | |
 | `ec.mul(…)` | *built per key or width* | | | |
@@ -82,7 +84,7 @@
 
 A module with **no outputs** is a predicate: it asserts and returns nothing, and
 `predicate(module, params, { owner })` turns it straight into a locking script
-and the unlocking script that spends it. Today that is `totp.verify`, plus
+and the unlocking script that spends it. Today that is `totp.verify`, `g1.onCurve`, `g2.onCurve`, plus
 `rsa.verify(key)` and `ecdsa.verify(cases)` from the factories.
 
 A module **with** outputs is a component — `ec.add` returns a point, `hmac.sha256`
