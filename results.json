@@ -1,6 +1,6 @@
 {
   "generated": "2026-09-15",
-  "commit": "6865a1f27ad5dce7ca741a81d312f84839f9d804",
+  "commit": "071732e90ca2d9d77621c2667acda0127552b56f",
   "curve": {
     "name": "BLS12-381",
     "p": "0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab",
@@ -312,7 +312,7 @@
         "replacementBytes": 73582,
         "note": "deployed and spent, correct, and no longer on the critical path"
       },
-      "note": "a complete pairing has been evaluated on mainnet as two inputs of one transaction, and a whole Groth16 verifier as three"
+      "note": "a complete pairing has been evaluated on mainnet as two inputs of one transaction; a whole Groth16 verifier is funded as three coins whose spend miners have refused for validation time"
     }
   },
   "operations": {

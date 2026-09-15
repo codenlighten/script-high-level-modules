@@ -244,7 +244,7 @@ const onchain = {
     note: 'deployed and spent, correct, and no longer on the critical path'
   },
   note: grothSplit.deployed
-    ? 'a complete pairing has been evaluated on mainnet as two inputs of one transaction, and a whole Groth16 verifier as three'
+    ? 'a complete pairing has been evaluated on mainnet as two inputs of one transaction; a whole Groth16 verifier is funded as three coins whose spend miners have refused for validation time'
     : 'a complete pairing has been evaluated on mainnet — as two inputs of one transaction, since a single script doing both is past the size policy'
 }
 

@@ -197,7 +197,7 @@ together over nLockTime, ${n(G8.grindTries)} tries for a triple. Every stage bin
 siblings through hashPrevouts, ${G8.siblingBytes} bytes apiece.
 
 ${G8.deployed
-  ? `**On mainnet**: funding \`${G8.deployed.deploy}\`, spend \`${G8.deployed.spend}\`.`
+  ? `Funded on mainnet: \`${G8.deployed.deploy}\`. Spending transaction broadcast: \`${G8.deployed.spend}\` — see §8.3 for whether it has been mined.`
   : 'Verified against the interpreter under relay policy flags. **Not yet funded on chain.**'}
 `
 

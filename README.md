@@ -36,7 +36,7 @@ node examples/oracle-lock.js     # a coin an oracle's ordinary secp256k1 key unl
 
 ## On chain
 
-Seventeen of these are deployed and spent on BSV mainnet, and the first five are
+Sixteen of these are deployed and spent on BSV mainnet, a seventeenth is funded and awaiting a miner that will take its spend, and the first five are
 **confirmed in block 965487**. The two largest are the **complete 63-round
 Miller loop of a BLS12-381 pairing** — 333,676 bytes, 63 tangents, 5 chords, 68
 sparse line products and 68 witnessed Fp2 inversions — and the **complete final
@@ -63,9 +63,11 @@ stages lock in 399,402 / 371,834 / 475,647 bytes, with A and C checked into G1
 in the first and B into G2 in the second; all three are accepted, and the
 2,156-byte output they all commit to is what makes them one computation. The
 proof being verified is snarkjs's, for *"at least 21 years old as of 2026"*.
-**That is on mainnet too**: funding [`025f20f1`](https://whatsonchain.com/tx/025f20f1d4156aa354afef37b1ec67e5c461f11375bc739902845a3b985dc5f0), spend
-[`cad6d2cc`](https://whatsonchain.com/tx/cad6d2cca44fffb2f445009f392b668382d79d120b1c14db0fd4a8d192204bb6) — a 1,291,329-byte transaction, 253,934 satoshis of fees
-for the pair.
+Its three coins are **funded on mainnet** — [`025f20f1`](https://whatsonchain.com/tx/025f20f1d4156aa354afef37b1ec67e5c461f11375bc739902845a3b985dc5f0), block 966,795 —
+but the spend, [`cad6d2cc`](https://whatsonchain.com/tx/cad6d2cca44fffb2f445009f392b668382d79d120b1c14db0fd4a8d192204bb6), **has not been mined**: miners' nodes refuse it
+with `too-long-validation-time`. It verifies; it takes about 1.4× as long to
+validate as the pairing spend that did confirm, and nodes limit validation time
+per transaction.
 
 Two of the deployments are not single spends but **sequences** — a
 coin advancing its own counter 0 → 1 → 2 → 3, and a coin paying three different
@@ -166,9 +168,9 @@ interpreter at all. They have been now, and they refuse (paper §10.4).
 Nothing about the birth year reaches the chain. The network learned that a
 person was old enough, and nothing else, and enforced payment on that basis.
 
-**This is on mainnet.** At 1,246,986 bytes the verifier is past the 500 KB script
-policy, so it went on chain the way a whole pairing did — as coins spent
-together, three rather than two:
+**Its coins are on mainnet; its spend is not yet.** At 1,246,986 bytes the verifier
+is past the 500 KB script policy, so it went on chain the way a whole pairing did
+— as coins spent together, three rather than two:
 
 | input | | locking | unlocking |
 | --- | --- | ---: | ---: |
@@ -180,7 +182,10 @@ together, three rather than two:
 Every script is under the policy. `node bin/deploy-groth16.js` built the funding
 and the spend with the same code the tests use, verified all three inputs
 against the real funding txid, and broadcast them:
-funding [`025f20f1`](https://whatsonchain.com/tx/025f20f1d4156aa354afef37b1ec67e5c461f11375bc739902845a3b985dc5f0), spend [`cad6d2cc`](https://whatsonchain.com/tx/cad6d2cca44fffb2f445009f392b668382d79d120b1c14db0fd4a8d192204bb6).
+funding [`025f20f1`](https://whatsonchain.com/tx/025f20f1d4156aa354afef37b1ec67e5c461f11375bc739902845a3b985dc5f0), mined in block 966,795, and spend
+[`cad6d2cc`](https://whatsonchain.com/tx/cad6d2cca44fffb2f445009f392b668382d79d120b1c14db0fd4a8d192204bb6), which miners have refused for its validation time. The
+limit that binds now is per transaction, which is the unit this construction put
+all three stages into.
 
 ## What is here
 
