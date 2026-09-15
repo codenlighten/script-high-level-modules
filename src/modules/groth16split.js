@@ -10,13 +10,14 @@ const fp6 = require('./fp6')
 
 // A GROTH16 VERIFIER ACROSS THREE INPUTS OF ONE TRANSACTION.
 //
-// The verifier is 1,241,011 bytes and the script-size policy is 500,000. Its
+// The verifier is about 1.25 MB and the script-size policy is 500,000 bytes. Its
 // three pairings share one Miller accumulator, and even so that loop alone is
-// 705,838 — so a two-way cut is not enough and the loop itself has to be cut.
+// past the policy — so a two-way cut is not enough and the loop itself has to be
+// cut. results.json carries the measured sizes; roughly:
 //
-//     input 0   rounds 1–31 of three loops     384,299 B lock, 395,761 unlock
-//     input 1   rounds 32–63, resuming         372,515 B lock, 383,980 unlock
-//     input 2   the final exponentiation       476,206 B lock, 482,086 unlock
+//     input 0   A, C ∈ G1; rounds 1–31 of three loops   400 KB lock, 424 KB unlock
+//     input 1   rounds 32–63, resuming; B ∈ G2          372 KB lock, 383 KB unlock
+//     input 2   the final exponentiation                476 KB lock, 482 KB unlock
 //
 // Round 31 is not a seam in the mathematics. It is where the halves are each
 // small enough, and what makes an arbitrary cut legal is that the state there
@@ -74,6 +75,7 @@ const T_NAMES = [0, 1, 2].flatMap((j) => [`p${j}_Tx0`, `p${j}_Tx1`, `p${j}_Ty0`,
 const S1_NAMES = [...twelve('f'), ...T_NAMES]
 const S2_NAMES = twelve('g')
 const BLOB_NAMES = [...PROOF_NAMES, ...S1_NAMES, ...S2_NAMES]
+const BLOB_SET = new Set(BLOB_NAMES)
 const BLOB_BYTES = BLOB_NAMES.length * COEFF
 
 /** Numbers into one blob, in the order every stage agrees to write them. */
@@ -131,6 +133,7 @@ function pushConstants (asm, vk, L) {
 }
 
 function verifier (vk, publicInputs, opts = {}) {
+  g16.checkKey(vk)
   const L = g16.combine(vk.IC, publicInputs)
   const expected = bls.pairing(vk.alpha, vk.beta)
   const want = pairing.spread(expected, 'r')
@@ -142,8 +145,27 @@ function verifier (vk, publicInputs, opts = {}) {
   const sibFor = (which) => (SIB ? { count: SIB.count, index: which - 1 } : null)
   const commits = [1, 2, 3].map((w) => txmod.commitData(BLOB_BYTES, sibFor(w) ? { siblings: sibFor(w) } : {}))
 
+  // SUBGROUP MEMBERSHIP, placed where each check is cheapest.
+  //
+  //   stage 1   A, C ∈ G1   two g1.inSubgroup ladders, which include the curve
+  //   stage 2   B ∈ G2      against pair 0's running point after round 63,
+  //                         which this stage's own loop computes as [|x|]B
+  //
+  // B cannot be checked in stage 1: the loop there stops at round 31, where T
+  // is [|x| >> 32]B and not [|x|]B. The T that stage 2 RESUMES from is a
+  // witness, but it is pinned by the blob to what stage 1 computed, so the T it
+  // finishes with is [|x|]B and not a number the spender chose.
+  //
+  // `subgroup: false` builds the construction as it was before these checks,
+  // and exists so that tools/groth16-split.js can show a stage accepting a
+  // point outside its subgroup without them and refusing it with them — which
+  // is the only way to know that the check, and not something else, refuses.
+  const SUB = opts.subgroup !== false
+  const subA = SUB ? points.g1WitnessNames('g1A') : []
+  const subC = SUB ? points.g1WitnessNames('g1C') : []
+
   const loop1 = pairing.miller(CUT, { pairs: 3, emitState: true })
-  const loop2 = pairing.miller(pairing.FULL, { pairs: 3, first: CUT + 1, resume: true })
+  const loop2 = pairing.miller(pairing.FULL, { pairs: 3, first: CUT + 1, resume: true, emitState: SUB })
   const w1 = loop1.inputs.filter((i) => i.witness).map((i) => i.name)
   const w2 = loop2.inputs.filter((i) => i.witness).map((i) => i.name)
   const expWit = pairing.finalExp.inputs.filter((i) => i.witness).map((i) => i.name)
@@ -160,11 +182,12 @@ function verifier (vk, publicInputs, opts = {}) {
     if (sibFor(which)) out.fundingTxid = Buffer.from(g.preimage).subarray(68, 100)
     const tape = which === 1 ? st.wit1 : which === 2 ? st.wit2 : []
     tape.forEach(([a, b], k) => { out[`w${k}a`] = a; out[`w${k}b`] = b })
+    if (which === 1 && SUB) Object.assign(out, subgroupWitnesses(spend.proof))
     if (which === 3) Object.assign(out, pairing.finalExp.hint(pairing.spread(st.s2, 'f'), { n: P381, nn: P381 }))
     return out
   }
 
-  const shell = (name, doc, inputs, body, which) => defineModule({
+  const shell = (name, doc, inputs, body, which, pre) => defineModule({
     name,
     doc,
     inputs: [{ name: 'preimage', kind: 'bytes', witness: true },
@@ -184,13 +207,24 @@ function verifier (vk, publicInputs, opts = {}) {
       }
       return require('../testkit').defaultAttacks(honest[nm], { n: P381 })
     },
+    // What is bounded at the door is what goes into the blob: the proof and
+    // the two cut states, which are serialised and compared as BYTES, where
+    // x and x + p would be different outputs. Every other witness is an
+    // inverse that the module reading it bounds itself — fp2.inv, fp12.inv,
+    // the ec steps — and bounding it here as well paid seven bytes a witness
+    // to learn nothing. tools/audit-soundness.js checks by provenance that
+    // every numeric witness of every stage is still bounded somewhere.
     requires: () => {
       const r = { range: { lo: 0n, hi: P381 } }
       const out = {}
-      for (const i of inputs) out[typeof i === 'string' ? i : i.name] = r
+      for (const i of inputs) {
+        const name = typeof i === 'string' ? i : i.name
+        if (BLOB_SET.has(name)) out[name] = r
+      }
       return out
     },
     emit: (asm, params) => {
+      if (pre) pre(asm)
       asm.num(P381, '_pn')
       body(asm, { n: '_pn', nn: P381 })
       asm.discard('_pn')
@@ -207,17 +241,22 @@ function verifier (vk, publicInputs, opts = {}) {
   })
 
   const stage1 = shell('groth16.stage1',
-    'rounds 1–31 of three Miller loops, and publish what they left',
+    SUB ? 'A and C in G1, then rounds 1–31 of three Miller loops, and publish what they left' : 'rounds 1–31 of three Miller loops, and publish what they left',
     [...PROOF_NAMES, ...S2_NAMES.map((n) => ({ name: n, witness: true })),
-      ...w1.map((n) => ({ name: n, witness: true }))],
+      ...w1.map((n) => ({ name: n, witness: true })),
+      // the two ladders' inverses LAST, C's under A's, so each check finds its
+      // own on top of the stack in the order it reads them
+      ...[...subC, ...subA].map((n) => ({ name: n, witness: true }))],
     (asm, p) => {
-      // The proof is three points, and a pair of field elements is not a point.
-      for (const [x, y] of [['Ax', 'Ay'], ['Cx', 'Cy']]) {
-        asm.pick(x, '_cx'); asm.pick(y, '_cy')
-        apply(asm, points.onCurveG1, { n: '_pn', nn: P381 }, ['_cx', '_cy'], [])
+      if (!SUB) {
+        // The construction as it was: the curve equations and nothing more.
+        for (const [x, y] of [['Ax', 'Ay'], ['Cx', 'Cy']]) {
+          asm.pick(x, '_cx'); asm.pick(y, '_cy')
+          apply(asm, points.onCurveG1, { n: '_pn', nn: P381 }, ['_cx', '_cy'], [])
+        }
+        for (const nm of ['Bx0', 'Bx1', 'By0', 'By1']) asm.pick(nm, '_q' + nm)
+        apply(asm, points.onCurveG2, { n: '_pn', nn: P381 }, ['_qBx0', '_qBx1', '_qBy0', '_qBy1'], [])
       }
-      for (const nm of ['Bx0', 'Bx1', 'By0', 'By1']) asm.pick(nm, '_q' + nm)
-      apply(asm, points.onCurveG2, { n: '_pn', nn: P381 }, ['_qBx0', '_qBx1', '_qBy0', '_qBy1'], [])
 
       for (const nm of PROOF_NAMES) asm.pick(nm, '_keep' + nm)   // for the blob
       asm.relabel('Ax', 'p0_Px'); asm.relabel('Ay', 'p0_Py')
@@ -233,16 +272,25 @@ function verifier (vk, publicInputs, opts = {}) {
       emitBlob(asm, BLOB_NAMES, 'data')
       apply(asm, commits[0], {}, sibFor(1) ? ['preimage', 'fundingTxid', 'data'] : ['preimage', 'data'], ['_p'])
       asm.drop()
-    }, 1)
+    }, 1,
+    // Before the stage's own prime goes on the stack, so that the ladders'
+    // inverses are still the top of it.
+    SUB ? (asm) => {
+      asm.pick('Ax', '_gAx'); asm.pick('Ay', '_gAy')
+      apply(asm, points.inG1, { n: P381 }, [...subA, '_gAx', '_gAy'], [])
+      asm.pick('Cx', '_gCx'); asm.pick('Cy', '_gCy')
+      apply(asm, points.inG1, { n: P381 }, [...subC, '_gCx', '_gCy'], [])
+    } : null)
 
   const stage2 = shell('groth16.stage2',
-    'rounds 32–63, resuming from what input 0 published',
+    SUB ? 'rounds 32–63, resuming from what input 0 published, and B in G2' : 'rounds 32–63, resuming from what input 0 published',
     [...PROOF_NAMES.map((n) => ({ name: n, witness: true })),
       ...S1_NAMES.map((n) => ({ name: n, witness: true })),
       ...w2.map((n) => ({ name: n, witness: true }))],
     (asm, p) => {
       for (const nm of PROOF_NAMES) asm.pick(nm, '_keep' + nm)
       for (const nm of S1_NAMES) asm.pick(nm, '_keepS' + nm)
+      if (SUB) for (const nm of ['Bx0', 'Bx1', 'By0', 'By1']) asm.pick(nm, '_sub' + nm)
       asm.relabel('Ax', 'p0_Px'); asm.relabel('Ay', 'p0_Py')
       asm.relabel('Bx0', 'p0_Qx0'); asm.relabel('Bx1', 'p0_Qx1')
       asm.relabel('By0', 'p0_Qy0'); asm.relabel('By1', 'p0_Qy1')
@@ -250,7 +298,17 @@ function verifier (vk, publicInputs, opts = {}) {
       asm.pick('_pn', '_p'); asm.roll('Cy'); asm.sub('_negCy')
       asm.pick('_pn', '_p2'); asm.mod('p2_Py')
       pushConstants(asm, vk, L)
-      apply(asm, loop2, p, loop2.inputs.map((i) => i.name), S2_NAMES)
+      if (SUB) {
+        // The loop hands back its running points as well as the accumulator,
+        // and pair 0's is [|x|]B.
+        apply(asm, loop2, p, loop2.inputs.map((i) => i.name))
+        apply(asm, points.inG2, p, ['_subBx0', '_subBx1', '_subBy0', '_subBy1',
+          ...['Tx0', 'Tx1', 'Ty0', 'Ty1'].map((s) => `rp0_${s}`)], [])
+        for (const j of [1, 2]) for (const s of ['Tx0', 'Tx1', 'Ty0', 'Ty1']) asm.discard(`rp${j}_${s}`)
+        twelve('r').forEach((nm, i) => asm.relabel(nm, S2_NAMES[i]))
+      } else {
+        apply(asm, loop2, p, loop2.inputs.map((i) => i.name), S2_NAMES)
+      }
       for (const nm of PROOF_NAMES) asm.relabel('_keep' + nm, nm)
       for (const nm of S1_NAMES) asm.relabel('_keepS' + nm, nm)
       emitBlob(asm, BLOB_NAMES, 'data')
@@ -276,7 +334,15 @@ function verifier (vk, publicInputs, opts = {}) {
       }
     }, 3)
 
-  return { stage1, stage2, stage3, blobBytes: BLOB_BYTES, blobNames: BLOB_NAMES, stateFor: (proof) => stateFor(vk, L, proof), serialise, L, expected, CUT }
+  return { stage1, stage2, stage3, blobBytes: BLOB_BYTES, blobNames: BLOB_NAMES, stateFor: (proof) => stateFor(vk, L, proof), serialise, L, expected, CUT, subgroup: SUB }
 }
 
-module.exports = { verifier, CUT, BLOB_NAMES, BLOB_BYTES, S1_NAMES, S2_NAMES, PROOF_NAMES }
+/** The inverses stage 1's two G1 ladders read, for A and for C. */
+function subgroupWitnesses (proof) {
+  return {
+    ...points.g1LadderWitnesses({ x: proof.Ax, y: proof.Ay }, 'g1A'),
+    ...points.g1LadderWitnesses({ x: proof.Cx, y: proof.Cy }, 'g1C')
+  }
+}
+
+module.exports = { verifier, subgroupWitnesses, CUT, BLOB_NAMES, BLOB_BYTES, S1_NAMES, S2_NAMES, PROOF_NAMES }

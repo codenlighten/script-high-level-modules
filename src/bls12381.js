@@ -262,6 +262,116 @@ function g2mul (k, q = G2) {
 const g1neg = (p) => (p ? { x: p.x, y: fpNeg(p.y) } : null)
 const g2neg = (q) => (q ? { x: q.x, y: f2neg(q.y) } : null)
 
+// ── SUBGROUP MEMBERSHIP, by endomorphism ────────────────────────────────────
+//
+// E(Fp) has h₁·r points and the twist E′(Fp2) has h₂·r, so a point can satisfy
+// its curve equation and lie outside the order-r subgroup a pairing is defined
+// on. [r]P = O decides membership and costs a 255-bit ladder. Each curve has an
+// endomorphism that acts on the subgroup as multiplication by a SMALL power of
+// x, and comparing the two is the same decision for a fraction of the ladder.
+//
+//   G1   φ(x, y) = (βx, y), β a cube root of 1.     P ∈ G1  ⟺  φ(P) = [−x²]P
+//   G2   ψ = untwist ∘ Frobenius ∘ twist.            Q ∈ G2  ⟺  ψ(Q) = [x]Q
+//
+// Why each "⟸" holds is short enough to state, and every fact it uses is checked
+// numerically by tools/subgroup-derive.js rather than taken on trust:
+//
+//   G1.  φ³ = 1 and φ ≠ 1, so φ² + φ + 1 = 0 in End(E). If φ(P) = [−x²]P then
+//        O = (φ² + φ + 1)P = [x⁴ − x² + 1]P = [r]P. Since r ∤ h₁, the points of
+//        E(Fp) killed by r are exactly G1.
+//
+//   G2.  ψ satisfies Frobenius's characteristic polynomial ψ² − tψ + p = 0 with
+//        t = x + 1. If ψ(Q) = [x]Q then O = [x² − tx + p]Q = [p − x]Q, and
+//        p − x = h₁·r. Q also has [h₂·r]Q = O, and gcd(h₁, h₂) = 1, so [r]Q = O.
+//        r ∤ h₂, so that is G2.
+//
+// Which cube root β is, and the two ψ constants, are DERIVED here — β by trying
+// both roots against the generator, ψ from the untwisting map — not copied from
+// a table. The G2 argument turns on gcd(h₁, h₂) = 1, which is a property of
+// BLS12-381 rather than of every curve, and the tool computes h₂ to check it.
+
+/** k·P for any k and any point on E(Fp) — NOT reduced mod r, which g1mul does. */
+function g1mulAny (k, p) {
+  let acc = null; let cur = p; let e = k < 0n ? -k : k
+  while (e > 0n) { if (e & 1n) acc = g1add(acc, cur); cur = g1add(cur, cur); e >>= 1n }
+  return k < 0n ? g1neg(acc) : acc
+}
+/** k·Q for any k and any point on E′(Fp2). */
+function g2mulAny (k, q) {
+  let acc = null; let cur = q; let e = k < 0n ? -k : k
+  while (e > 0n) { if (e & 1n) acc = g2add(acc, cur); cur = g2add(cur, cur); e >>= 1n }
+  return k < 0n ? g2neg(acc) : acc
+}
+const g1eq = (a, b) => (!a && !b) || (!!a && !!b && a.x === b.x && a.y === b.y)
+const g2eq = (a, b) => (!a && !b) || (!!a && !!b && f2eq(a.x, b.x) && f2eq(a.y, b.y))
+const g1onCurve = (p) => mod(p.y * p.y) === mod(p.x * p.x * p.x + B)
+const g2onCurve = (q) => f2eq(f2sqr(q.y), f2add(f2mul(f2sqr(q.x), q.x), B2))
+
+/** √a in Fp, or null. p ≡ 3 (mod 4), so the candidate is a^((p+1)/4) — and it is checked. */
+function sqrtFp (a) {
+  const s = fpPow(mod(a), (P + 1n) / 4n)
+  return mod(s * s) === mod(a) ? s : null
+}
+/**
+ * √a in Fp2, or null. Algorithm 9 of Adj and Rodríguez-Henríquez for p ≡ 3
+ * (mod 4); the result is squared and compared before it is returned, so a
+ * misremembered step returns null rather than a wrong root.
+ */
+function sqrtFp2 (a) {
+  if (f2isZero(a)) return F2_ZERO
+  const a1 = f2pow(a, (P - 3n) / 4n)
+  const alpha = f2mul(f2sqr(a1), a)
+  const MINUS_ONE = f2(P - 1n, 0n)
+  if (f2eq(f2mul(f2conj(alpha), alpha), MINUS_ONE)) return null
+  const x0 = f2mul(a1, a)
+  const x = f2eq(alpha, MINUS_ONE)
+    ? f2mul(f2(0n, 1n), x0)
+    : f2mul(f2pow(f2add(F2_ONE, alpha), (P - 1n) / 2n), x0)
+  return f2eq(f2sqr(x), a) ? x : null
+}
+/** The point on E(Fp) with this x, if there is one. */
+function g1lift (x) {
+  const y = sqrtFp(mod(x * x * x + B))
+  return y === null ? null : { x: mod(x), y }
+}
+/** The point on E′(Fp2) with this x, if there is one. */
+function g2lift (x) {
+  const y = sqrtFp2(f2add(f2mul(f2sqr(x), x), B2))
+  return y === null ? null : { x, y }
+}
+
+// β: both primitive cube roots of unity satisfy φ³ = 1, and they act on G1 as
+// the two roots of t² + t + 1 mod r, which are −x² and x² − 1. Only one of them
+// is −x², and the generator says which.
+const BETA = (() => {
+  let root = 1n
+  for (let g = 2n; root === 1n; g++) root = fpPow(g, (P - 1n) / 3n)
+  const want = g1mulAny(-(X * X), G1)
+  const found = [root, mod(root * root)].filter((b) => g1eq({ x: mod(b * G1.x), y: G1.y }, want))
+  if (found.length !== 1) throw new Error('bls12381: no cube root of unity acts on G1 as [−x²]')
+  return found[0]
+})()
+
+// ψ(x, y) = (x̄·ξ^((1−p)/3), ȳ·ξ^((1−p)/2)). The twist is D-type, so a point
+// untwists by DIVISION: (x, y) ↦ (x/w², y/w³). Apply the p-power Frobenius and
+// twist back by multiplying by w², w³: the x-coordinate picks up
+// w^(2−2p) = (w⁶)^((1−p)/3) = ξ^((1−p)/3), the y-coordinate w^(3−3p) = ξ^((1−p)/2).
+const PSI_X = f2inv(f2pow(XI, (P - 1n) / 3n))
+const PSI_Y = f2inv(f2pow(XI, (P - 1n) / 2n))
+
+const g1phi = (p) => ({ x: mod(BETA * p.x), y: p.y })
+const g2psi = (q) => ({ x: f2mul(f2conj(q.x), PSI_X), y: f2mul(f2conj(q.y), PSI_Y) })
+
+if (!g2eq(g2psi(G2), g2mulAny(X, G2))) throw new Error('bls12381: ψ does not act on G2 as [x] — the untwisting map is wrong')
+// Deriving β and checking ψ ran the group law, and the operation counters are
+// module state a cost measurement reads. They start from zero for whoever
+// measures first.
+reset()
+
+/** The reference test the Script modules are checked against. */
+const g1InSubgroup = (p) => !!p && g1onCurve(p) && g1eq(g1phi(p), g1mulAny(-(X * X), p))
+const g2InSubgroup = (q) => !!q && g2onCurve(q) && g2eq(g2psi(q), g2mulAny(X, q))
+
 // ── the Miller loop ─────────────────────────────────────────────────────────
 //
 // Affine, with the line evaluated as a full Fp12 element rather than a sparse
@@ -578,6 +688,8 @@ module.exports = {
   f12, f12mulRaw, f12sqr, f12inv, f12conj, f12frob, f12frobN, f12pow, f12eq, F12_ONE,
   cyclotomicPow, cyclotomicSqr, compress, compressedSqr, decompress, HARD_TERMS, Y,
   g1add, g1mul, g1neg, g2add, g2mul, g2neg,
+  g1mulAny, g2mulAny, g1eq, g2eq, g1onCurve, g2onCurve, sqrtFp, sqrtFp2, g1lift, g2lift,
+  BETA, PSI_X, PSI_Y, g1phi, g2psi, g1InSubgroup, g2InSubgroup,
   lineDouble, lineAdd, lineDense, f12mulLine,
   millerLoop, finalExponentiate, pairing
 }

@@ -5,3 +5,6 @@ package-lock.json
 # Real keys. Never committed.
 .wallet.json
 .wallet.utxos.json
+
+# A spend refused after its coins were funded, kept for a retry.
+.pending-spend-*.hex

@@ -36,6 +36,11 @@ const fp12 = require('../src/modules/fp12')
 const g2mod = require('../src/modules/g2')
 const pairing = require('../src/modules/pairing')
 const groth16 = require('../src/modules/groth16')
+const points = require('../src/modules/points')
+const split = require('../src/modules/groth16split')
+const txmod = require('../src/modules/tx')
+const spendlib = require('../src/groth16spend')
+const age = require('../test/vectors/groth16-age')
 
 const P = bls.P
 const OUT = path.join(__dirname, '..', 'results.json')
@@ -102,6 +107,8 @@ add('fp12.mul', fp12.mul); add('fp12.sqr', fp12.sqr); add('fp12.cycSqr', fp12.cy
 add('fp12.mulLine', fp12.mulLine); add('fp12.conj', fp12.conj); add('fp12.frob', fp12.frob)
 add('fp12.inv', fp12.inv); add('fp12.powX', fp12.powX); add('fp12.powXc', fp12.powXc)
 add('g2.stepDouble', g2mod.stepDouble); add('g2.stepAdd', g2mod.stepAdd)
+add('g1.onCurve', points.onCurveG1); add('g2.onCurve', points.onCurveG2)
+add('g1.inSubgroup', points.inG1); add('g2.inSubgroup', points.inG2)
 
 // ── the pairing ─────────────────────────────────────────────────────────────
 const plan = pairing.schedule(pairing.FULL)
@@ -118,17 +125,72 @@ const verifier = groth16.verifier(fx.vk, fx.publicInputs, {
   cases: [{ name: 'a valid proof', inputs: fx.proof, params: { n: P, nn: P } }]
 })
 const groth = measure(verifier)
+// The same verifier without the subgroup checks, so their price is the
+// difference of two measurements.
+const grothBare = measure(groth16.verifier(fx.vk, fx.publicInputs, {
+  subgroup: false,
+  cases: [{ name: 'a valid proof', inputs: fx.proof, params: { n: P, nn: P } }]
+}))
+
+// ── the three-way split, BUILT rather than remembered ───────────────────────
+//
+// These figures used to be typed in from a run of tools/groth16-split.js, and
+// the paper quoted them — which made them the one set of numbers in a
+// generated table that nothing regenerated. So the spend is built here, the
+// same way the tool and the deployment build it, every input is verified, and
+// what it measures is what goes in. The funding txid is a fixed placeholder so
+// the grind — and so every figure — is reproducible.
+const ledger = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'deployments.json'), 'utf8'))
+const ledgerEntries = Array.isArray(ledger) ? ledger : ledger.deployments || []
+const grothSplit = (() => {
+  const v = split.verifier(age.vk, age.statement, { proof: age.proof })
+  const coins = [0, 1, 2].map((vout) => ({ txid: 'a7'.repeat(32), vout, satoshis: 1 }))
+  const { tx, locks, unlocks, grind } = spendlib.buildSpend(v, age.proof, coins)
+  const refused = spendlib.verifyInputs(tx, locks, coins).filter((x) => !x.ok)
+  if (refused.length) throw new Error(`results: the three-way split does not verify — ${refused[0].err}`)
+  const bare = spendlib.lockingScripts(split.verifier(age.vk, age.statement, { proof: age.proof, subgroup: false }))
+  const commitBytes = (opts) => {
+    const m = txmod.commitData(split.BLOB_BYTES, opts)
+    const asm = new Asm()
+    asm.given(m.inputs.map((i) => ({ name: i.name, kind: i.kind || 'num', width: i.width })))
+    m.emit(asm, {})
+    return asm.script().toBuffer().length
+  }
+  const lockBytes = locks.map((s) => s.toBuffer().length)
+  const deployed = ledgerEntries.find((d) => d.key === 'groth16Split')
+  return {
+    stages: 3,
+    cutRound: split.CUT,
+    millerLoopThreePairs: measure(pairing.miller(pairing.FULL, { pairs: 3 })).bytes,
+    lockBytes,
+    unlockBytes: unlocks.map((s) => s.toBuffer().length),
+    blobBytes: split.BLOB_BYTES,
+    blobValues: split.BLOB_NAMES.length,
+    txBytes: tx.toBuffer().length,
+    grindField: 'nLockTime',
+    grindTries: grind.tries,
+    // Each stage binds its siblings through hashPrevouts, which the deployed
+    // two-way split does not. tools/attack-siblings.js is why.
+    siblingBytes: commitBytes({ siblings: { count: 3, index: 0 } }) - commitBytes({}),
+    // What the subgroup checks add to each stage: A and C's ladders in stage
+    // 1, B's comparison in stage 2, nothing in stage 3.
+    subgroupBytes: lockBytes.map((b, i) => b - bare[i].toBuffer().length),
+    deployed: deployed
+      ? { deploy: deployed.deploy, spend: deployed.spend, spendBytes: deployed.spendBytes, feeSat: deployed.feeSat }
+      : false,
+    note: 'three inputs of one spend; every stage commits to the same 44-element blob and binds its siblings; A, C ∈ G1 and B ∈ G2 are checked'
+  }
+})()
 
 // ── what the network has actually run ───────────────────────────────────────
 //
 // Stated as a fraction, because "both halves" was claimed once and was wrong:
 // f^|x| is ONE of the five ladders the final exponentiation runs, not the
 // exponentiation. The Miller-loop stage is complete; the rest is a share.
-const ledger = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'deployments.json'), 'utf8'))
 // The ledger calls it `target`; reading `d.name` produced a table of
 // "undefined" in the paper for every row, which is what a generated artifact is
 // supposed to make impossible and did not because it read the wrong field.
-const deployments = (Array.isArray(ledger) ? ledger : ledger.deployments || []).map((d) => ({
+const deployments = ledgerEntries.map((d) => ({
   name: d.target || d.name || d.key || '(unnamed)',
   claim: d.claim,
   lockBytes: d.lockBytes || d.lock_bytes || null,
@@ -171,27 +233,9 @@ const onchain = {
     note: 'two inputs of one spend, bound by a shared OP_RETURN commitment'
   },
   // The same decomposition, three ways, for a whole Groth16 verifier. The
-  // Miller loop of three pairings is 705,838 bytes on its own — over the
-  // policy before the final exponentiation is considered — so the loop itself
-  // is cut, at round 31 of 63. Built and verified by tools/groth16-split.js;
-  // not deployed.
-  grothVerifierInOneTransaction: {
-    stages: 3,
-    cutRound: 31,
-    millerLoopThreePairs: 705838,
-    lockBytes: [384299, 372515, 476206],
-    unlockBytes: [395761, 383980, 482086],
-    blobBytes: 2156,
-    blobValues: 44,
-    txBytes: 1264144,
-    grindField: 'nLockTime',
-    grindTries: 79389,
-    // Each stage also binds its siblings through hashPrevouts, which the
-    // deployed two-way split does not. tools/attack-siblings.js is why.
-    siblingBytes: 56,
-    deployed: false,
-    note: 'three inputs of one spend; every stage commits to the same 44-element blob'
-  },
+  // Miller loop of three pairings is over the policy on its own, so the loop
+  // itself is cut, at round 31 of 63. Built and verified above.
+  grothVerifierInOneTransaction: grothSplit,
   supersededOnChain: {
     module: 'fp12.powX',
     bytes: modules['fp12.powX'].bytes,
@@ -199,7 +243,9 @@ const onchain = {
     replacementBytes: modules['fp12.powXc'].bytes,
     note: 'deployed and spent, correct, and no longer on the critical path'
   },
-  note: 'a complete pairing has been evaluated on mainnet — as two inputs of one transaction, since a single script doing both is past the size policy'
+  note: grothSplit.deployed
+    ? 'a complete pairing has been evaluated on mainnet as two inputs of one transaction, and a whole Groth16 verifier as three'
+    : 'a complete pairing has been evaluated on mainnet — as two inputs of one transaction, since a single script doing both is past the size policy'
 }
 
 // ── operation counts, from running a real pairing ───────────────────────────
@@ -246,7 +292,13 @@ const results = {
     finalExp: { ...finalExp, ladders: bls.HARD_TERMS.reduce((m, t) => Math.max(m, t.j), 0), terms: bls.HARD_TERMS.length, frobenius: bls.HARD_TERMS.reduce((s, t) => s + t.i, 0) },
     e,
     products,
-    groth16: { ...groth, publicInputs: fx.publicInputs.length, spenderChooses: verifier.inputs.filter((i) => !i.witness).map((i) => i.name) },
+    groth16: {
+      ...groth,
+      publicInputs: fx.publicInputs.length,
+      spenderChooses: verifier.inputs.filter((i) => !i.witness).map((i) => i.name),
+      withoutSubgroupChecks: grothBare.bytes,
+      subgroupCheckBytes: groth.bytes - grothBare.bytes
+    },
     onchain
   },
   operations: {

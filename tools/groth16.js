@@ -24,6 +24,7 @@ const { Asm } = require('../src/asm')
 const F = require('../src/facts')
 const bls = require('../src/bls12381')
 const g16 = require('../src/modules/groth16')
+const points = require('../src/modules/points')
 
 const f = g16.fixture([3n, 5n])
 const P381 = bls.P
@@ -40,6 +41,13 @@ const bend = (field, delta) => {
   return { Ax: A.x, Ay: A.y, Bx0: B.x[0], Bx1: B.x[1], By0: B.y[0], By1: B.y[1], Cx: C.x, Cy: C.y }
 }
 
+// Points on their curves and outside their subgroups. The whole verifier
+// refuses these for two reasons at once — the subgroup check, and an equation
+// that does not hold for them — so it cannot say which did the work.
+// tools/groth16-split.js can, and does.
+const A3 = points.outside.g1({ x: f.proof.Ax, y: f.proof.Ay })
+const Bh = points.outside.g2({ x: [f.proof.Bx0, f.proof.Bx1], y: [f.proof.By0, f.proof.By1] })
+
 const m = g16.verifier(f.vk, f.publicInputs, {
   maxWitnessAttacks: Number(process.env.GROTH16_ATTACKS || 2),
   cases: [
@@ -49,7 +57,9 @@ const m = g16.verifier(f.vk, f.publicInputs, {
     // Not a wrong proof — not a proof. Before the curve checks these were
     // refused by the equation, which is the wrong reason to refuse them.
     { name: 'A not on the curve', refuse: 'a pair of field elements is not a point', inputs: { ...f.proof, Ay: (f.proof.Ay + 1n) % P381 }, params: { n: P381, nn: P381 } },
-    { name: 'B not on the twist', refuse: 'a pair of Fp2 elements is not a twist point', inputs: { ...f.proof, By1: (f.proof.By1 + 1n) % P381 }, params: { n: P381, nn: P381 } }
+    { name: 'B not on the twist', refuse: 'a pair of Fp2 elements is not a twist point', inputs: { ...f.proof, By1: (f.proof.By1 + 1n) % P381 }, params: { n: P381, nn: P381 } },
+    { name: 'A + (0, 2), outside G1', refuse: 'on the curve, of order 3r, and not in G1', inputs: { ...f.proof, Ax: A3.x, Ay: A3.y }, params: { n: P381, nn: P381 } },
+    { name: 'B + a cofactor point, outside G2', refuse: 'on the twist and not in G2', inputs: { ...f.proof, Bx0: Bh.x[0], Bx1: Bh.x[1], By0: Bh.y[0], By1: Bh.y[1] }, params: { n: P381, nn: P381 } }
   ]
 })
 

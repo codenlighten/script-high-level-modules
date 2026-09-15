@@ -30,6 +30,7 @@ const { Asm } = require('../src/asm')
 const F = require('../src/facts')
 const bls = require('../src/bls12381')
 const g16 = require('../src/modules/groth16')
+const points = require('../src/modules/points')
 
 const DIR = path.join(__dirname, '..', 'test', 'vectors', 'groth16-age')
 const load = (f) => require(path.join(DIR, f))
@@ -61,11 +62,16 @@ const size = (m) => {
 }
 
 // The coin the bar puts on the counter: at least 21, as of 2026.
+// A proof the honest one with A moved off its subgroup: still on the curve, and
+// where the pairing stops being the bilinear map the proof system relies on.
+const A3 = points.outside.g1({ x: honest.Ax, y: honest.Ay })
+
 const coin21 = g16.verifier(vk, [YEAR, 21n], {
   maxWitnessAttacks: Number(process.env.DEMO_ATTACKS || 1),
   cases: [
     { name: 'a valid proof of being over 21', inputs: honest, params },
-    { name: 'someone underage, proving anyway', refuse: 'the proof does not verify — no 7-bit decomposition of a negative number exists', inputs: underage, params }
+    { name: 'someone underage, proving anyway', refuse: 'the proof does not verify — no 7-bit decomposition of a negative number exists', inputs: underage, params },
+    { name: 'the valid proof with A moved out of G1', refuse: 'A + (0, 2) is on the curve and not in the subgroup', inputs: { ...honest, Ax: A3.x, Ay: A3.y }, params }
   ]
 })
 // A different coin, asking a different question. Same proof, same prover.

@@ -246,6 +246,28 @@ function complete (m, params, caseValues) {
   return values
 }
 
+/**
+ * The values a refusal case is spent with: what the case pinned, and for every
+ * input it did not pin, what the module's hint supplies for those inputs.
+ *
+ * A hint may be unable to answer — there is no inverse of zero to supply — and
+ * then the case has to pin that witness itself. What it may not do is leave an
+ * input out and have the omission counted as the module refusing.
+ */
+function refusalValues (m, params, caseValues = {}) {
+  const values = { ...caseValues }
+  if (m.hint && m.inputs.some((i) => values[i.name] === undefined)) {
+    let hinted = {}
+    try { hinted = m.hint(values, params) || {} } catch (e) { /* no honest witness exists; the case must pin its own */ }
+    for (const k of Object.keys(hinted)) if (values[k] === undefined) values[k] = hinted[k]
+  }
+  const missing = m.inputs.filter((i) => values[i.name] === undefined).map((i) => i.name)
+  if (missing.length) {
+    throw new Error(`no value for ${missing.slice(0, 4).join(', ')}${missing.length > 4 ? ` and ${missing.length - 4} more` : ''}`)
+  }
+  return values
+}
+
 /** Two supplied values are the same value — Buffers included. */
 function sameValue (a, b) {
   if (Buffer.isBuffer(a) || Buffer.isBuffer(b)) {
@@ -326,17 +348,37 @@ function proveModule (m, { params = {}, quiet = false } = {}) {
     }
 
     // A case marked `refuse` asserts the other half of the module: an input it
-    // must not accept, whatever the spender supplies. The honest hint is not
-    // available for such a case (there IS no honest witness), so the case
-    // supplies the witness values itself.
+    // must not accept, whatever the spender supplies.
+    //
+    // A REFUSAL HAS TO BE A REFUSAL BY THE SCRIPT. This used to build the
+    // unlocking script inside the same try as the evaluation, so a case that
+    // named only some of the module's inputs threw while PUSHING — undefined is
+    // not a number — and the throw was reported as "refused". Every refusal case
+    // on the Groth16 verifiers named the proof and not its witnesses, so "a
+    // proof from someone underage does not verify" had never been put to the
+    // interpreter: it was refused by the test harness failing to build a spend.
+    //
+    // So the witnesses a case does not pin are filled from the module's hint —
+    // which is the strongest form of the test anyway, every inverse correct for
+    // the points supplied so that nothing fails until the property does — and a
+    // case that still cannot be built is a FAILURE of the case, never a pass.
     if (c.refuse) {
       let rr
+      let unlock
+      let lock
       try {
-        const unlock = new bsv.Script()
+        const values = refusalValues(m, p, c.inputs)
+        unlock = new bsv.Script()
         push(unlock, SENTINEL, 'bytes')
-        for (const i of m.inputs) push(unlock, c.inputs[i.name], i.kind)
-        rr = evaluate(unlock, buildAccept(m, p))
-      } catch (err) { rr = { ok: false, error: err.message } }
+        for (const i of m.inputs) push(unlock, values[i.name], i.kind)
+        lock = buildAccept(m, p)
+      } catch (err) {
+        report.cases.push({ label, ok: false, refuse: true })
+        report.failures.push(`${m.name} / ${label}: the refusal case could not be built, so nothing was refused — ${err.message}`)
+        say(`  FAIL  ${label} — could not build the spend to refuse: ${err.message}`)
+        continue
+      }
+      try { rr = evaluate(unlock, lock) } catch (err) { rr = { ok: false, error: err.message } }
       report.cases.push({ label, ok: !rr.ok, refuse: true })
       if (rr.ok) {
         report.failures.push(`${m.name} / ${label}: ACCEPTED what it must refuse — ${c.refuse}`)
@@ -464,4 +506,4 @@ function proveAll (entries) {
   return { reports, failures }
 }
 
-module.exports = { sameValue, checkEnsures, sampleWitnesses, buildContextual, onePass, unlockFor, build, buildAccept, moduleSize, proveModule, proveAll, complete, SENTINEL, defaultAttacks }
+module.exports = { sameValue, checkEnsures, sampleWitnesses, buildContextual, onePass, unlockFor, build, buildAccept, moduleSize, proveModule, proveAll, complete, refusalValues, SENTINEL, defaultAttacks }

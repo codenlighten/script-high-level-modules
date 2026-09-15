@@ -1,6 +1,6 @@
 {
-  "generated": "2026-09-06",
-  "commit": "48618cf6898d5a5f41808554094ca4d7212ded12",
+  "generated": "2026-09-15",
+  "commit": "6865a1f27ad5dce7ca741a81d312f84839f9d804",
   "curve": {
     "name": "BLS12-381",
     "p": "0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab",
@@ -148,6 +148,30 @@
       "marginal": 487,
       "opcodes": 363,
       "witnesses": 2
+    },
+    "g1.onCurve": {
+      "bytes": 72,
+      "marginal": 21,
+      "opcodes": 17,
+      "witnesses": 0
+    },
+    "g2.onCurve": {
+      "bytes": 178,
+      "marginal": 127,
+      "opcodes": 102,
+      "witnesses": 0
+    },
+    "g1.inSubgroup": {
+      "bytes": 8517,
+      "marginal": 9321,
+      "opcodes": 6032,
+      "witnesses": 136
+    },
+    "g2.inSubgroup": {
+      "bytes": 389,
+      "marginal": 340,
+      "opcodes": 144,
+      "witnesses": 0
     }
   },
   "sizes": {
@@ -212,10 +236,10 @@
       }
     ],
     "groth16": {
-      "bytes": 1241011,
-      "marginal": 1241011,
-      "opcodes": 774895,
-      "witnesses": 480,
+      "bytes": 1246986,
+      "marginal": 1246986,
+      "opcodes": 786448,
+      "witnesses": 752,
       "publicInputs": 2,
       "spenderChooses": [
         "Ax",
@@ -226,7 +250,9 @@
         "By1",
         "Cx",
         "Cy"
-      ]
+      ],
+      "withoutSubgroupChecks": 1229196,
+      "subgroupCheckBytes": 17790
     },
     "onchain": {
       "millerComplete": true,
@@ -251,23 +277,33 @@
         "cutRound": 31,
         "millerLoopThreePairs": 705838,
         "lockBytes": [
-          384299,
-          372515,
-          476206
+          399402,
+          371834,
+          475647
         ],
         "unlockBytes": [
-          395761,
-          383980,
-          482086
+          424186,
+          383299,
+          481527
         ],
         "blobBytes": 2156,
         "blobValues": 44,
-        "txBytes": 1264144,
+        "txBytes": 1291329,
         "grindField": "nLockTime",
-        "grindTries": 79389,
+        "grindTries": 168127,
         "siblingBytes": 56,
-        "deployed": false,
-        "note": "three inputs of one spend; every stage commits to the same 44-element blob"
+        "subgroupBytes": [
+          16849,
+          957,
+          0
+        ],
+        "deployed": {
+          "deploy": "025f20f1d4156aa354afef37b1ec67e5c461f11375bc739902845a3b985dc5f0",
+          "spend": "cad6d2cca44fffb2f445009f392b668382d79d120b1c14db0fd4a8d192204bb6",
+          "spendBytes": 1291329,
+          "feeSat": 253934
+        },
+        "note": "three inputs of one spend; every stage commits to the same 44-element blob and binds its siblings; A, C ∈ G1 and B ∈ G2 are checked"
       },
       "supersededOnChain": {
         "module": "fp12.powX",
@@ -276,7 +312,7 @@
         "replacementBytes": 73582,
         "note": "deployed and spent, correct, and no longer on the critical path"
       },
-      "note": "a complete pairing has been evaluated on mainnet — as two inputs of one transaction, since a single script doing both is past the size policy"
+      "note": "a complete pairing has been evaluated on mainnet as two inputs of one transaction, and a whole Groth16 verifier as three"
     }
   },
   "operations": {
@@ -475,6 +511,30 @@
           "name": "pairing.consume",
           "lockBytes": 475017,
           "vout": 1
+        }
+      ]
+    },
+    {
+      "name": "groth16.stage1 ▸ groth16.stage2 ▸ groth16.stage3",
+      "claim": "a zero-knowledge proof of age, verified with its points checked into their subgroups, across three inputs of one transaction",
+      "lockBytes": 1246883,
+      "deploy": "025f20f1d4156aa354afef37b1ec67e5c461f11375bc739902845a3b985dc5f0",
+      "spend": "cad6d2cca44fffb2f445009f392b668382d79d120b1c14db0fd4a8d192204bb6",
+      "parts": [
+        {
+          "name": "groth16.stage1",
+          "lockBytes": 399402,
+          "vout": 0
+        },
+        {
+          "name": "groth16.stage2",
+          "lockBytes": 371834,
+          "vout": 1
+        },
+        {
+          "name": "groth16.stage3",
+          "lockBytes": 475647,
+          "vout": 2
         }
       ]
     }

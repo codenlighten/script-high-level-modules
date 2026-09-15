@@ -50,6 +50,8 @@ const ROWS = [
   ['fp12.mulLine', fp12.mulLine, { n: BLS }, 'BLS12-381, a Miller-loop line'],
   ['g1.onCurve', require('../src/modules/points').onCurveG1, { n: BLS }, 'y² = x³ + 4 over Fp'],
   ['g2.onCurve', require('../src/modules/points').onCurveG2, { n: BLS }, 'y² = x³ + 4(u+1) over Fp2'],
+  ['g1.inSubgroup', require('../src/modules/points').inG1, { n: BLS }, 'φ(P) = [−x²]P, two 63-bit ladders'],
+  ['g2.inSubgroup', require('../src/modules/points').inG2, { n: BLS }, 'T = −ψ(Q), T from the Miller loop'],
   ['g2.stepDouble', g2mod.stepDouble, { n: BLS }, 'a tangent and the point it moves to'],
   ['g2.stepAdd', g2mod.stepAdd, { n: BLS }, 'a chord and the point it moves to'],
   ['fp12.conj', fp12.conj, { n: BLS }, 'BLS12-381, the p⁶ Frobenius'],

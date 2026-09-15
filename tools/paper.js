@@ -23,6 +23,7 @@ const n = (x) => x.toLocaleString('en-US')
 const pct = (x) => (x * 100).toFixed(1) + '%'
 
 const M = (k) => r.modules[k]
+const G8 = r.pairing.onchain.grothVerifierInOneTransaction
 
 const doc = `# Tables
 
@@ -68,6 +69,10 @@ cost.
 | \`fp12.powX\` | f ↦ f^\\|x\\|, MSB-first, 63 squarings and 5 products | ${n(M('fp12.powX').bytes)} | ${n(M('fp12.powX').marginal)} | ${n(M('fp12.powX').opcodes)} |
 | \`g2.stepDouble\` | tangent at T, and 2T | ${n(M('g2.stepDouble').bytes)} | ${n(M('g2.stepDouble').marginal)} | ${n(M('g2.stepDouble').opcodes)} |
 | \`g2.stepAdd\` | chord through T and Q, and T + Q | ${n(M('g2.stepAdd').bytes)} | ${n(M('g2.stepAdd').marginal)} | ${n(M('g2.stepAdd').opcodes)} |
+| \`g1.onCurve\` | y² = x³ + 4 | ${n(M('g1.onCurve').bytes)} | ${n(M('g1.onCurve').marginal)} | ${n(M('g1.onCurve').opcodes)} |
+| \`g2.onCurve\` | y² = x³ + 4(u + 1) | ${n(M('g2.onCurve').bytes)} | ${n(M('g2.onCurve').marginal)} | ${n(M('g2.onCurve').opcodes)} |
+| \`g1.inSubgroup\` | **witnessed**: the curve, and φ(P) = [−x²]P by two ladders | ${n(M('g1.inSubgroup').bytes)} | ${n(M('g1.inSubgroup').marginal)} | ${n(M('g1.inSubgroup').opcodes)} |
+| \`g2.inSubgroup\` | the twist, and T = −ψ(Q) for the loop's T = [\\|x\\|]Q | ${n(M('g2.inSubgroup').bytes)} | ${n(M('g2.inSubgroup').marginal)} | ${n(M('g2.inSubgroup').opcodes)} |
 
 **Cyclotomic squaring is ${pct(1 - M('fp12.cycSqr').marginal / M('fp12.sqr').marginal)} smaller than general squaring**, and the sparse line
 product is ${pct(1 - M('fp12.mulLine').marginal / M('fp12.mul').marginal)} smaller than a general Fp12 product.
@@ -105,9 +110,13 @@ e(A, B) · e(−L, γ) · e(−C, δ) = e(α, β), with ${r.pairing.groth16.publ
 | witnessed values | ${n(r.pairing.groth16.witnesses)} |
 | chosen by the spender | ${r.pairing.groth16.spenderChooses.join(', ')} |
 | chosen by the locking script | γ, δ, L, and e(α, β) |
+| subgroup checks, A, C ∈ G1 and B ∈ G2 | ${n(r.pairing.groth16.subgroupCheckBytes)} bytes, ${pct(r.pairing.groth16.subgroupCheckBytes / r.pairing.groth16.bytes)} |
+| the same verifier without them | ${n(r.pairing.groth16.withoutSubgroupChecks)} bytes |
 
-The second-to-last row is the soundness property. A spender who could choose γ
-could choose one satisfying the equation for a proof of nothing.
+The row naming what the locking script chooses is the soundness property. A
+spender who could choose γ could choose one satisfying the equation for a proof
+of nothing. The subgroup rows are the other half of it: a point outside its
+subgroup is still a point, and the pairing is not bilinear on it.
 
 ## Table 5 — what the network has executed
 
@@ -169,6 +178,27 @@ this table and the prose cannot disagree about how many there are.
 ${r.deployments.map((d) => `| \`${d.name}\` | ${d.lockBytes ? n(d.lockBytes) : '—'} | \`${(d.deploy || '').slice(0, 16)}…\` |`).join('\n')}
 
 **${r.deployments.length} of ${r.deployments.length} reconstruct exactly.**
+
+## Table 8 — a Groth16 verifier across three inputs of one transaction
+
+The three-pairing Miller loop alone is ${n(G8.millerLoopThreePairs)} bytes, past the policy, so
+the loop itself is cut, at round ${G8.cutRound} of 63. Built by \`src/groth16spend.js\` and every
+input verified before these figures were taken.
+
+| input | computes | locking | unlocking | of which subgroup checks |
+| --- | --- | ---: | ---: | ---: |
+| 0 | A, C ∈ G1; rounds 1–${G8.cutRound} | ${n(G8.lockBytes[0])} | ${n(G8.unlockBytes[0])} | ${n(G8.subgroupBytes[0])} |
+| 1 | rounds ${G8.cutRound + 1}–63; B ∈ G2 | ${n(G8.lockBytes[1])} | ${n(G8.unlockBytes[1])} | ${n(G8.subgroupBytes[1])} |
+| 2 | final exponentiation against e(α, β) | ${n(G8.lockBytes[2])} | ${n(G8.unlockBytes[2])} | — |
+| output | the blob, ${G8.blobValues} field elements | ${n(G8.blobBytes)} | — | — |
+
+The transaction is ${n(G8.txBytes)} bytes. Its three OP_PUSH_TX preimages were ground
+together over nLockTime, ${n(G8.grindTries)} tries for a triple. Every stage binds its
+siblings through hashPrevouts, ${G8.siblingBytes} bytes apiece.
+
+${G8.deployed
+  ? `**On mainnet**: funding \`${G8.deployed.deploy}\`, spend \`${G8.deployed.spend}\`.`
+  : 'Verified against the interpreter under relay policy flags. **Not yet funded on chain.**'}
 `
 
 // ── the prose, too ──────────────────────────────────────────────────────────
@@ -221,7 +251,14 @@ const PROSE = {
   'the blob, in values': `${G.blobValues} field elements`,
   'the cut round, in context': `round ${G.cutRound} of 63`,
   'the split transaction': n(G.txBytes),
-  'the triple grind': n(G.grindTries)
+  'the triple grind': n(G.grindTries),
+  'split stage 1, unlock': n(G.unlockBytes[0]),
+  'split stage 1, subgroup checks': n(G.subgroupBytes[0]),
+  // §7.6, subgroup membership
+  'subgroup checks in the verifier': n(r.pairing.groth16.subgroupCheckBytes),
+  'the verifier without them': n(r.pairing.groth16.withoutSubgroupChecks),
+  'g1.inSubgroup, standalone': n(M('g1.inSubgroup').bytes),
+  'g2.inSubgroup, in context': `${M('g2.inSubgroup').bytes} bytes`
 }
 
 function checkProse () {
@@ -251,7 +288,7 @@ if (check) {
 } else {
   fs.writeFileSync(OUT, doc)
   const missing = checkProse()
-  console.log(`paper: wrote paper/tables.md — 7 tables from results.json`)
+  console.log(`paper: wrote paper/tables.md — 8 tables from results.json`)
   if (missing.length) {
     console.log('  paper.md does not quote:')
     for (const m of missing) console.log(`    ${m}`)

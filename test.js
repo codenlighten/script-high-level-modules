@@ -201,7 +201,16 @@ const { failures, reports } = proveAll([
       process.exit(1)
     }
   }
-  console.log('\n  groth16.verify: the spender chooses only A, B, C — γ and δ are in the script')
+  // A, B and C must be checked into their subgroups, and neither check can be
+  // written without its constant: β for φ on G1, ψ's coefficients on G2.
+  const sub = { 'β': bls.BETA, 'ψ c_x': bls.PSI_X[1], 'ψ c_y₀': bls.PSI_Y[0], 'ψ c_y₁': bls.PSI_Y[1] }
+  for (const [what, value] of Object.entries(sub)) {
+    if (!live.has(value.toString())) {
+      console.log(`\n  groth16.verify: ${what} is not in the locking script — a subgroup check has gone missing`)
+      process.exit(1)
+    }
+  }
+  console.log('\n  groth16.verify: the spender chooses only A, B, C — γ and δ are in the script, and A, B, C are checked into their subgroups')
 }
 
 // THE THREE-WAY SPLIT. tools/groth16-split.js proves all three stages against
@@ -269,7 +278,35 @@ const { failures, reports } = proveAll([
       process.exit(1)
     }
   }
-  console.log(`  groth16.split: cut at round ${split.CUT} of 63, all three stages commit to the same ${split.BLOB_BYTES}-byte blob and bind their siblings`)
+  // And every stage must check what it is responsible for checking. Stage 1
+  // carries a whole G1 ladder for A and another for C. Stage 2 checks B against
+  // the [|x|]B its own loop finishes with — so it must take in no running point
+  // but the round-31 one the blob pins, and its script must hold ψ's constants.
+  const points = require('./src/modules/points')
+  const ladder = (prefix) => v.stage1.inputs.filter((i) => i.witness && i.name.startsWith(prefix)).length
+  if (ladder('g1A') !== points.G1_WITNESSES || ladder('g1C') !== points.G1_WITNESSES) {
+    console.log(`\n  groth16.split: stage1 does not carry both G1 subgroup ladders (${ladder('g1A')}, ${ladder('g1C')})`)
+    process.exit(1)
+  }
+  const pinnedT = new Set(split.S1_NAMES)
+  const strayT = v.stage2.inputs.filter((i) => /T[xy][01]$/.test(i.name) && !pinnedT.has(i.name))
+  if (strayT.length) {
+    console.log(`\n  groth16.split: stage2 takes ${strayT.map((i) => i.name).join(', ')} as input — B's subgroup check would compare against a point the spender chose`)
+    process.exit(1)
+  }
+  {
+    const { Asm } = require('./src/asm')
+    const { fromNum } = require('./src/num')
+    const asm2 = new Asm()
+    asm2.given(v.stage2.inputs.map((i) => ({ name: i.name, kind: i.kind || 'num', width: i.width })))
+    v.stage2.emit(asm2, {})
+    const consts2 = new Set(asm2.script().chunks.filter((c) => c.buf).map((c) => fromNum(c.buf).toString()))
+    if (![bls.PSI_X[1], bls.PSI_Y[0], bls.PSI_Y[1]].every((c) => consts2.has(c.toString()))) {
+      console.log('\n  groth16.split: stage2 does not contain ψ\'s constants — B is not checked into G2')
+      process.exit(1)
+    }
+  }
+  console.log(`  groth16.split: cut at round ${split.CUT} of 63, all three stages commit to the same ${split.BLOB_BYTES}-byte blob, bind their siblings, and check A, C ∈ G1 and B ∈ G2`)
 }
 
 process.exit(failures.length ? 1 : 0)

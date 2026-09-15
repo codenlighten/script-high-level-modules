@@ -20,6 +20,11 @@ const lib = require('../src')
 const g16 = require('../src/modules/groth16')
 const txmod = require('../src/modules/tx')
 const pairing = require('../src/modules/pairing')
+const points = require('../src/modules/points')
+const bsv = require('@smartledger/bsv')
+const { refusalValues, buildAccept, SENTINEL } = require('../src/testkit')
+const { evaluate } = require('../src/run')
+const { pushNum, pushData } = require('../src/num')
 
 const P = bls.P
 // ACCEPTED FINDINGS, and why each is accepted.
@@ -31,8 +36,6 @@ const P = bls.P
 // Closing one means deleting a line; discovering one means the suite goes red
 // until it is either fixed or written down.
 const ACCEPTED = {
-  'A, B and C are NOT checked for prime-order subgroup membership':
-    'known and documented in paper §10.3 and docs/pairing.md, with the four remedies priced at 5–10% of the verifier; open because the endomorphism forms must be derived and verified rather than recalled',
   'the deployed split does not bind a stage to its siblings':
     'found by this audit and FIXED for new constructions — commitData({ siblings }) checks hashPrevouts for 47 bytes at two siblings and 56 at three and groth16split uses it. Accepted only for the instance already on chain, which cannot be changed; tools/verify-chain.js checks that spend\'s shape from outside, and tools/attack-siblings.js is the standing demonstration of what that check is load-bearing for'
 }
@@ -80,13 +83,26 @@ console.log('\n  1. WITNESS CANONICITY — is every numeric witness bounded?\n')
     ['schnorr.liftX', lib.modules['schnorr.liftX'], {}],
     ['pairing.miller63', pairing.miller(pairing.FULL), { n: P, nn: P }],
     ['pairing.finalExp', pairing.finalExp, { n: P, nn: P }],
-    ['groth16.verify', (() => { const f = g16.fixture([3n, 5n]); return g16.verifier(f.vk, f.publicInputs, { cases: [{ name: 'v', inputs: f.proof, params: { n: P, nn: P } }] }) })(), { n: P, nn: P }]
+    ['g1.inSubgroup', lib.modules['g1.inSubgroup'], { n: P }],
+    ['groth16.verify', (() => { const f = g16.fixture([3n, 5n]); return g16.verifier(f.vk, f.publicInputs, { cases: [{ name: 'v', inputs: f.proof, params: { n: P, nn: P } }] }) })(), { n: P, nn: P }],
+    // The split stages bound only the blob at the door and leave every
+    // inverse to the module that reads it. That is a claim about provenance,
+    // and this is where it is checked.
+    ...(() => {
+      const f = g16.fixture([3n, 5n])
+      const v = require('../src/modules/groth16split').verifier(f.vk, f.publicInputs, { proof: f.proof })
+      return [['groth16.stage1', v.stage1, {}], ['groth16.stage2', v.stage2, {}], ['groth16.stage3', v.stage3, {}]]
+    })()
   ]
   let checked = 0
   for (const [name, m, params] of cases) {
     const asm = new Asm()
+    // Only the inputs that are NOT witnesses arrive with a known range. A
+    // witness has to be bounded by something the script does, and granting it
+    // a range here would let a requirement be discharged by the audit's own
+    // assumption rather than by a check.
     asm.given([{ name: '_s', kind: 'bytes', width: 1 },
-      ...m.inputs.map((i) => ({ name: i.name, kind: i.kind || 'num', width: i.width, facts: F.range(0n, P) }))])
+      ...m.inputs.map((i) => ({ name: i.name, kind: i.kind || 'num', width: i.width, facts: i.witness ? undefined : F.range(0n, P) }))])
     try { m.emit(asm, params) } catch (e) { say(false, name, `could not emit: ${e.message.slice(0, 40)}`); continue }
     const numeric = m.inputs.filter((i) => i.witness && (i.kind || 'num') === 'num')
     const unbounded = numeric.filter((i) => !asm.boundedOrigins.has(i.name) && !EXEMPT[i.name])
@@ -180,8 +196,8 @@ console.log('\n  3. TRANSACTION BINDING — can the two inputs disagree about f?
     'a preimage of another transaction fails the signature it is turned into')
 }
 
-// ── 4. THE VERIFICATION KEY, AND WHAT IS STILL NOT CHECKED ──────────────────
-console.log('\n  4. GROTH16 — what may a spender choose?\n')
+// ── 4. THE VERIFICATION KEY, AND WHAT GROUP EACH CHOICE MUST BE IN ──────────
+console.log('\n  4. GROTH16 — what may a spender choose, and is each choice in the right group?\n')
 {
   const f = g16.fixture([3n, 5n])
   const v = g16.verifier(f.vk, f.publicInputs, { cases: [{ name: 'v', inputs: f.proof, params: { n: P, nn: P } }] })
@@ -201,38 +217,66 @@ console.log('\n  4. GROTH16 — what may a spender choose?\n')
     'γ, δ and L are constants in the locking script', 'a spender who could choose γ would not need a proof')
   say(consts.has(bls.pairing(f.vk.alpha, f.vk.beta)[0][0][0].toString()),
     'e(α, β) is the constant compared against', 'fixed by the verifying key')
-  say(true, 'A, B and C are checked against their curve equations',
-    'y² = x³ + 4 on G1 and y² = x³ + 4(u+1) on the twist, 201 bytes')
 
-  // The finding. Say it as a finding.
-  say(false, 'A, B and C are NOT checked for prime-order subgroup membership',
-    'Groth16 requires it; see below')
+  // Subgroup membership — this audit's longest-standing finding, closed.
+  // Structurally first: the constants the checks cannot be written without.
+  say(consts.has(bls.BETA.toString()) && consts.has(bls.PSI_X[1].toString()) &&
+      consts.has(bls.PSI_Y[0].toString()) && consts.has(bls.PSI_Y[1].toString()),
+  'A, B and C are checked for subgroup membership', 'β and ψ\'s constants are in the locking script')
+  const ladders = (prefix) => v.inputs.filter((i) => i.witness && i.name.startsWith(prefix)).length
+  say(ladders('g1A') === points.G1_WITNESSES && ladders('g1C') === points.G1_WITNESSES,
+    'A and C each carry a whole G1 ladder', `${points.G1_WITNESSES} witnessed inverses apiece`)
+
+  // Then empirically, at the level of the modules: a point on its curve and
+  // outside its subgroup is refused, and the same point shifted back into the
+  // subgroup is accepted — so the refusal is about the subgroup and nothing else.
+  const accepts = (m, params, inputs) => {
+    const values = refusalValues(m, params, inputs)
+    const unlock = new bsv.Script().add(pushData(SENTINEL))
+    for (const i of m.inputs) unlock.add(i.kind === 'bytes' ? pushData(values[i.name]) : pushNum(values[i.name]))
+    return evaluate(unlock, buildAccept(m, params)).ok
+  }
+  const A = { x: f.proof.Ax, y: f.proof.Ay }
+  const A3 = points.outside.g1(A)
+  say(accepts(points.inG1, { n: P }, A) && !accepts(points.inG1, { n: P }, A3),
+    'g1.inSubgroup accepts A and refuses A + (0, 2)', 'on the curve, order 3r')
+  const B = { x: [f.proof.Bx0, f.proof.Bx1], y: [f.proof.By0, f.proof.By1] }
+  const Bh = points.outside.g2(B)
+  const withT = (Q) => points.g2Inputs(Q, points.fast.g2mul(points.XABS, Q))
+  say(accepts(points.inG2, { n: P }, withT(B)) && !accepts(points.inG2, { n: P }, withT(Bh)),
+    'g2.inSubgroup accepts B and refuses B + [r]R', 'on the twist, T = [|x|]Q honest for both')
+
+  let keyRefused = false
+  try { g16.checkKey({ ...f.vk, alpha: points.ORDER3 }) } catch (e) { keyRefused = true }
+  say(keyRefused, 'a verifying key with a point outside its subgroup does not compile', 'α = (0, 2) is refused at build time')
 }
 
 console.log(`
   WHAT THIS AUDIT DOES NOT CLEAR
   ──────────────────────────────
-  Subgroup membership is not checked. E(Fp) has order h₁·r and the twist h₂·r,
-  so a point can satisfy the curve equation and lie outside the r-order subgroup
-  where the pairing is not the bilinear map the security argument is about. A
-  standard Groth16 verifier checks this; this one does not.
+  Subgroup membership is checked now, and was this audit's longest-standing
+  finding: A and C in G1 by φ(P) = [−x²]P, B in G2 by ψ(Q) = [x]Q against the
+  [|x|]B its own Miller loop computes. Why those comparisons decide membership
+  is computed by tools/subgroup-derive.js, and checked there against an
+  implementation that shares no code with this one.
 
-  No attack on this construction is exhibited here, and none should be inferred
-  from its absence — the honest statement is that a requirement is unmet, not
-  that it is unimportant. The remedy and its price:
+  What remains outside it:
 
-    [r]P = O on G1, via the existing ladder            about 40,000 bytes each
-    [r]Q = O on G2                                     considerably more
-    ψ(Q) = [x]Q on G2, the endomorphism form           about 32,000 bytes
-    φ(P) = [λ]P on G1, the GLV form                    about 20,000 bytes
+    Groth16's own soundness, and the setup that produced the verifying key. A
+    verifier checks the equation; it cannot know whether anyone kept the
+    trapdoor.
 
-  On a 1,241,012-byte verifier that is between 5% and 10%. It is affordable and
-  it is not done, and the reason it is not done is that the endomorphism forms
-  must be DERIVED and verified rather than recalled — this repository has twice
-  published a cyclotomic formula written from memory and twice thrown it away.
+    The G2 check's precondition. g2.inSubgroup is sound only if T really is
+    [|x|]Q, and both verifiers take it from their own loop. That is a property
+    of how the module is CALLED, so it is tested rather than asserted:
+    tools/groth16-split.js gives stage 2 a B outside G2, built with the check
+    and without it, and requires refusal from one and acceptance from the other.
 
-  The curve-equation checks above were added because this audit found them
-  missing. The subgroup checks are the same finding, one step further in.
+    Completeness at the edges. An affine ladder refuses a point whose ladder
+    meets infinity — impossible for a subgroup point at these scalars, and the
+    right answer for any other. Compressed squaring's decompression can meet a
+    zero determinant, which would refuse a valid proof and never accept an
+    invalid one.
 `)
 
 console.log(`  ${findings} finding(s), ${findings - unexpected.length} accepted and written down:\n`)

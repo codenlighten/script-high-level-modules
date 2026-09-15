@@ -33,6 +33,7 @@ const fp2mod = require('../src/modules/fp2')
 const fp6mod = require('../src/modules/fp6')
 const fp12mod = require('../src/modules/fp12')
 const g2mod = require('../src/modules/g2')
+const pointsMod = require('../src/modules/points')
 const BLS = require('../src/bls12381').P
 
 // A module whose promise is true of the cases somebody wrote and false of the
@@ -172,7 +173,11 @@ const TARGETS = [
   ['fp12.inv', fp12mod.inv, { n: BLS }, 3],
   ['fp12.powXc', fp12mod.powXc, { n: BLS }, 2],
   ['g2.stepDouble', g2mod.stepDouble, { n: BLS }, 6],
-  ['g2.stepAdd', g2mod.stepAdd, { n: BLS }, 6]
+  ['g2.stepAdd', g2mod.stepAdd, { n: BLS }, 6],
+  // A subgroup is another domain no interval can state, so these generate
+  // random elements of it: [k]G for a random k.
+  ['g1.inSubgroup', pointsMod.inG1, { n: BLS }, 3],
+  ['g2.inSubgroup', pointsMod.inG2, { n: BLS }, 6]
 ]
 
 let checked = 0; let skipped = 0; let failures = 0

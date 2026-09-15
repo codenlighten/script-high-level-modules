@@ -169,6 +169,10 @@ function enforceRequires (asm, m, params, depthBeforePrologue) {
     place(want.range.hi, hi, '_rqhi')
     asm.withinVerify()
     live.facts = F.meet(live.facts, want)
+    // The check is in the script now, so the bound is established rather than
+    // claimed — and an audit that asks which witnesses were bounded should be
+    // able to see it, the same as a bound written with asm.bound().
+    if (live.origin) asm.boundedOrigins.add(live.origin)
   }
   for (const t of hoisted.reverse()) asm.discard(t)
 }

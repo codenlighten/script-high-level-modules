@@ -46,8 +46,9 @@ claim this repository could not put a number on for a long time — "ZK
 verification reduces to field arithmetic" is true and is not a number. It is
 817,031 bytes, and it is not arrived at by counting: `npm run pairing:prove`
 emits the whole pairing as one locking script and runs it through the
-interpreter. A Groth16 verifier is 1,241,011 and `npm run groth16` runs that
-too, accepting a valid proof and refusing two forged ones. A complete pairing has been evaluated on mainnet —
+interpreter. A Groth16 verifier, with its proof points checked into their
+subgroups, is 1,246,986 and `npm run groth16` runs that too, accepting a valid
+proof and refusing six invalid ones. A complete pairing has been evaluated on mainnet —
 not in one script, which is past the size policy, but across two inputs of one
 transaction bound by a shared output commitment.
 

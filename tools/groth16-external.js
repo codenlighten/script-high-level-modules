@@ -28,6 +28,7 @@ const { Asm } = require('../src/asm')
 const F = require('../src/facts')
 const bls = require('../src/bls12381')
 const g16 = require('../src/modules/groth16')
+const points = require('../src/modules/points')
 
 const DIR = path.join(__dirname, '..', 'test', 'vectors', 'groth16-bls12381')
 const vkJson = require(path.join(DIR, 'vk.json'))
@@ -72,6 +73,12 @@ const displaced = { ...proof, Ax: bls.g1mul(2n, A).x, Ay: bls.g1mul(2n, A).y }
 // reason: the verifier had no opinion about whether it had been handed a point.
 const offCurveA = { ...proof, Ay: (A.y + 1n) % P }
 const offCurveB = { ...proof, By1: (B.y[1] + 1n) % P }
+// And points that ARE on their curves, outside their subgroups — where the
+// pairing is not the bilinear map Groth16's soundness is about.
+const A3 = points.outside.g1(A)
+const Bh = points.outside.g2(B)
+const outsideA = { ...proof, Ax: A3.x, Ay: A3.y }
+const outsideB = { ...proof, Bx0: Bh.x[0], Bx1: Bh.x[1], By0: Bh.y[0], By1: Bh.y[1] }
 
 const m = g16.verifier(vk, publicInputs, {
   maxWitnessAttacks: Number(process.env.GROTH16_ATTACKS || 2),
@@ -79,7 +86,9 @@ const m = g16.verifier(vk, publicInputs, {
     { name: 'the proof snarkjs made', inputs: proof, params },
     { name: 'A doubled', refuse: 'the equation does not hold for this A', inputs: displaced, params },
     { name: 'A not on the curve', refuse: 'a pair of field elements is not a point', inputs: offCurveA, params },
-    { name: 'B not on the twist', refuse: 'a pair of Fp2 elements is not a twist point', inputs: offCurveB, params }
+    { name: 'B not on the twist', refuse: 'a pair of Fp2 elements is not a twist point', inputs: offCurveB, params },
+    { name: 'A + (0, 2), outside G1', refuse: 'on the curve, of order 3r, and not in G1', inputs: outsideA, params },
+    { name: 'B + a cofactor point, outside G2', refuse: 'on the twist and not in G2', inputs: outsideB, params }
   ]
 })
 

@@ -316,7 +316,7 @@ targets.pairing = (() => {
 // and is left exactly as deployed; the 63-round one is the whole loop.
 //
 // At 332,977 bytes the full locking script is inside the default 500 KB script
-// policy. A whole pairing, at 935,388, is not — that one is proven against the
+// policy. A whole pairing, at 817,031, is not — that one is proven against the
 // interpreter by npm run pairing:prove and cannot be relayed.
 function millerTarget (rounds) {
   const m = pairingMod.miller(rounds)
@@ -367,9 +367,8 @@ targets.millerFull = millerTarget(pairingMod.FULL)
 // five times: f ↦ f^|x| for the 63-bit curve parameter, 63 cyclotomic squarings
 // and 5 Fp12 multiplications, on a genuine element of the cyclotomic subgroup.
 //
-// Between this and the loop, both halves of a BLS12-381 pairing have been
-// executed by the network — which the whole pairing, at 935,388 bytes, cannot
-// be, because it is past the 500 KB script policy.
+// One of the five ladders a final exponentiation runs, uncompressed — since
+// superseded by fp12.powXc, and kept because the network ran it.
 //
 // The input is the easy part of a real final exponentiation, which is the only
 // way to get an element of the subgroup: fp12.cycSqr is wrong anywhere else and
@@ -456,4 +455,57 @@ targets.finalExp = (() => {
   }
 })()
 
-module.exports = { targets, owner, ownerPkh }
+// ── DEPLOYMENTS OF SEVERAL COINS ────────────────────────────────────────────
+//
+// A deployment that is several coins spent together has no single locking
+// script, so it is not a target above: bin/deploy.js funds those one coin at a
+// time and would not know what to do with three. These are for
+// tools/verify-chain.js only — rebuild each coin from source and compare it with
+// the output it sits in.
+//
+// The two-way pairing split had no entry here until the three-way one needed
+// the same thing, which means its bytes had been checked against the chain for
+// SIZE and never for content. Built lazily: between them they are two megabytes
+// of script, and most readers of this file want neither.
+const splitTargets = {}
+const lazy = (key, build) => Object.defineProperty(splitTargets, key, {
+  enumerable: true,
+  configurable: true,
+  get () {
+    const value = build()
+    Object.defineProperty(splitTargets, key, { value, enumerable: true })
+    return value
+  }
+})
+
+// The complete pairing, as bin/deploy-split.js built it: G1 and G2 generators,
+// no sibling binding — the deployed instance predates it.
+lazy('pairingSplit', () => {
+  const params = { n: bls.P, nn: bls.P }
+  const pts = { Px: bls.G1.x, Py: bls.G1.y, Qx0: bls.G2.x[0], Qx1: bls.G2.x[1], Qy0: bls.G2.y[0], Qy1: bls.G2.y[1] }
+  const raw = pairingMod.replay([{ P: bls.G1, Q: bls.G2 }], pairingMod.FULL, bls.P).f
+  const f = bls.X < 0n ? bls.f12conj(raw) : raw
+  const publish = pairingMod.publish({ cases: [{ name: 'x', inputs: pts, spend: pts, params }] })
+  const consume = pairingMod.consume(bls.pairing(bls.G1, bls.G2), { cases: [{ name: 'x', spend: { f }, params }] })
+  const coin = (m) => {
+    const asm = new Asm()
+    asm.given(m.inputs.map((i) => ({ name: i.name, kind: i.kind || 'num', width: i.width })))
+    m.emit(asm, params)
+    asm.num(1, 'ok')
+    return asm.script()
+  }
+  return { name: 'pairing.publish ▸ pairing.consume', parts: [coin(publish), coin(consume)] }
+})
+
+// The proof-of-age verifier, as bin/deploy-groth16.js builds it.
+lazy('groth16Split', () => {
+  const split = require('../src/modules/groth16split')
+  const spendlib = require('../src/groth16spend')
+  const age = require('../test/vectors/groth16-age')
+  return {
+    name: 'groth16.stage1 ▸ groth16.stage2 ▸ groth16.stage3',
+    parts: spendlib.lockingScripts(split.verifier(age.vk, age.statement, { proof: age.proof }))
+  }
+})
+
+module.exports = { targets, splitTargets, owner, ownerPkh }

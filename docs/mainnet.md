@@ -199,6 +199,16 @@ a complete BLS12-381 pairing, evaluated across two inputs of one transaction
 | deploy | [`92bb3f0e790ace19f1afec51141f87a3d6a911f10e82e765dba5368a6765667c`](https://whatsonchain.com/tx/92bb3f0e790ace19f1afec51141f87a3d6a911f10e82e765dba5368a6765667c) |
 | spend | [`fd0f553ee9a96b2cb48a4a9712824580910cd6056fc42f93f49eae83da2fb9e2`](https://whatsonchain.com/tx/fd0f553ee9a96b2cb48a4a9712824580910cd6056fc42f93f49eae83da2fb9e2) |
 
+### groth16.stage1 ▸ groth16.stage2 ▸ groth16.stage3
+
+a zero-knowledge proof of age, verified with its points checked into their subgroups, across three inputs of one transaction
+
+| | |
+| --- | --- |
+| locking script | 1,246,883 bytes |
+| deploy | [`025f20f1d4156aa354afef37b1ec67e5c461f11375bc739902845a3b985dc5f0`](https://whatsonchain.com/tx/025f20f1d4156aa354afef37b1ec67e5c461f11375bc739902845a3b985dc5f0) |
+| spend | [`cad6d2cca44fffb2f445009f392b668382d79d120b1c14db0fd4a8d192204bb6`](https://whatsonchain.com/tx/cad6d2cca44fffb2f445009f392b668382d79d120b1c14db0fd4a8d192204bb6) |
+
 ## What this does and does not show
 
 It shows that these scripts are **relayable and spendable on mainnet today**: the

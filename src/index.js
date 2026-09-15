@@ -106,6 +106,10 @@ const modules = {
   // A pair of field elements is not a point, and bounding it does not make it one.
   'g1.onCurve': pointsMod.onCurveG1,
   'g2.onCurve': pointsMod.onCurveG2,
+  // ...and a point is not necessarily in the prime-order subgroup. The G2 check
+  // takes [|x|]Q from the Miller loop that already computed it.
+  'g1.inSubgroup': pointsMod.inG1,
+  'g2.inSubgroup': pointsMod.inG2,
   // The whole final exponentiation, 592 KB of it, as one module.
   'pairing.finalExp': pairingMod.finalExp
 }

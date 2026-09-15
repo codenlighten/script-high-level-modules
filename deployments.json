@@ -26,7 +26,7 @@
       "supersededBy": "deployed before the range check became one OP_WITHIN that also records the bound, so int.modexp discharges from it"
     },
     {
-      "target": "tx.locktime \u25b8 totp.verify",
+      "target": "tx.locktime ▸ totp.verify",
       "key": "timelock",
       "claim": "a covenant that reads its own transaction: the code must match the locked time",
       "deploy": "15dfa4c4ea56ad73d9f48215a250a27a9662a26f044dc9583e7d4fe65ff1f6ee",
@@ -40,7 +40,7 @@
     {
       "target": "ecdsa.verify",
       "key": "ecdsa",
-      "claim": "a secp256k1 ECDSA signature over an arbitrary message \u2014 no OP_CHECKSIG involved",
+      "claim": "a secp256k1 ECDSA signature over an arbitrary message — no OP_CHECKSIG involved",
       "deploy": "2e2830799509ba4f7dd4cd56f9c88d80dda5ad0b2bd23083c3725e7546b08d46",
       "spend": "3d4e284f9bb7e6d2b6d1b8070c90752e4ee32dacd36c9186d52b929509559467",
       "lockBytes": 59247,
@@ -53,7 +53,7 @@
     {
       "target": "sha256.block",
       "key": "sha256",
-      "claim": "SHA-256 computed from OP_AND, OP_XOR, OP_LSHIFT and OP_ADD \u2014 the opcode unused",
+      "claim": "SHA-256 computed from OP_AND, OP_XOR, OP_LSHIFT and OP_ADD — the opcode unused",
       "deploy": "4cbc7f96da81f7877af29a944b522cbf79731c2542e113f4a41cae39b95c205a",
       "spend": "406026bde4cf02e1c63923b87d7f5859d20eb8bee74279cfbc835a0f049b6503",
       "lockBytes": 49240,
@@ -75,7 +75,7 @@
       "at": "2026-09-05T22:06:03.716Z"
     },
     {
-      "target": "rsa.verify \u25b8 tx.hashOutputs",
+      "target": "rsa.verify ▸ tx.hashOutputs",
       "key": "authority",
       "claim": "the authority names the destination in what it signs, and the chain pays whoever it named",
       "deploy": "186ff18e5e480b9065794fc330a6ed5c4f695aae4f997403bd7c510ea77fd946",
@@ -89,7 +89,7 @@
     {
       "target": "ecdsa.verify",
       "key": "ecdsa",
-      "claim": "a secp256k1 ECDSA signature over an arbitrary message \u2014 no OP_CHECKSIG involved",
+      "claim": "a secp256k1 ECDSA signature over an arbitrary message — no OP_CHECKSIG involved",
       "deploy": "fe4184c05bbd3d41a0ea5641afc571c46fac7dac35577b9887a783081b382576",
       "spend": "1a8f52d14c0e6a060f20714e75058a6a67e343034e2e8b3e8d3f30381bb4fbef",
       "lockBytes": 59297,
@@ -99,7 +99,7 @@
       "at": "2026-09-05T22:06:06.121Z"
     },
     {
-      "target": "tx.transition \u25b8 state.counter",
+      "target": "tx.transition ▸ state.counter",
       "key": "counter",
       "claim": "a coin advanced 3 times on chain, each spend paying the coin the next spend consumed",
       "deploy": "eb58479abf8ab19ad7baaff4ee8a3288ad2e7c3fafafaca3f989c7771d1acc50",
@@ -128,7 +128,7 @@
       "at": "2026-09-05T22:24:21.409Z"
     },
     {
-      "target": "tx.transitionPaying \u25b8 state.limit",
+      "target": "tx.transitionPaying ▸ state.limit",
       "key": "budget",
       "claim": "a coin stepped 3 times on chain, each spend paying the coin the next spend consumed",
       "deploy": "3226e448dc8a5c5194a4fc2e4168e702ebde36eed2ec14652b05e1a243a0523a",
@@ -157,7 +157,7 @@
       "at": "2026-09-05T22:50:00.330Z"
     },
     {
-      "target": "fp12.sqr \u25b8 fp12.mulLine",
+      "target": "fp12.sqr ▸ fp12.mulLine",
       "key": "pairing",
       "claim": "one step of a BLS12-381 Miller loop, in a field Bitcoin has no opcode for",
       "deploy": "1bf828187c39d0b5de9856c7b2a6290b2cba6be4062947f86420eb9287b63de5",
@@ -183,7 +183,7 @@
     {
       "target": "pairing.miller63",
       "key": "millerFull",
-      "claim": "the whole 63-round BLS12-381 Miller loop \u2014 68 lines, 68 witnessed inverses \u2014 run by the network",
+      "claim": "the whole 63-round BLS12-381 Miller loop — 68 lines, 68 witnessed inverses — run by the network",
       "deploy": "10c52d6dfb2831ecff79fe40e827695187d1e8453af845e5ab31f17a84684d20",
       "spend": "f90cc1e3d60eecfb4f1a849dc4798db601b3085ca07a4155c4ae2d0890170d40",
       "lockBytes": 333676,
@@ -195,7 +195,7 @@
     {
       "target": "fp12.powX",
       "key": "powX",
-      "claim": "f \u21a6 f^|x| in Fp12 \u2014 the ladder a final exponentiation runs five times",
+      "claim": "f ↦ f^|x| in Fp12 — the ladder a final exponentiation runs five times",
       "deploy": "1caac568ad58e9049ce4760d2998c31cef57045f84cb03c170a3243fdb936958",
       "spend": "0025ca4c616f9ea2bd5ccbc7a03e12ed3cf434003bc4b490609cae995c8d2cfb",
       "lockBytes": 99631,
@@ -234,8 +234,40 @@
         }
       ],
       "at": "2026-09-06T03:15:14.016Z",
-      "target": "pairing.publish \u25b8 pairing.consume",
+      "target": "pairing.publish ▸ pairing.consume",
       "key": "pairingSplit"
+    },
+    {
+      "target": "groth16.stage1 ▸ groth16.stage2 ▸ groth16.stage3",
+      "key": "groth16Split",
+      "claim": "a zero-knowledge proof of age, verified with its points checked into their subgroups, across three inputs of one transaction",
+      "lockBytes": 1246883,
+      "deploy": "025f20f1d4156aa354afef37b1ec67e5c461f11375bc739902845a3b985dc5f0",
+      "spend": "cad6d2cca44fffb2f445009f392b668382d79d120b1c14db0fd4a8d192204bb6",
+      "spendBytes": 1291329,
+      "feeSat": 253934,
+      "nLockTime": 216991,
+      "inputs": [
+        {
+          "name": "groth16.stage1",
+          "lockBytes": 399402,
+          "unlockBytes": 424186,
+          "vout": 0
+        },
+        {
+          "name": "groth16.stage2",
+          "lockBytes": 371834,
+          "unlockBytes": 383299,
+          "vout": 1
+        },
+        {
+          "name": "groth16.stage3",
+          "lockBytes": 475647,
+          "unlockBytes": 481527,
+          "vout": 2
+        }
+      ],
+      "at": "2026-09-15T00:57:03.023Z"
     }
   ]
 }

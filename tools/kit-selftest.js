@@ -178,6 +178,29 @@ const needsAuthentic = defineModule({
   cases: [{ name: 'an ordinary byte string', inputs: { preimage: Buffer.alloc(200) } }]
 })
 
+// The ninth, and the one that had been hiding the most. A refusal case that
+// names some of a module's inputs and not the rest used to fail while BUILDING
+// its spend — undefined is not a number — and the kit counted the exception as
+// the module refusing. Every refusal case on the Groth16 verifiers named the
+// proof and not its witnesses, so their refusals had never reached the
+// interpreter. Here the input is invertible, the module is correct, and the
+// case claims a refusal: a kit that reports one did not run the script.
+const vacuous = defineModule({
+  name: 'broken.vacuousrefusal',
+  doc: 'a refusal case that omits the witness, for an input the module accepts',
+  inputs: ['a', { name: 'inv', witness: true }],
+  outputs: ['r'],
+  hint: ({ a }, { n }) => ({ inv: invmod(a, n) }),
+  model: ({ a }, { n }) => ({ r: invmod(a, n) }),
+  emit: (asm, { n }) => {
+    asm.bound('inv', 0n, n, '_b')
+    asm.pick('a', '_a'); asm.pick('inv', '_i'); asm.mul('_p')
+    asm.num(n, '_n'); asm.mod('_res'); asm.num(1, '_one'); asm.numEqualVerify()
+    asm.roll('inv'); asm.rename('r'); asm.nip()
+  },
+  cases: [{ name: 'an invertible input, witness omitted', refuse: 'a claim the script will not bear out', inputs: { a: 3n }, params: { n: N } }]
+})
+
 const expected = [
   [offByOne, 'a wrong value'],
   [leaky, 'a leaked stack slot'],
@@ -186,7 +209,8 @@ const expected = [
   [unattackable, 'a witness it cannot attack'],
   [selfDependent, 'an answer its own script moves'],
   [unbounded, 'an x above the field size'],
-  [needsAuthentic, 'a requirement no check can establish']
+  [needsAuthentic, 'a requirement no check can establish'],
+  [vacuous, 'a refusal that never ran']
 ]
 
 let missed = 0

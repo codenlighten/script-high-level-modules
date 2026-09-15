@@ -2,46 +2,37 @@
 
 // A GROTH16 VERIFIER ACROSS THREE INPUTS OF ONE TRANSACTION.
 //
-// The verifier is 1,241,012 bytes against a 500,000-byte script policy, and its
-// Miller loop alone — three pairings already sharing one accumulator — is
-// 705,838. So a two-way cut is not enough; the loop itself is cut, at round 31.
+// The whole verifier is past the 500,000-byte script policy, and its Miller
+// loop alone — three pairings already sharing one accumulator — is past it too.
+// So a two-way cut is not enough; the loop itself is cut, at round 31.
 //
-//     input 0   rounds 1–31 of three loops, publishes S₁      382,263 bytes
-//     input 1   rounds 32–63, resuming from S₁, publishes S₂  370,479
-//     input 2   the final exponentiation of S₂ against e(α,β) 475,185
+//     input 0   A, C ∈ G1; rounds 1–31 of three loops; publishes S₁
+//     input 1   rounds 32–63, resuming from S₁; B ∈ G2; publishes S₂
+//     input 2   the final exponentiation of S₂ against e(α, β)
 //
 // One data output carries everything the three must agree on — the proof, the
 // state after round 31, the state after round 63 — and each stage computes its
 // own part and witnesses the rest. All three build the blob and require it to
 // be the committed output, so the witnessed halves are the computed ones.
 //
-// GRINDING THREE PREIMAGES AT ONCE. About one preimage in fifty satisfies
-// OP_PUSH_TX's canonical low-S condition, so a TRIPLE lands about once in
-// 125,000 — and every input's preimage carries a ~400 KB scriptCode. Hashing
-// 1.2 MB a hundred thousand times is not the way.
+// Three parts, each a different question:
 //
-// The fix is which field to grind. nSequence appears twice in a BIP-143
-// preimage: once as its own field and once inside hashSequence, at offset 36 —
-// so moving it changes bytes near the start and every SHA-256 block after them
-// must be recomputed. nLockTime appears ONCE, eight bytes from the end. Grind
-// that instead and every block but the last is unchanged, so the SHA-256
-// midstate is computed once per input and copied per attempt. A hundred
-// thousand tries becomes a fraction of a second.
+//   1. is each stage sound on its own?      proved and attacked, stage by stage
+//   2. is each SUBGROUP check load-bearing? a point outside its subgroup, given
+//                                           to a stage built without the check
+//                                           and to one built with it
+//   3. does the transaction bind them?      built, ground and verified whole
 //
-// Small nLockTime values are past block heights, so the transaction stays final.
+// The transaction itself is built by src/groth16spend.js, which is also what
+// bin/deploy-groth16.js puts on chain.
 
-const bsv = require('@smartledger/bsv')
-const crypto = require('crypto')
 const path = require('path')
-const { Asm } = require('../src/asm')
-const { policyFlags } = require('../src/run')
 const bls = require('../src/bls12381')
 const split = require('../src/modules/groth16split')
-const txmod = require('../src/modules/tx')
-const { pushNum, pushData } = require('../src/num')
-const H = require('@smartledger/bsv/lib/covenant/helpers')
+const points = require('../src/modules/points')
+const spendlib = require('../src/groth16spend')
+const { proveAll } = require('../src/testkit')
 
-const P = bls.P
 const n = (x) => x.toLocaleString('en-US')
 const D = path.join(__dirname, '..', 'test', 'vectors', 'groth16-age')
 const vkJson = require(path.join(D, 'vk.json'))
@@ -54,10 +45,9 @@ const vk = {
 }
 const A = g1(proofJson.pi_a); const B = g2(proofJson.pi_b); const C = g1(proofJson.pi_c)
 const proof = { Ax: A.x, Ay: A.y, Bx0: B.x[0], Bx1: B.x[1], By0: B.y[0], By1: B.y[1], Cx: C.x, Cy: C.y }
+const STATEMENT = [2026n, 21n]
 
-const v = split.verifier(vk, [2026n, 21n], { proof })
-const st = v.stateFor(proof)
-const blob = v.serialise(st.values)
+const v = split.verifier(vk, STATEMENT, { proof })
 
 // ── part one: are the three stages sound on their own? ──────────────────────
 //
@@ -66,160 +56,98 @@ const blob = v.serialise(st.values)
 // sample of them the kit substitutes forgeries and requires refusal. A stage
 // that computed the right answer but accepted a wrong witness would be worse
 // than useless — the composition would carry the forgery forward.
-
-const stages = [
-  ['stage 1', v.stage1, 'rounds 1–31 of three Miller loops, publishing S₁'],
-  ['stage 2', v.stage2, 'rounds 32–63, resuming from S₁, publishing S₂'],
-  ['stage 3', v.stage3, 'the final exponentiation of S₂ against e(α, β)']
-]
 {
-  const { proveAll } = require('../src/testkit')
-  console.log('\n  the three stages, against the interpreter\n')
+  console.log('\n  1. the three stages, against the interpreter\n')
   const t0 = Date.now()
-  const { failures } = proveAll(stages.map(([, m]) => [m, {}]))
+  const { failures } = proveAll([[v.stage1, {}], [v.stage2, {}], [v.stage3, {}]])
   if (failures.length) { console.log('\n  a stage did not hold up\n'); process.exit(1) }
   console.log(`  (${((Date.now() - t0) / 1000).toFixed(0)} s)`)
 }
 
-// ── part two: does the transaction bind them together? ──────────────────────
+// ── part two: is each subgroup check the thing that refuses? ────────────────
+//
+// A refusal only shows a check matters if something ELSE would have accepted.
+// The whole verifier refuses these proofs anyway — the pairing equation fails
+// for them too — so the whole verifier cannot say which check did the work.
+// A stage can: stage 1 checks no equation at all, it computes rounds 1–31 and
+// publishes the result, and stage 2 computes rounds 32–63. So each is built
+// twice, without the subgroup checks and with them, and given a proof whose
+// point is on its curve and outside its subgroup:
+//
+//   A + (0, 2)        (0, 2) has order 3, so this is on the curve, of order 3r
+//   B + [r]R          [r]R is a twist point killed by h₂ — on the twist, not in G2
+//
+// Without the checks each stage must ACCEPT, and with them it must REFUSE.
+{
+  console.log('\n  2. the subgroup checks, isolated\n')
+  const shiftedA = points.fast.g1add(A, { x: 0n, y: 2n })
+  const cofactor2 = (() => {
+    for (let a = 1n; ; a++) {
+      const R = bls.g2lift([a, 1n])
+      if (R) return points.fast.g2mul(bls.R, R)
+    }
+  })()
+  const shiftedB = points.fast.g2add(B, cofactor2)
+  if (bls.g1InSubgroup(shiftedA) || !bls.g1onCurve(shiftedA)) throw new Error('the shifted A is not what this test needs')
+  if (bls.g2InSubgroup(shiftedB) || !bls.g2onCurve(shiftedB)) throw new Error('the shifted B is not what this test needs')
+  const proofA = { ...proof, Ax: shiftedA.x, Ay: shiftedA.y }
+  const proofB = { ...proof, Bx0: shiftedB.x[0], Bx1: shiftedB.x[1], By0: shiftedB.y[0], By1: shiftedB.y[1] }
+  const sib = (index) => ({ count: 3, index })
 
-/** A predicate as a locking script: emit it, then leave TRUE. */
-function coin (m) {
-  const asm = new Asm()
-  asm.given(m.inputs.map((i) => ({ name: i.name, kind: i.kind || 'num', width: i.width })))
-  m.emit(asm, {})
-  asm.num(1, 'ok')
-  return asm.script()
+  const without = split.verifier(vk, STATEMENT, {
+    subgroup: false,
+    proof,
+    cases: {
+      1: [{ name: 'A + (0, 2), no subgroup check', spend: { proof: proofA, siblings: sib(0) }, params: {} }],
+      2: [{ name: 'B + a cofactor point, no subgroup check', spend: { proof: proofB, siblings: sib(1) }, params: {} }]
+    }
+  })
+  const withChecks = split.verifier(vk, STATEMENT, {
+    proof,
+    cases: {
+      1: [{ name: 'A + (0, 2)', refuse: 'A is on the curve and not in G1', spend: { proof: proofA, siblings: sib(0) }, params: {} }],
+      2: [{ name: 'B + a cofactor point', refuse: 'B is on the twist and not in G2', spend: { proof: proofB, siblings: sib(1) }, params: {} }]
+    }
+  })
+  const t0 = Date.now()
+  const { failures } = proveAll([
+    [without.stage1, {}], [withChecks.stage1, {}],
+    [without.stage2, {}], [withChecks.stage2, {}]
+  ])
+  if (failures.length) { console.log('\n  a subgroup check is not what decides these\n'); process.exit(1) }
+  console.log(`\n  Without the checks both stages carry a point outside its subgroup forward;`)
+  console.log(`  with them both refuse it. (${((Date.now() - t0) / 1000).toFixed(0)} s)`)
 }
-const locks = [coin(v.stage1), coin(v.stage2), coin(v.stage3)]
-const mods = [v.stage1, v.stage2, v.stage3]
-const SATS = 1
 
+// ── part three: does the transaction bind them together? ────────────────────
+//
 // The three coins are outputs 0, 1 and 2 of ONE funding transaction, because
 // that is what each stage's sibling check requires: it rebuilds the whole
 // prevouts list from a single witnessed txid and compares the hash against the
 // preimage's own hashPrevouts. Spending any of them alone is refused —
 // tools/attack-siblings.js is the demonstration of why that matters.
-const FUNDING = Buffer.alloc(32, 0xa7)
-const tx = new bsv.Transaction()
-locks.forEach((lock, i) => tx.addInput(new bsv.Transaction.Input({
-  prevTxId: FUNDING, outputIndex: i, script: new bsv.Script(), sequenceNumber: 0xfffffffe
-}), lock, SATS))
-tx.addOutput(txmod.dataOutput(split.BLOB_BYTES, blob))
-tx._outputAmount = undefined
-
-// ── the triple grind ────────────────────────────────────────────────────────
-const LOCKTIME_AT = (len) => len - 8
-const started0 = Date.now()
-const bases = locks.map((lock, i) => Buffer.from(H.rawPreimage(tx, i, lock, SATS, txmod.SIGHASH_ALL_FORKID)))
-// everything before the last whole block that precedes nLockTime, hashed once
-const mids = bases.map((b) => {
-  const cut = Math.floor(LOCKTIME_AT(b.length) / 64) * 64
-  const h = crypto.createHash('sha256')
-  h.update(b.subarray(0, cut))
-  return { h, cut }
-})
-// The double-SHA of a preimage whose last block is the only thing that moved.
-const sFrom = (buf, mid) => {
-  const first = mid.h.copy().update(buf.subarray(mid.cut)).digest()
-  return zCheck(crypto.createHash('sha256').update(first).digest())
-}
-// sFromPreimage takes a whole preimage; this is the same test on the digest we
-// already hold. It is checked against the library below rather than trusted.
-const BN = bsv.crypto.BN
-const N = new BN(Buffer.from(txmod.PushTx.N_LE).reverse())
-const HALF = N.div(new BN(2))
-const GX = new BN(Buffer.from(txmod.PushTx.gxLe).reverse())
-function zCheck (z) {
-  if (z[0] < 0x01 || z[0] > 0x7f) return null
-  const s = new BN(z).add(GX).mod(N)
-  if (s.gt(HALF)) return null
-  const sBE = s.toBuffer({ size: 32 })
-  return sBE[0] >= 0x01 ? sBE : null
-}
-
-// Does the fast filter agree with the library it is standing in for? Walk a
-// few hundred nLockTimes through both and require an identical verdict on each.
 {
-  let checked = 0
-  let accepted = 0
-  for (let lt = 0; lt < 300; lt++) {
-    const lb = Buffer.alloc(4); lb.writeUInt32LE(lt)
-    lb.copy(bases[0], LOCKTIME_AT(bases[0].length))
-    const mine = sFrom(bases[0], mids[0])
-    let theirs = null
-    try { theirs = txmod.PushTx.sFromPreimage(bases[0]) } catch (e) { theirs = null }
-    const same = (mine === null && theirs === null) ||
-      (mine !== null && theirs !== null && Buffer.from(theirs).equals(Buffer.from(mine)))
-    if (!same) { console.log(`\n  the fast filter disagrees with the library at nLockTime ${lt}\n`); process.exit(1) }
-    checked++
-    if (mine) accepted++
-  }
-  console.log(`  fast filter agrees with the library on ${checked} nLockTimes (${accepted} canonical)`)
+  const FUNDING = 'a7'.repeat(32)
+  const coins = [0, 1, 2].map((vout) => ({ txid: FUNDING, vout, satoshis: 1 }))
+  const { tx, locks, unlocks, grind } = spendlib.buildSpend(v, proof, coins)
+  console.log(`\n  3. the transaction\n`)
+  console.log(`    fast filter agrees with the library on ${grind.filterChecked} nLockTimes (${grind.filterCanonical} canonical)`)
+
+  const started = Date.now()
+  const results = spendlib.verifyInputs(tx, locks, coins)
+  const names = ['A, C ∈ G1; rounds 1–31', 'rounds 32–63; B ∈ G2', 'final exponentiation vs e(α,β)']
+  results.forEach((r, i) => {
+    console.log(`    input ${i}  ${names[i].padEnd(32)} ${n(locks[i].toBuffer().length).padStart(9)} B lock  ${n(unlocks[i].toBuffer().length).padStart(9)} B unlock  ${r.ok ? 'ACCEPTED' : 'REFUSED — ' + r.err}`)
+  })
+  console.log(`    output   the blob all three commit to      ${n(split.BLOB_BYTES).padStart(9)} B — ${split.BLOB_NAMES.length} field elements`)
+  const policy = 500000
+  const over = [...locks, ...unlocks].filter((s) => s.toBuffer().length > policy)
+  console.log(`\n    ${over.length ? `${over.length} script(s) OVER` : 'every locking and unlocking script is under'} the ${n(policy)}-byte policy`)
+  console.log(`    triple grind: ${n(grind.tries)} nLockTimes, ${grind.past1} cleared input 0, ${grind.past2} cleared inputs 0 and 1 — ${grind.seconds.toFixed(1)} s`)
+  console.log(`    transaction ${n(tx.toBuffer().length)} bytes, ${((Date.now() - started) / 1000).toFixed(1)} s to verify all three inputs\n`)
+
+  if (results.some((r) => !r.ok) || over.length) process.exit(1)
+  console.log('  A zero-knowledge proof of age, verified by Bitcoin Script — points in their')
+  console.log('  subgroups, pairing equation and all — in a computation no single script is')
+  console.log('  allowed to be large enough to hold.\n')
 }
-
-let tries = 0
-let past1 = 0
-let past2 = 0
-let found = null
-for (let lt = 0; lt < 4000000 && !found; lt++) {
-  const lb = Buffer.alloc(4); lb.writeUInt32LE(lt)
-  tries++
-  lb.copy(bases[0], LOCKTIME_AT(bases[0].length))
-  if (!sFrom(bases[0], mids[0])) continue
-  past1++
-  lb.copy(bases[1], LOCKTIME_AT(bases[1].length))
-  if (!sFrom(bases[1], mids[1])) continue
-  past2++
-  lb.copy(bases[2], LOCKTIME_AT(bases[2].length))
-  if (sFrom(bases[2], mids[2])) found = lt
-}
-if (found === null) { console.log('\n  the triple grind found nothing\n'); process.exit(1) }
-const grindSeconds = (Date.now() - started0) / 1000
-
-tx.nLockTime = found
-const pres = locks.map((lock, i) => H.rawPreimage(tx, i, lock, SATS, txmod.SIGHASH_ALL_FORKID))
-// hand-patched midstates, checked against the preimages bsv builds
-bases.forEach((b, i) => {
-  if (!b.equals(pres[i])) { console.log(`\n  patched preimage ${i} disagrees with the library's\n`); process.exit(1) }
-})
-
-// ── the unlocking scripts ───────────────────────────────────────────────────
-const tapes = [st.wit1, st.wit2, []]
-const unlocks = mods.map((m, i) => {
-  const values = { ...st.values, preimage: pres[i], fundingTxid: Buffer.from(pres[i]).subarray(68, 100) }
-  tapes[i].forEach(([a, b], k) => { values[`w${k}a`] = a; values[`w${k}b`] = b })
-  if (i === 2) Object.assign(values, require('../src/modules/pairing').finalExp.hint(require('../src/modules/pairing').spread(st.s2, 'f'), { n: P, nn: P }))
-  const u = new bsv.Script()
-  for (const inp of m.inputs) {
-    const val = values[inp.name]
-    if (val === undefined) throw new Error(`stage ${i + 1}: missing ${inp.name}`)
-    u.add(inp.kind === 'bytes' ? pushData(val) : pushNum(val))
-  }
-  return u
-})
-unlocks.forEach((u, i) => tx.inputs[i].setScript(u))
-
-// ── the verdict ─────────────────────────────────────────────────────────────
-const started = Date.now()
-const results = locks.map((lock, i) => {
-  const interp = new bsv.Script.Interpreter()
-  let ok = false
-  let err = null
-  try { ok = interp.verify(unlocks[i], lock, tx, i, policyFlags(), new bsv.crypto.BN(SATS)) } catch (e) { err = e.message }
-  return { ok, err: err || interp.errstr }
-})
-
-console.log('\n  a Groth16 verifier across three inputs of one transaction\n')
-const names = ['rounds 1–31, publishes S₁', 'rounds 32–63, publishes S₂', 'final exponentiation vs e(α,β)']
-results.forEach((r, i) => {
-  console.log(`    input ${i}  ${names[i].padEnd(32)} ${n(locks[i].toBuffer().length).padStart(9)} B lock  ${n(unlocks[i].toBuffer().length).padStart(9)} B unlock  ${r.ok ? 'ACCEPTED' : 'REFUSED — ' + r.err}`)
-})
-console.log(`    output   the blob all three commit to      ${n(split.BLOB_BYTES).padStart(9)} B — ${split.BLOB_NAMES.length} field elements`)
-console.log(`\n    every locking script is under the ${n(500000)}-byte policy`)
-console.log(`    triple grind: ${n(tries)} nLockTimes, ${past1} cleared input 0, ${past2} cleared inputs 0 and 1 — ${grindSeconds.toFixed(1)} s`)
-console.log(`    transaction ${n(tx.toBuffer().length)} bytes, ${((Date.now() - started) / 1000).toFixed(1)} s to verify all three inputs\n`)
-
-if (results.some((r) => !r.ok)) process.exit(1)
-console.log('  A zero-knowledge proof of age, verified by Bitcoin Script, in a computation')
-console.log('  no single script is allowed to be large enough to hold.\n')

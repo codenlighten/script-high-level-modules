@@ -18,6 +18,8 @@
 | `fp12.mulLine` | BLS12-381, a Miller-loop line | 2,178 | 1,382 |
 | `g1.onCurve` | y² = x³ + 4 over Fp | 85 | 25 |
 | `g2.onCurve` | y² = x³ + 4(u+1) over Fp2 | 205 | 118 |
+| `g1.inSubgroup` | φ(P) = [−x²]P, two 63-bit ladders | 8,530 | 6,040 |
+| `g2.inSubgroup` | T = −ψ(Q), T from the Miller loop | 444 | 176 |
 | `g2.stepDouble` | a tangent and the point it moves to | 587 | 395 |
 | `g2.stepAdd` | a chord and the point it moves to | 598 | 399 |
 | `fp12.conj` | BLS12-381, the p⁶ Frobenius | 223 | 110 |

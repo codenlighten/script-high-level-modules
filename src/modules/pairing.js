@@ -372,7 +372,7 @@ const call12 = (asm, m, p, ins, out = tmp(), flat = []) => {
  * The uncompressed version of this was 63 general cyclotomic squarings inline.
  * fp12.powXc does the same exponentiation with four Fp2 coefficients instead of
  * six and one witnessed decompression before each of the five multiplications
- * plus one at the end: 73,674 bytes against 98,902, checked against the literal
+ * plus one at the end: 73,582 bytes against 98,902, checked against the literal
  * f^|x| rather than against another copy of itself.
  *
  * Five of these is most of a final exponentiation, so a quarter off each is a

@@ -36,7 +36,7 @@ node examples/oracle-lock.js     # a coin an oracle's ordinary secp256k1 key unl
 
 ## On chain
 
-Sixteen of these are deployed and spent on BSV mainnet, and the first five are
+Seventeen of these are deployed and spent on BSV mainnet, and the first five are
 **confirmed in block 965487**. The two largest are the **complete 63-round
 Miller loop of a BLS12-381 pairing** — 333,676 bytes, 63 tangents, 5 chords, 68
 sparse line products and 68 witnessed Fp2 inversions — and the **complete final
@@ -59,12 +59,15 @@ The same idea takes a **whole Groth16 verifier** across three inputs.
 `npm run groth16:split` cuts the Miller loop itself, at round 31 of 63 — it has
 to, because three pairings sharing one accumulator are 705,838 bytes of loop
 alone, over the policy before the final exponentiation is considered. The three
-stages lock in 384,299 / 372,515 / 476,206 bytes, all three are accepted, and
-the 2,156-byte output they all commit to is what makes them one computation. The
+stages lock in 399,402 / 371,834 / 475,647 bytes, with A and C checked into G1
+in the first and B into G2 in the second; all three are accepted, and the
+2,156-byte output they all commit to is what makes them one computation. The
 proof being verified is snarkjs's, for *"at least 21 years old as of 2026"*.
-That one is an interpreter result, not a deployment — it would cost ~249,800
-satoshis to fund and spend, and the wallet holds 97,257. Two of the deployments are not single spends but **sequences** —
-a
+**That is on mainnet too**: funding [`025f20f1`](https://whatsonchain.com/tx/025f20f1d4156aa354afef37b1ec67e5c461f11375bc739902845a3b985dc5f0), spend
+[`cad6d2cc`](https://whatsonchain.com/tx/cad6d2cca44fffb2f445009f392b668382d79d120b1c14db0fd4a8d192204bb6) — a 1,291,329-byte transaction, 253,934 satoshis of fees
+for the pair.
+
+Two of the deployments are not single spends but **sequences** — a
 coin advancing its own counter 0 → 1 → 2 → 3, and a coin paying three different
 people out of an allowance that falls 1500 → 900 → 400 → 0. In each, every
 transaction pays the output the next one consumes, so the state is not recorded
@@ -136,7 +139,7 @@ public           the year, and the age required
 private          the birth year — never on chain, never in the proof
 
 the prover       snarkjs, Groth16 over BLS12-381
-the verifier     Bitcoin Script — 1,241,012 bytes, no pairing opcode
+the verifier     Bitcoin Script — 1,246,986 bytes, no pairing opcode
 ```
 
 | | |
@@ -144,6 +147,7 @@ the verifier     Bitcoin Script — 1,241,012 bytes, no pairing opcode
 | a valid proof of the right statement | the coin moves |
 | a proof from someone underage | the coin does not move |
 | a valid proof of a **different** statement | the coin does not move |
+| the valid proof with a point moved out of its subgroup | the coin does not move |
 
 The third is the one worth looking at twice. It is the *same* proof, from the
 same prover, and it is valid — for a claim the second coin did not make. The
@@ -154,23 +158,29 @@ The underage case is worth a second look too: snarkjs's prover does not check
 the constraints, so someone underage **can** produce a proof-shaped object. It
 does not verify, and Bitcoin is what notices.
 
+Every one of those refusals is the interpreter's. Until recently the test kit
+counted a refusal case whose spend it could not build as refused — and these
+were such cases, so for a while "the coin does not move" had not been put to the
+interpreter at all. They have been now, and they refuse (paper §10.4).
+
 Nothing about the birth year reaches the chain. The network learned that a
 person was old enough, and nothing else, and enforced payment on that basis.
 
-**This is verified against the interpreter, not deployed.** At 1,241,012 bytes
-the verifier is past the 500 KB script policy. Deploying it needs the same
-transaction-level split that put a whole pairing on chain, in three parts
-rather than two:
+**This is on mainnet.** At 1,246,986 bytes the verifier is past the 500 KB script
+policy, so it went on chain the way a whole pairing did — as coins spent
+together, three rather than two:
 
-| | |
-| --- | ---: |
-| rounds 1–31 of three Miller loops | ~347 KB |
-| rounds 32–63 of three Miller loops | ~359 KB |
-| the final exponentiation | 473 KB |
-| state carried between the first two | ~1.2 KB |
+| input | | locking | unlocking |
+| --- | --- | ---: | ---: |
+| 0 | A, C ∈ G1; rounds 1–31 of three Miller loops | 399,402 | 424,186 |
+| 1 | rounds 32–63; B ∈ G2 | 371,834 | 383,299 |
+| 2 | the final exponentiation | 475,647 | 481,527 |
+| output | the state all three commit to | 2,156 | — |
 
-Each part is under the policy. That is the next piece of work, and it is
-engineering rather than a question.
+Every script is under the policy. `node bin/deploy-groth16.js` built the funding
+and the spend with the same code the tests use, verified all three inputs
+against the real funding txid, and broadcast them:
+funding [`025f20f1`](https://whatsonchain.com/tx/025f20f1d4156aa354afef37b1ec67e5c461f11375bc739902845a3b985dc5f0), spend [`cad6d2cc`](https://whatsonchain.com/tx/cad6d2cca44fffb2f445009f392b668382d79d120b1c14db0fd4a8d192204bb6).
 
 ## What is here
 
@@ -314,38 +324,54 @@ number to compute *before* lowering a new algorithm, not after.
 The same method, run to the end of its rope: `fp12.mul` is one multiplication in
 the degree-12 extension field a pairing lives in, and 342 cyclotomic squarings
 and 63 of these are what a final exponentiation is. **A BLS12-381 pairing is
-935 KB of Script and a Groth16 verifier is about 1.75 MB.**
+817 KB of Script and a Groth16 verifier is about 1.25 MB.**
 
 It is not an estimate. `npm run pairing:prove` emits `e(P, Q)` as **one
 817,085-byte locking script**, runs it through `bsv.Script.Interpreter` under
 relay policy flags, and checks all twelve Fp12 coefficients against a reference
 that matches `@noble/curves` byte for byte — 538,767 opcodes, about thirty
-seconds, part of `npm test`. 208 of the numbers in the unlocking script are
+seconds, part of `npm test`. (The tables say 817,031: that is the pairing with its
+inputs already known to be reduced, as they are inside a composition; standalone
+it bounds them itself.) 208 of the numbers in the unlocking script are
 witnesses the spender chooses, and every one is bounded into [0, p) and checked.
 
 And a **Groth16 verifier** — `e(A,B)·e(−L,γ)·e(−C,δ) = e(α,β)` — is
-`npm run groth16`: three pairings folded onto one accumulator, **1,241,011
-bytes, 774,895 opcodes**, accepting a valid proof and refusing two invalid ones.
-Three separate pairings would be 2.45 MB; as a product they are 1.23, because k
-pairings share the 63 squarings and the one final exponentiation.
+`npm run groth16`: three pairings folded onto one accumulator, with A, B and C
+checked into their prime-order subgroups, **1,246,986 bytes, 786,448 opcodes**,
+accepting a valid proof and refusing six invalid ones. Three separate pairings
+would be 2.45 MB; as a product they are 1.23, because k pairings share the 63
+squarings and the one final exponentiation.
+
+**Subgroup membership costs 17,790 bytes — 1.4% of the verifier.** A point can
+satisfy its curve equation and lie outside the order-r subgroup the pairing is
+defined on, so A and C are checked by φ(P) = [−x²]P on G1 (two 63-bit witnessed
+ladders, 8,517 bytes each) and B by ψ(Q) = [x]Q on G2 — which is nearly free,
+because a Miller loop over B has already computed [|x|]B by the time it ends.
+Every fact those tests rest on, down to the twist's group order and
+gcd(h₁, h₂) = 1, is computed by `npm run subgroup` rather than recalled, and
+checked there against `@noble/curves`' own torsion test.
 
 `npm run groth16:split` runs that verifier as three stages across three inputs
 of one transaction — proving each stage against the interpreter with forged
 witnesses refused, then building the spend the network would see. It also
-changes which transaction field carries the OP_PUSH_TX nonce: one preimage in
-fifty is canonical, so a *triple* lands once in ~123,000, and `nSequence` is the
-wrong knob because it also sits inside `hashSequence` at offset 36. `nLockTime`
-appears once, eight bytes from the end, so every SHA-256 block but the last is
-reusable — 79,389 tries in 1.5 seconds instead of rehashing 400 KB apiece.
+isolates the subgroup checks: stages 1 and 2 are built with them and without,
+given a point on its curve and outside its subgroup, and must accept without
+them and refuse with them. And it changes which transaction field carries the
+OP_PUSH_TX nonce: one preimage in fifty is canonical, so a *triple* lands once in
+~123,000, and `nSequence` is the wrong knob because it also sits inside
+`hashSequence` at offset 36. `nLockTime` appears once, eight bytes from the end,
+so every SHA-256 block but the last is reusable — 168,127 tries in 2.5 seconds
+instead of rehashing 400 KB apiece.
 
 `npm run groth16:external` runs the same verifier against a proof **snarkjs**
 generated over BLS12-381 — an independent trusted setup, prover and field
-implementation. It is accepted; a displaced proof is refused; and the same valid
-proof is refused by a verifier built for a different public input, because the
-statement is a compile-time constant and therefore a different coin.
+implementation. It is accepted; a displaced proof, points off their curves and
+points outside their subgroups are refused; and the same valid proof is refused
+by a verifier built for a different public input, because the statement is a
+compile-time constant and therefore a different coin.
 
 `npm run audit` is this repository trying to break its own soundness
-assumptions, and four of its findings changed the code.
+assumptions, and five of its findings have changed the code.
 
 The newest one is the sharpest. The split construction binds its stages through
 `hashOutputs`, which pins the **bytes** the inputs agree on — and says nothing
@@ -359,18 +385,19 @@ the spend's whole outpoint list from one witnessed txid, match its hash, and
 require this input to be the slot it claims — 47 bytes at two stages, 56 at
 three. Every stage of the three-way split uses it. The two-way pairing split is
 already on chain and its bytes are the record, so it is reported as it stands
-rather than quietly amended. **All 722 numeric
-witnesses in the library are bounded**, checked by provenance rather than by
-sampling attacks — a slot carries the input it descends from, and every bound
-records it. Chasing a false positive from that check exposed a true one: the
-attack generator looked for the modulus under `params.n` and the curve modules
-call it `p`, so the *same-residue* attacks were silently skipped for every
-`ec.*` module for as long as they have existed.
+rather than quietly amended. **All 1,970 numeric
+witnesses — the library's and every stage of the three-way split — are
+bounded**, checked by provenance rather than by sampling attacks: a slot carries
+the input it descends from, and every bound records it. Chasing a false positive
+from that check exposed a true one: the attack generator looked for the modulus
+under `params.n` and the curve modules call it `p`, so the *same-residue* attacks
+were silently skipped for every `ec.*` module for as long as they have existed.
 
-The audit also found that A, B and C were never checked to be **on the curve**.
-They are now, at 201 bytes. **Subgroup membership is still not checked**, which
-Groth16 requires — that is stated as an open gap with its price rather than
-glossed, in [docs/pairing.md](docs/pairing.md) and the paper.
+The audit also found that A, B and C were never checked to be **on the curve**,
+and then that they were never checked to be **in their subgroups** — its
+longest-standing finding, closed now at 17,790 bytes (above). The audit keeps a
+list of accepted findings and fails on anything not on it; the only entry left is
+the two-way split already on chain, which predates sibling binding.
 
 Its soundness is not the arithmetic, it is who chooses what: **only A, B and C
 come from the unlocking script**, while γ, δ and L are constants the locking

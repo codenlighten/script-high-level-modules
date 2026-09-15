@@ -8,14 +8,15 @@ and it is not a number.
 This is the number.
 
 **One BLS12-381 pairing is 817,031 bytes of Script — about 82,000 satoshis at
-100 sat/KB. A Groth16 verifier is 1,241,011 bytes.**
+100 sat/KB. A Groth16 verifier, with its proof points checked into their
+subgroups, is 1,246,986 bytes.**
 
 Neither is an estimate.
 
 | | what it does | bytes | run it |
 | --- | --- | ---: | --- |
 | `pairing.e` | e(P, Q) | 817,031 | `npm run pairing:prove` |
-| `groth16.verify` | e(A,B)·e(−L,γ)·e(−C,δ) = e(α,β) | 1,241,011 | `npm run groth16` |
+| `groth16.verify` | e(A,B)·e(−L,γ)·e(−C,δ) = e(α,β), A, C ∈ G1, B ∈ G2 | 1,246,986 | `npm run groth16` |
 | `pairing.miller(63)` | the Miller loop alone | 333,676 | **on mainnet** |
 | `fp12.powX` | f ↦ f^\|x\|, one of the exponentiation's five ladders | 99,631 | **on mainnet** |
 
@@ -208,35 +209,74 @@ comparing numbers that are congruent rather than equal.
 
 Together the four take one pairing from roughly 4 MB to under 1 MB.
 
-## What the verifier does not check
+## Is each proof point in the right group?
 
 `npm run audit` is this repository trying to break its own soundness
-assumptions. It found that A, B and C were never checked to be **on the curve** —
-bounded into [0, p), which makes each coordinate one field element rather than a
-congruence class, and does not make a pair of them a point. That check is there
-now, at 201 bytes on a 1.24 MB script.
+assumptions. It first found that A, B and C were never checked to be **on the
+curve** — bounded into [0, p), which makes each coordinate one field element
+rather than a congruence class, and does not make a pair of them a point.
 
-**Subgroup membership is still not checked, and Groth16 requires it.** E(Fp) has
-order h₁·r and the twist h₂·r, so a point can satisfy the curve equation and lie
-outside the r-order subgroup where the pairing is not the bilinear map the
-security argument concerns. No attack on this construction is exhibited and none
-should be inferred from its absence; the honest statement is that a requirement
-is unmet. The remedies, priced:
+Its longest-standing finding went one step further: **subgroup membership**.
+E(Fp) has order h₁·r and the twist h₂·r, so a point can satisfy its curve
+equation and lie outside the order-r subgroup, where the pairing is not the
+bilinear map Groth16's security argument is about. A standard verifier checks
+it. This one does now.
 
-| | approximate cost |
+| point | check | how |
+| --- | --- | --- |
+| A, C ∈ G1 | φ(P) = [−x²]P, φ(x, y) = (βx, y) | `g1.inSubgroup`: two 63-bit witnessed ladders and a comparison |
+| B ∈ G2 | ψ(Q) = [x]Q, ψ = untwist ∘ Frobenius ∘ twist | `g2.inSubgroup`: a comparison against the loop's own T |
+
+**Why a comparison decides membership.** On G1, φ³ = 1 and φ ≠ 1, so
+φ² + φ + 1 = 0; if φ(P) = [−x²]P then O = [x⁴ − x² + 1]P = [r]P. On G2, ψ
+satisfies Frobenius's characteristic polynomial ψ² − tψ + p = 0 with t = x + 1;
+if ψ(Q) = [x]Q then O = [p − x]Q = [h₁·r]Q, and since Q also has [h₂·r]Q = O and
+gcd(h₁, h₂) = 1, [r]Q = O. Every one of those facts — and which cube root β is,
+and ψ's two coefficients, and the twist order h₂·r, chosen from the six
+candidate orders a sextic twist can have — is computed by `npm run subgroup`
+rather than recalled, and checked there against **@noble/curves**' own torsion
+test on points inside and outside both subgroups.
+
+**The G2 check costs a comparison, not a ladder.** A Miller loop over Q starts
+T at Q and runs the bits of |x| through it, so when the loop ends T *is* [|x|]Q,
+computed by the same witnessed steps a standalone check would have emitted.
+Checking B is then four congruences against a value the verifier already had.
+The same holds for any spender-supplied G2 point that enters a pairing — σ in a
+BLS signature is one.
+
+**The curve check is part of the G1 check, not a neighbour of it.** Doubling
+and addition on y² = x³ + b never read b. Coordinates off the curve still run the
+ladder — on whichever y² = x³ + b′ they lie — and the argument above holds on
+that curve too, so without the curve equation `g1.inSubgroup` would certify
+order r on some curve nobody asked about.
+
+| | bytes |
 | --- | ---: |
-| [r]P = O on G1, via the existing ladder | 40,000 bytes each |
-| [r]Q = O on G2 | considerably more |
-| ψ(Q) = [x]Q on G2, the endomorphism form | 32,000 bytes |
-| φ(P) = [λ]P on G1, the GLV form | 20,000 bytes |
+| `g1.inSubgroup`, standalone | 8,517 |
+| `g2.inSubgroup`, standalone | 389 |
+| the verifier without subgroup checks | 1,229,196 |
+| the verifier with them | 1,246,986 |
+| **what they cost** | **17,790 — 1.4%** |
 
-Between 5% and 10% of the verifier. It is affordable and it is not done, because
-the endomorphism forms have to be *derived and verified* rather than recalled —
-this repository twice wrote a cyclotomic squaring formula from memory and twice
-threw it away, and a subgroup check written that way would be worse than none.
+The earlier estimate was 5–10%, priced as ladders. The G2 half turned out to be
+nearly free, and the G1 half cheaper than a ladder by the scalar: two ladders by
+|x|, whose six set bits make 136 point operations where one ladder by x² would
+make about 190 and [r]P about 380.
+
+**Which check refuses is tested, not inferred.** The whole verifier refuses a
+proof whose A is outside G1 for two reasons at once — the subgroup check, and an
+equation that no longer holds — so it cannot say which did the work. A split
+stage can: stage 1 checks no equation, it computes rounds 1–31 and publishes.
+`npm run groth16:split` builds each of stages 1 and 2 twice, with and without the
+checks, and gives them A + (0, 2) — on the curve, of order 3r — and B plus a
+point of the twist's cofactor group. Without the checks both stages accept; with
+them both refuse.
+
+The verifying key is checked too, once, when the coin is built: a key with α, β,
+γ, δ or any ICᵢ outside its subgroup does not compile.
 
 The audit carries a list of accepted findings with the reason each is tolerable,
-and fails on anything not on it. Closing this one means deleting a line.
+and fails on anything not on it. Closing this one meant deleting a line.
 
 ## The Groth16 verifier, and where its soundness lives
 
@@ -477,7 +517,7 @@ finding rather than quietly closing it.
 
 The last row carries its own caveat. `fp12.powX` — one uncompressed f^|x| ladder
 — was deployed and spent and is correct, and it is no longer what the
-implementation does: `fp12.powXc` replaced it at 73,674 bytes. Counting its
+implementation does: `fp12.powXc` replaced it at 73,582 bytes. Counting its
 bytes toward "a pairing on chain" would be counting a version that no longer
 exists, so the figure above does not.
 
@@ -511,7 +551,7 @@ truncated loop a real checkable object rather than a demonstration: the script
 that went on chain is the script the test suite proves, stopped at a bit.
 `npm run verify:chain` rebuilds both byte for byte from the code.
 
-Both are inside the default 500 KB script policy. A whole pairing, at 817,085
+Both are inside the default 500 KB script policy. A whole pairing, at 817,031
 bytes, is not — it is proven against the interpreter and cannot be relayed.
 
 ### What it took to get 334 KB to relay
@@ -531,7 +571,7 @@ sized from the script that is about to be deployed.
 ## Three ways: a whole Groth16 verifier across one transaction
 
 Cutting a pairing in two worked because a pairing already comes in two pieces. A
-Groth16 verifier does not. It is 1,241,011 bytes, and its Miller loop — three
+Groth16 verifier does not. It is 1,246,986 bytes, and its Miller loop — three
 pairings sharing one accumulator — is **705,838 on its own**, which is 205,838
 over the policy before the final exponentiation is even considered. There is no
 two-way cut. The loop has to be cut.
@@ -549,25 +589,47 @@ input 2   the final exponentiation of S₂, against e(α, β)
 ```
 
 `npm run groth16:split` proves all three stages against the interpreter — with
-forged witnesses substituted and refused — and then builds the transaction:
+forged witnesses substituted and refused — then isolates the subgroup checks,
+and then builds the transaction:
 
 ```
-input 0   rounds 1–31, publishes S₁         384,299 lock   395,761 unlock   ACCEPTED
-input 1   rounds 32–63, publishes S₂        372,515 lock   383,980 unlock   ACCEPTED
-input 2   final exponentiation vs e(α,β)    476,206 lock   482,086 unlock   ACCEPTED
-output    the blob all three commit to        2,156 bytes — 44 field elements
+input 0   A, C ∈ G1; rounds 1–31, publishes S₁   399,402 lock   424,186 unlock   ACCEPTED
+input 1   rounds 32–63; B ∈ G2, publishes S₂     371,834 lock   383,299 unlock   ACCEPTED
+input 2   final exponentiation vs e(α,β)         475,647 lock   481,527 unlock   ACCEPTED
+output    the blob all three commit to             2,156 bytes — 44 field elements
 ```
+
+A and C are checked into G1 in stage 1, at 16,849 bytes for the two ladders. B is
+checked into G2 in stage 2, at 957 bytes, because its check needs [|x|]B and at
+round 31 the running point is only [|x| ≫ 32]B. The point stage 2 resumes from is
+a witness, but the blob pins it to the one stage 1 computed, so the point it
+finishes with is [|x|]B and not a number the spender chose.
+
+The isolation is the part that shows the checks matter. The whole verifier would
+refuse a proof whose A is outside G1 anyway, because the equation fails for it
+too — so the whole verifier cannot say which check did the work. Stage 1 checks
+no equation. Built without the subgroup checks, stage 1 accepts A + (0, 2) and
+stage 2 accepts B plus a cofactor point; built with them, both refuse.
+
+Each stage bounds only the blob's values at its door — the proof and the cut
+states, which are serialised and compared as bytes. Every inverse is bounded by
+the module that reads it, and `npm run audit` checks by provenance that every
+numeric witness of every stage is bounded somewhere.
 
 The proof being verified is a real one: snarkjs generated it from a circuit
 asserting *"the holder was at least 21 years old as of 2026"*, and nothing in
-this repository produced it. The transaction is 1,264,144 bytes.
+this repository produced it. The transaction is 1,291,329 bytes.
 
-**This one has not been deployed**, and the reason is money rather than
-policy — every locking script here is under the 500 KB limit and so is every
-unlocking script. At 100 sat/kB, funding the three coins costs about 123,342
-satoshis and spending them about 126,439, so ~249,800 against a wallet holding
-97,257. The two-way pairing split above *is* on mainnet; this is an interpreter
-result and is labelled as one.
+**This one is on mainnet.** Every locking script here is under the 500 KB limit and
+so is every unlocking script. `node bin/deploy-groth16.js` built the funding
+transaction and the spend with the same code the tool uses, verified all three
+inputs against the real funding txid, and broadcast them — 253,934 satoshis of
+fees for the pair:
+
+```
+funding  025f20f1d4156aa354afef37b1ec67e5c461f11375bc739902845a3b985dc5f0
+spend    cad6d2cca44fffb2f445009f392b668382d79d120b1c14db0fd4a8d192204bb6
+```
 
 ### Why every stage carries the whole blob
 
@@ -585,7 +647,7 @@ P_i(s_{i-1}, s_i) = [ s_i = F_i(s_{i-1}) ] ∧ C(B)
 C is a function of the transaction alone, so it holds identically at every
 input, and B determines every s_i. Chaining gives s_N = f(s_0). The blob must
 therefore carry the whole state, not just one stage's endpoints — which is why
-it is kept to 2,156 bytes for a computation of 1,241,011, and why the cut point
+it is kept to 2,156 bytes for a computation of 1,246,986, and why the cut point
 is chosen by the size of the state it exposes rather than by the sizes of the
 pieces.
 
@@ -607,12 +669,14 @@ computed once and copied per attempt. The cost per try drops from hashing 400 KB
 to hashing 64 bytes:
 
 ```
-79,389 nLockTimes, 1,611 cleared input 0, 26 cleared inputs 0 and 1 — 1.5 seconds
+168,127 nLockTimes, 3,451 cleared input 0, 62 cleared inputs 0 and 1 — 2.5 seconds
 ```
 
 Small nLockTime values are block heights already in the past, so the transaction
-stays final. The fast filter is checked against the library's own
-canonicalisation before it is trusted, not after.
+stays final — `src/groth16spend.js` stops the search well short of the chain
+height, and the deployment refuses a result that is not below it. The fast filter
+is checked against the library's own canonicalisation before it is trusted, not
+after.
 
 The general lesson is not about pairings. "Which field should carry the nonce?"
 has no cryptographic answer at all — it is decided by where the field sits
@@ -620,7 +684,7 @@ relative to a hash function's block boundaries.
 
 ### Headroom
 
-Stage 3 unlocks in 482,086 bytes, 17,914 under the policy — the binding
+Stage 3 unlocks in 481,527 bytes, 18,473 under the policy — the binding
 constraint is again the *unlocking* script. A four-way split would relieve it,
 and nothing in the construction would have to change.
 

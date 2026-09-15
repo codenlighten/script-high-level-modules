@@ -19,7 +19,7 @@
 const bsv = require('@smartledger/bsv')
 const woc = require('../src/woc')
 const onchain = require('../src/onchain')
-const { targets } = require('./targets')
+const { targets, splitTargets } = require('./targets')
 
 const fs = require('fs')
 const path = require('path')
@@ -91,7 +91,7 @@ async function main () {
 
   let bad = 0
   for (const e of entries) {
-    const target = targets[e.key]
+    const target = targets[e.key] || (e.inputs ? splitTargets[e.key] : undefined)
     const rows = []
     let drift = null
     try {
@@ -119,7 +119,17 @@ async function main () {
       // Whether the CODE still builds it is a different question, and drift is
       // an answer rather than a failure: a module that has since been corrected
       // must build something else. It is reported, with the note saying why.
-      if (target) {
+      if (target && target.parts && e.inputs) {
+        // A deployment of several coins is rebuilt coin by coin, each compared
+        // with the output it actually sits in.
+        e.inputs.forEach((part, k) => {
+          const rebuilt = target.parts[k].toHex()
+          const same = rebuilt === dep.outputs[part.vout].script.toHex()
+          drift = drift || (!same && { key: e.key, note: e.supersededBy })
+          rows.push([same ? `the code still builds ${part.name}` : `the code has moved on from ${part.name}`, true,
+            same ? 'byte for byte' : (e.supersededBy || 'reason not recorded')])
+        })
+      } else if (target) {
         const rebuilt = target.lock.toHex()
         const same = rebuilt === onChainScript
         drift = drift || (!same && { key: e.key, note: e.supersededBy })
@@ -138,7 +148,7 @@ async function main () {
           const found = spend.inputs.some((v) => v.prevTxId.toString('hex') === e.deploy && v.outputIndex === part.vout)
           rows.push([`the spend consumes ${part.name}`, found, `input ${part.vout}`])
         }
-        rows.push(['both in one transaction', spend.inputs.length >= e.inputs.length,
+        rows.push([`all ${e.inputs.length} in one transaction`, spend.inputs.length >= e.inputs.length,
           `${(spendRaw.length / 2).toLocaleString()} B, ${spendMeta.confirmations || 0} conf, ${spend.inputs.length} inputs`])
         rows.push(['it publishes the value they agree on', spend.outputs.length === 1 && spend.outputs[0].script.toBuffer()[1] === 0x6a,
           `${spend.outputs.length} output, OP_RETURN`])
