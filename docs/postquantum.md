@@ -104,7 +104,7 @@ not arbitrary-precision multiplication — and it shows.
 
 ## On chain
 
-Deployed and spent on BSV mainnet:
+Deployed and spent on BSV mainnet, both transactions **mined in block 966,903**:
 
 ```
 funding  44db75c3235ea1aa18e42284657f29cd700cdc8e9f6cfff687da042b124b7de6
@@ -113,9 +113,9 @@ spend    a2fd9e753507835558e28dd0b4764cee45df33ed1b64a5db94ea2ace1482fd86
 
 Both transactions were accepted by WhatsOnChain's node, and submitted to
 GorillaPool's ARC both came back `SEEN_ON_NETWORK` — a mining pool's node
-validated them and relayed them, which is the step the Groth16 spend failed.
-**At the time of writing neither is in a block**; this section says so until one
-is.
+validated them and relayed them, which is the step the Groth16 spend failed. Three
+blocks after broadcast both were mined together, by SA100 in block 966,903, and
+two independent indexers — WhatsOnChain and Bitails — report the same height.
 
 ## What this does not establish
 

@@ -36,7 +36,8 @@ node examples/oracle-lock.js     # a coin an oracle's ordinary secp256k1 key unl
 
 ## On chain
 
-Sixteen of these are deployed and spent on BSV mainnet, a seventeenth is funded and awaiting a miner that will take its spend, and the first five are
+Seventeen of these are deployed and spent on BSV mainnet, an eighteenth is funded and
+awaiting a miner that will take its spend, and the first five are
 **confirmed in block 965487**. The two largest are the **complete 63-round
 Miller loop of a BLS12-381 pairing** — 333,676 bytes, 63 tangents, 5 chords, 68
 sparse line products and 68 witnessed Fp2 inversions — and the **complete final
@@ -118,7 +119,7 @@ refused. It validates in about 174 ms in the interpreter, against 2,793 ms for t
 pairing spend that was mined. It is deployed and spent on mainnet — funding
 [`44db75c3`](https://whatsonchain.com/tx/44db75c3235ea1aa18e42284657f29cd700cdc8e9f6cfff687da042b124b7de6),
 spend [`a2fd9e75`](https://whatsonchain.com/tx/a2fd9e753507835558e28dd0b4764cee45df33ed1b64a5db94ea2ace1482fd86),
-both validated and relayed by GorillaPool's node and awaiting a block. The key is
+both mined in block 966,903. The key is
 a public test key. See [docs/postquantum.md](docs/postquantum.md).
 
 ## Documentation
