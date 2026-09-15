@@ -209,6 +209,16 @@ a zero-knowledge proof of age, verified with its points checked into their subgr
 | deploy | [`025f20f1d4156aa354afef37b1ec67e5c461f11375bc739902845a3b985dc5f0`](https://whatsonchain.com/tx/025f20f1d4156aa354afef37b1ec67e5c461f11375bc739902845a3b985dc5f0) |
 | spend | [`cad6d2cca44fffb2f445009f392b668382d79d120b1c14db0fd4a8d192204bb6`](https://whatsonchain.com/tx/cad6d2cca44fffb2f445009f392b668382d79d120b1c14db0fd4a8d192204bb6) |
 
+### slhdsa.spend
+
+an SLH-DSA-SHA2-128s (FIPS 205) post-quantum signature over the spending transaction, verified by Bitcoin Script
+
+| | |
+| --- | --- |
+| locking script | 75,324 bytes |
+| deploy | [`44db75c3235ea1aa18e42284657f29cd700cdc8e9f6cfff687da042b124b7de6`](https://whatsonchain.com/tx/44db75c3235ea1aa18e42284657f29cd700cdc8e9f6cfff687da042b124b7de6) |
+| spend | [`a2fd9e753507835558e28dd0b4764cee45df33ed1b64a5db94ea2ace1482fd86`](https://whatsonchain.com/tx/a2fd9e753507835558e28dd0b4764cee45df33ed1b64a5db94ea2ace1482fd86) |
+
 ## What this does and does not show
 
 It shows that these scripts are **relayable and spendable on mainnet today**: the

@@ -182,6 +182,41 @@ const grothSplit = (() => {
   }
 })()
 
+// ── a post-quantum signature ────────────────────────────────────────────────
+//
+// SLH-DSA-SHA2-128s (FIPS 205). The byte and opcode counts are properties of the
+// emitted scripts; the validation time tools/slhdsa-script.js prints is a
+// property of a machine, and is not a figure this file may carry.
+const slhdsaMod = require('../src/modules/slhdsa')
+const slhVec = require('../test/vectors/slhdsa-sha2-128s')
+const postQuantum = (() => {
+  const SP = slhdsaMod.P
+  const scriptOf = (m) => {
+    const asm = new Asm()
+    asm.given(m.inputs.map((i) => ({ name: i.name, kind: i.kind || 'num', width: i.width })))
+    m.emit(asm, {})
+    return asm.script()
+  }
+  const verify = scriptOf(slhdsaMod.verifier(slhVec.publicKey, { cases: [{ name: 'v', inputs: { msg: slhVec.cases[0].message, sig: slhVec.cases[0].signature } }] }))
+  const spend = scriptOf(slhdsaMod.spender(slhVec.publicKey, { sign: slhVec.sign }))
+  const deployed = ledgerEntries.find((d) => d.key === 'slhdsa')
+  return {
+    parameterSet: slhdsaMod.NAME,
+    publicKeyBytes: SP.pkBytes,
+    signatureBytes: SP.sigBytes,
+    worstCaseHashes: {
+      F: SP.k + SP.d * SP.len * (SP.w - 1),
+      H: SP.k * SP.a + SP.d * SP.hp,
+      T: 1 + SP.d
+    },
+    verifyBytes: verify.toBuffer().length,
+    verifyOpcodes: countOps(verify),
+    spendLockBytes: spend.toBuffer().length,
+    spendOpcodes: countOps(spend),
+    deployed: deployed ? { deploy: deployed.deploy, spend: deployed.spend } : false
+  }
+})()
+
 // ── what the network has actually run ───────────────────────────────────────
 //
 // Stated as a fraction, because "both halves" was claimed once and was wrong:
@@ -301,6 +336,7 @@ const results = {
     },
     onchain
   },
+  postQuantum,
   operations: {
     miller: count(() => bls.millerLoop(bls.G1, bls.G2)),
     finalExp: count(() => bls.finalExponentiate(sample)),

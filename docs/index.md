@@ -41,6 +41,10 @@ pairing, evaluated across two inputs of one transaction.
 it takes, what it returns, and which of its inputs the *spender* supplies. That
 last column is the one to read first.
 
+**[postquantum.md](postquantum.md)** — a post-quantum signature, SLH-DSA
+(FIPS 205), verified by Bitcoin Script: a coin that moves only for a hash-based
+signature over its own spend, in 75 KB of Script, with no elliptic-curve key.
+
 **[pairing.md](pairing.md)** — what a BLS12-381 pairing costs in Script. The one
 claim this repository could not put a number on for a long time — "ZK
 verification reduces to field arithmetic" is true and is not a number. It is

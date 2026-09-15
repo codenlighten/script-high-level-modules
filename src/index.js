@@ -29,6 +29,7 @@ const pointsMod = require('./modules/points')
 const pairingMod = require('./modules/pairing')
 const groth16 = require('./modules/groth16')
 const groth16split = require('./modules/groth16split')
+const slhdsaMod = require('./modules/slhdsa')
 
 const { defineModule, apply, instantiate } = require('./module')
 const { Asm } = require('./asm')
@@ -144,7 +145,14 @@ const factories = {
   // The same verifier cut into three, one stage per input of one transaction.
   // The whole verifier is 1.24 MB against a 500 KB policy and its Miller loop
   // alone is 706 KB, so the loop itself is cut, at round 31.
-  'groth16.split': groth16split.verifier
+  'groth16.split': groth16split.verifier,
+  // SLH-DSA-SHA2-128s (FIPS 205), the post-quantum hash-based signature: a
+  // message check against a key in the script, and a coin that moves only for a
+  // signature over its own spending transaction.
+  'slhdsa.verify': slhdsaMod.verifier,
+  'slhdsa.spend': slhdsaMod.spender,
+  'slhdsa.xmss': slhdsaMod.xmss,
+  'slhdsa.fors': slhdsaMod.fors
 }
 
 /** What a consumer needs to decide whether a module fits. */
@@ -171,7 +179,7 @@ function catalog () {
 
 module.exports = {
   int, bytes, u32, sha256, rsa, hmac, totp, ec, ecdsa, schnorr: schnorrMod, merkle, tx: txmod, state: stateMod,
-  fp2, fp6, fp12, g2: g2mod, points: pointsMod, pairing: pairingMod, groth16, groth16split, bls12381: require('./bls12381'),
+  fp2, fp6, fp12, g2: g2mod, points: pointsMod, pairing: pairingMod, groth16, groth16split, slhdsa: slhdsaMod, bls12381: require('./bls12381'),
   modules, factories, catalog, describe,
   defineModule, apply, instantiate, predicate, compose, recipes, Asm,
   evaluate, evaluateSpend, policyFlags,

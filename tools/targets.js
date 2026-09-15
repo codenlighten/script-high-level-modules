@@ -455,6 +455,38 @@ targets.finalExp = (() => {
   }
 })()
 
+// ── 12. A post-quantum signature over its own spend ─────────────────────────
+//
+// SLH-DSA-SHA2-128s, FIPS 205: the coin moves only for a hash-based signature
+// over its own BIP-143 sighash digest, verified in 75 KB of Script, and nothing
+// about spending it rests on elliptic-curve discrete logarithms.
+//
+// The key is the PUBLIC test key from test/vectors/slhdsa-sha2-128s — fixed like
+// every key in this file, so the deployment reproduces byte for byte, and
+// throwaway like them too: anyone who reads the vectors can sign for this coin.
+// What a confirmed spend establishes is that the network runs the verification,
+// not that this particular coin was ever safe to hold.
+targets.slhdsa = (() => {
+  const slhMod = require('../src/modules/slhdsa')
+  const vec = require('../test/vectors/slhdsa-sha2-128s')
+  const coin = slhMod.spender(vec.publicKey, { sign: vec.sign })
+  const asm = new Asm()
+  asm.given(coin.inputs.map((i) => ({ name: i.name, kind: i.kind || 'num', width: i.width })))
+  coin.emit(asm, {})
+  asm.num(1, 'ok')
+  return {
+    name: 'slhdsa.spend',
+    claim: 'an SLH-DSA-SHA2-128s (FIPS 205) post-quantum signature over the spending transaction, verified by Bitcoin Script',
+    lock: asm.script(),
+    // The witness is made from the real spend: grind the preimage, then sign
+    // its digest. Signing is deterministic, so a rebuilt spend signs the same way.
+    unlock: ({ tx, lockingScript, satoshis }) => {
+      const w = coin.witnessFor({ tx, lockingScript, satoshis })
+      return new bsv.Script().add(pushData(w.preimage)).add(pushData(w.sig))
+    }
+  }
+})()
+
 // ── DEPLOYMENTS OF SEVERAL COINS ────────────────────────────────────────────
 //
 // A deployment that is several coins spent together has no single locking

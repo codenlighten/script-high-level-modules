@@ -102,6 +102,25 @@ else. See [mainnet.md](docs/mainnet.md).
 Total for all eight, at the 50 sat/KB they were sent at: about 14,600 satoshis.
 At the 100 sat/KB this wallet now pays, about 29,000.
 
+## A post-quantum signature
+
+Script's only signature opcode is ECDSA, which a large quantum computer breaks.
+`slhdsa.spend` is a coin that moves only for an **SLH-DSA-SHA2-128s signature
+(FIPS 205)** over its own spending transaction — a hash-based signature whose
+security rests on SHA-256 alone, verified out of `OP_SHA256`, `OP_CAT` and
+`OP_SPLIT` in a **75,324-byte locking script**. The 7,856-byte signature is one
+push; OP_PUSH_TX binds it to the transaction's sighash; no elliptic-curve key is
+needed to spend.
+
+It is checked against a reference written from the standard, which is checked
+against `@noble/post-quantum`, and every region of the signature is forged and
+refused. It validates in about 174 ms in the interpreter, against 2,793 ms for the
+pairing spend that was mined. It is deployed and spent on mainnet — funding
+[`44db75c3`](https://whatsonchain.com/tx/44db75c3235ea1aa18e42284657f29cd700cdc8e9f6cfff687da042b124b7de6),
+spend [`a2fd9e75`](https://whatsonchain.com/tx/a2fd9e753507835558e28dd0b4764cee45df33ed1b64a5db94ea2ace1482fd86),
+both validated and relayed by GorillaPool's node and awaiting a block. The key is
+a public test key. See [docs/postquantum.md](docs/postquantum.md).
+
 ## Documentation
 
 **Start at [docs/index.md](docs/index.md)** — the map. The individual documents:

@@ -1,6 +1,6 @@
 {
   "generated": "2026-09-15",
-  "commit": "071732e90ca2d9d77621c2667acda0127552b56f",
+  "commit": "8f635e3651ca4d14a5788e65b771b200ad09d5f1",
   "curve": {
     "name": "BLS12-381",
     "p": "0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab",
@@ -315,6 +315,24 @@
       "note": "a complete pairing has been evaluated on mainnet as two inputs of one transaction; a whole Groth16 verifier is funded as three coins whose spend miners have refused for validation time"
     }
   },
+  "postQuantum": {
+    "parameterSet": "SLH-DSA-SHA2-128s",
+    "publicKeyBytes": 32,
+    "signatureBytes": 7856,
+    "worstCaseHashes": {
+      "F": 3689,
+      "H": 231,
+      "T": 8
+    },
+    "verifyBytes": 74933,
+    "verifyOpcodes": 50221,
+    "spendLockBytes": 75323,
+    "spendOpcodes": 50430,
+    "deployed": {
+      "deploy": "44db75c3235ea1aa18e42284657f29cd700cdc8e9f6cfff687da042b124b7de6",
+      "spend": "a2fd9e753507835558e28dd0b4764cee45df33ed1b64a5db94ea2ace1482fd86"
+    }
+  },
   "operations": {
     "miller": {
       "fp2": {
@@ -537,6 +555,14 @@
           "vout": 2
         }
       ]
+    },
+    {
+      "name": "slhdsa.spend",
+      "claim": "an SLH-DSA-SHA2-128s (FIPS 205) post-quantum signature over the spending transaction, verified by Bitcoin Script",
+      "lockBytes": 75324,
+      "deploy": "44db75c3235ea1aa18e42284657f29cd700cdc8e9f6cfff687da042b124b7de6",
+      "spend": "a2fd9e753507835558e28dd0b4764cee45df33ed1b64a5db94ea2ace1482fd86",
+      "parts": null
     }
   ]
 }

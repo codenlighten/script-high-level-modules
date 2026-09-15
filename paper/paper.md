@@ -580,7 +580,7 @@ See **Table 5** and **Table 7**.
 
 The complete Miller loop was deployed as a 333,676-byte locking script and
 spent. One `f ↦ f^|x|` ladder was deployed as 99,631 bytes and spent. Each deployed script is rebuilt from source and compared byte for byte against
-the chain; **17 of 17 reconstruct exactly**, a count generated from the ledger
+the chain; **18 of 18 reconstruct exactly**, a count generated from the ledger
 rather than written down. The two-way split of §8.2 is rebuilt coin by coin;
 before this revision its record was checked against the chain for size only,
 which the count above did not say.
