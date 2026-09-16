@@ -926,6 +926,73 @@ and compares the value the last carrier holds with the pairing computed here.
 in the unlocking script rather than the locking one. A four-way split would
 relieve it, and the construction admits one without modification.
 
+## 8.5 The verifier itself, as a chain
+
+§8.4 chained a pairing. The construction that refused to relay was a Groth16
+VERIFIER, and the same treatment applies to it: three stages, one per
+transaction, carried by the coin of §8.4.
+
+| | lock | unlock | transaction | relative |
+| --- | ---: | ---: | ---: | ---: |
+| tx₁, rounds 1–31, A and C ∈ G1 | 401,185 | 425,348 | 428,996 | 0.48× |
+| tx₂, rounds 32–63, B ∈ G2 | 368,525 | 379,961 | 388,967 | 0.40× |
+| tx₃, the final exponentiation | 477,044 | 482,307 | 491,313 | 0.58× |
+
+Relative is against the §8.2 spend that relayed and was mined. The heaviest link
+asks for 0.58 of it and 0.39 of the §8.3 spend that relay refused, so every
+transaction here travels on the same terms as one that already has. The largest
+unlocking script is 482,307 bytes, 17,693 under the policy — 780 bytes MORE than
+§8.3's stage 3, because the 1,568-byte state push costs slightly more than the 44
+numeric pushes it replaces. A fourth link was not needed, and would be the remedy
+if it were.
+
+**What changes is not the arithmetic but who chooses the state.** In §8.3 all
+three stages wrote the same output, and sibling-binding forced stage 1's
+*witnessed* S₂ to equal stage 2's *computed* S₂. Across transactions there is no
+shared output and no sibling, so a link that merely witnessed its predecessor's
+state would prove nothing. Links 2 and 3 therefore take the state as bytes and
+SPLIT IT OUT of what the carrier beside them holds: stage 2 no longer witnesses
+the proof or S₁, stage 3 no longer witnesses S₂. The 32 and 44 spender-chosen
+field elements of §8.3 become one carrier-pinned field.
+
+The carrier's width follows from that. Link 2 needs the proof and S₁, 32
+elements; link 3 needs only S₂, 12. One width serves the chain, so it is the
+wider of the two — 1,568 bytes — rather than the full 44-element blob, which
+would have cost stage 3 another 1,176 bytes in the script with the least room.
+
+**Where a bad proof dies, and that it matters where.** A chain is not atomic, so
+the question is not whether it refuses but at which link:
+
+| | dies at |
+| --- | --- |
+| A on the curve and outside G₁ | link 1, the subgroup check |
+| a valid proof of a different statement | link 3, against e(α, β) |
+
+Both refusals are `NUMEQUALVERIFY` from the check named. The early links of
+a losing run are valid transactions and will confirm; what no spender reaches is
+the last carrier.
+
+**The binding, attacked by mechanism.** The carrier enforces `prev` and the
+stage enforces `cur`, and an attack that refuses through the wrong one has
+tested nothing — so each names the input that must reject it. Handed a state the
+carrier is not holding, the stage ACCEPTS (it computed honestly from what it was
+given) and the carrier refuses. Handed a `cur` the stage did not compute,
+the carrier ACCEPTS (it constrains only `prev`) and the stage refuses. An
+earlier version of this test was built without grinding its preimage and was
+refused by OP_PUSH_TX before either mechanism was consulted; it is recorded here
+because a refusal for the wrong reason is the defect of §10.4 in another hat.
+
+**And the limitation, run rather than asserted.** A carrier from another
+execution, beside a stage consistent with it, is accepted — it is a valid link of
+THAT chain. No script can distinguish the two: an outpoint does not name a
+script, and the carrier's txid did not exist when the stage coins were written.
+The tool builds that splice and reports the acceptance, rather than describing
+the caveat in prose and hoping nobody tries it.
+
+`npm run groth16:chain` is the whole of the above. It is not deployed: the
+construction is verified against the interpreter here, and what is on chain is
+§8.4's pairing.
+
 ## 9. An inverted cost model
 
 Conventional elliptic-curve implementation assumes I ≫ M and chooses projective

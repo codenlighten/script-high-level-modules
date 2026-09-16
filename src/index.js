@@ -29,6 +29,7 @@ const pointsMod = require('./modules/points')
 const pairingMod = require('./modules/pairing')
 const groth16 = require('./modules/groth16')
 const groth16split = require('./modules/groth16split')
+const groth16chain = require('./modules/groth16chain')
 const slhdsaMod = require('./modules/slhdsa')
 const carryMod = require('./modules/carry')
 
@@ -153,6 +154,14 @@ const factories = {
   // The whole verifier is 1.24 MB against a 500 KB policy and its Miller loop
   // alone is 706 KB, so the loop itself is cut, at round 31.
   'groth16.split': groth16split.verifier,
+  // The same verifier again, one stage per TRANSACTION rather than per input,
+  // chained through a carrier coin. The split above is consensus-valid and could
+  // not relay; each of these links asks a node for about half of what the spend
+  // that DID relay asked. What it gives up is atomicity: links 2 and 3 take the
+  // previous state as bytes split out of the carrier beside them, so nothing a
+  // spender chooses enters between the stages, but only a reader walking the
+  // chain can say the carrier came from this execution.
+  'groth16.chain': groth16chain.chained,
   // SLH-DSA-SHA2-128s (FIPS 205), the post-quantum hash-based signature: a
   // message check against a key in the script, and a coin that moves only for a
   // signature over its own spending transaction.
@@ -186,7 +195,7 @@ function catalog () {
 
 module.exports = {
   int, bytes, u32, sha256, rsa, hmac, totp, ec, ecdsa, schnorr: schnorrMod, merkle, tx: txmod, state: stateMod,
-  fp2, fp6, fp12, g2: g2mod, points: pointsMod, pairing: pairingMod, groth16, groth16split, slhdsa: slhdsaMod, carry: carryMod, bls12381: require('./bls12381'),
+  fp2, fp6, fp12, g2: g2mod, points: pointsMod, pairing: pairingMod, groth16, groth16split, groth16chain, slhdsa: slhdsaMod, carry: carryMod, bls12381: require('./bls12381'),
   modules, factories, catalog, describe,
   defineModule, apply, instantiate, predicate, compose, recipes, Asm,
   evaluate, evaluateSpend, policyFlags,

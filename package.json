@@ -33,6 +33,7 @@
     "groth16": "node tools/groth16.js",
     "groth16:external": "node tools/groth16-external.js",
     "groth16:split": "node tools/groth16-split.js",
+    "groth16:chain": "node tools/groth16-chain.js",
     "deploy:groth16": "node bin/deploy-groth16.js",
     "paper:pdf": "python3 tools/paper_pdf.py",
     "demo": "node tools/demo-proof-of-age.js",

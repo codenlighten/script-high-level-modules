@@ -88,6 +88,7 @@
 | `tx.commitCarry(…)` | *built per key or width* | | | |
 | `groth16.verify(…)` | *built per key or width* | | | |
 | `groth16.split(…)` | *built per key or width* | | | |
+| `groth16.chain(…)` | *built per key or width* | | | |
 | `slhdsa.verify(…)` | *built per key or width* | | | |
 | `slhdsa.spend(…)` | *built per key or width* | | | |
 | `slhdsa.xmss(…)` | *built per key or width* | | | |

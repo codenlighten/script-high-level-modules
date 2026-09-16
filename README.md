@@ -116,6 +116,14 @@ validates in 1,834 ms against the 3,031 ms of the spend that relayed — so it
 travels without anyone's goodwill. What it gives up is atomicity: the claim
 becomes one about a chain, which a reader checks by walking it.
 
+`npm run groth16:chain` does the same to the thing that was refused in the
+first place — the whole Groth16 verifier, three stages, one per transaction.
+Every link is accepted by the interpreter and the heaviest asks 0.58× of the
+spend that relayed. Links 2 and 3 do not witness the previous state: they split
+it out of the carrier beside them, so the 32 and 44 spender-chosen field elements
+of the single-transaction version become one field the carrier pins. It is
+verified here, not deployed.
+
 `npm run relay` asks the other question, the one this repository learned the
 expensive way: **will a node pass it along?** Nodes bound how long they will spend
 validating a transaction that arrives from a peer, so it times every spend here

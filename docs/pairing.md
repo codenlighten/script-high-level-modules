@@ -800,6 +800,39 @@ Stage 3 unlocks in 481,527 bytes, 18,473 under the policy — the binding
 constraint is again the *unlocking* script. A four-way split would relieve it,
 and nothing in the construction would have to change.
 
+## The verifier itself, chained
+
+The construction above carries a pairing. The transaction that could not relay
+carried a Groth16 **verifier**, and it chains the same way — `npm run groth16:chain`:
+
+| | lock | unlock | transaction |
+| --- | ---: | ---: | ---: |
+| tx₁, rounds 1–31, A and C ∈ G1 | 401,185 | 425,348 | 428,996 |
+| tx₂, rounds 32–63, B ∈ G2 | 368,525 | 379,961 | 388,967 |
+| tx₃, the final exponentiation | 477,044 | 482,307 | 491,313 |
+
+The heaviest link is **0.58× the spend that relayed** and 0.39× the one refused.
+The largest unlocking script has 17,693 bytes of policy headroom — slightly less
+than the single-transaction split, because a 1,568-byte state push costs a little
+more than the 44 numeric pushes it replaces.
+
+**The interesting change is in what the spender may choose.** In the split, all
+three stages wrote one output and sibling-binding made the witnessed halves equal
+the computed ones. A chain has neither, so links 2 and 3 split the previous state
+out of the carrier instead of witnessing it: 32 and 44 spender-chosen field
+elements become one field the carrier pins.
+
+A bad proof dies at the link that checks something — an out-of-subgroup A at link
+1, a valid proof of the wrong statement at link 3 — and the links before it are
+valid transactions. The attacks are aimed by mechanism: a state the carrier is
+not holding must be refused by the CARRIER while the stage accepts, and a
+`cur` the stage did not compute must be refused by the STAGE while the
+carrier accepts. A carrier from another run, with a stage consistent with it, is
+accepted, because it is a valid link of that run's chain and nothing in a script
+can tell.
+
+This one is not deployed. What is on chain is the pairing above.
+
 ## The honest caveat
 
 At 817 KB a pairing is past the default 500 KB script policy, and so is a
