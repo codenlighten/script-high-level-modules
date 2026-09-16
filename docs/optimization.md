@@ -436,11 +436,12 @@ because much of what disappears is executed stack traffic, not dead bytes.
 
 That raises the question the chain was built to avoid: could the
 single-transaction Groth16 split relay again? `npm run relay:scriptmin` times it
-against the two on-chain yardsticks. On a heavily loaded machine (load average
-above 25) two runs put the minimized split at 0.93× and 1.13× the pairing spend
-that relayed, against 1.44–1.51× for the split as deployed, which relay refused.
-So it is at the line rather than clearly under it, and needs an idle re-run
-before anyone spends a satoshi on the answer.
+against the two on-chain yardsticks. On an idle machine two runs put the
+minimized split at 1.10× and 1.20× the pairing spend that relayed, against
+1.48–1.49× for the split as it was deployed, which relay refused. (Earlier runs
+on a heavily loaded machine said 0.93× and 1.13×; the idle runs replace them.)
+So minimizing takes the one-transaction verifier most of the way back but not
+under the spend known to relay, and the answer stays the chain.
 
 ## What was tried and rejected
 
