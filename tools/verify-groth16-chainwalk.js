@@ -25,6 +25,7 @@ const bsv = require('@smartledger/bsv')
 const woc = require('../src/woc')
 const onchain = require('../src/onchain')
 const { Asm } = require('../src/asm')
+const { minimize, scriptminVersion } = require('../src/minimize')
 const chain = require('../src/modules/groth16chain')
 const split = require('../src/modules/groth16split')
 const carry = require('../src/modules/carry')
@@ -34,12 +35,13 @@ const n = (x) => x.toLocaleString('en-US')
 const W = chain.STATE_BYTES
 const { S2_NAMES } = split
 
-function coin (m) {
+// A deployment minimized by scriptmin is rebuilt the same way it was built.
+function coin (m, minimized) {
   const asm = new Asm()
   asm.given(m.inputs.map((i) => ({ name: i.name, kind: i.kind || 'num', width: i.width })))
   m.emit(asm, {})
   asm.num(1, 'ok')
-  return asm.script()
+  return minimize(asm.script(), { label: m.name, force: minimized })
 }
 
 let findings = 0
@@ -48,16 +50,20 @@ const say = (ok, what, detail = '') => {
   console.log(`    ${ok ? '·' : '✗'} ${what.padEnd(58)} ${detail}`)
 }
 
-async function main () {
-  const entry = onchain.ledger().deployments.find((d) => d.key === 'groth16Chain')
-  if (!entry) { console.log('\n  no chained verifier recorded yet\n'); return 0 }
+async function walk (entry) {
+  const minimized = !!entry.scriptmin
+  if (minimized) {
+    const installed = scriptminVersion()
+    say(installed === entry.scriptmin, 'the installed scriptmin is the one that built these stages',
+      `${String(entry.scriptmin).slice(0, 12)}${installed === entry.scriptmin ? '' : ' (installed: ' + String(installed).slice(0, 12) + ')'}`)
+  }
 
   // What this repository says the coins and the answer should be, computed here.
   const v = chain.chained(age.vk, age.statement, { proof: age.proof })
   const st = v.stateFor(age.proof)
   const blob1 = chain.pack(chain.LINK1_NAMES, st.values)
   const blob2 = chain.padState(chain.pack(S2_NAMES, st.values))
-  const locks = [coin(v.link1), coin(v.link2), coin(v.link3)]
+  const locks = [coin(v.link1, minimized), coin(v.link2, minimized), coin(v.link3, minimized)]
 
   const fund = new bsv.Transaction(await woc.rawTx(entry.deploy))
   const txs = []
@@ -119,6 +125,16 @@ async function main () {
   pays e(α, β) only for a state whose final exponentiation is e(α, β).
 `)
   return 0
+}
+
+async function main () {
+  // The deployment as first built, and the scriptmin-minimized one, when recorded.
+  const entries = ['groth16Chain', 'groth16ChainScriptmin']
+    .map((k) => onchain.ledger().deployments.find((d) => d.key === k))
+    .filter(Boolean)
+  if (!entries.length) { console.log('\n  no chained verifier recorded yet\n'); return 0 }
+  for (const entry of entries) await walk(entry)
+  return findings
 }
 
 main().then((bad) => process.exit(bad ? 1 : 0)).catch((e) => { console.error(`\n  ${e.message}\n`); process.exit(1) })
