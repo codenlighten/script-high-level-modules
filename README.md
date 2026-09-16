@@ -112,7 +112,7 @@ small carrier coin that holds a pair of states and requires its successor to tak
 its current value as the new previous. The stage beside it requires that
 successor's current value to be what it computed. Neither reads the other's
 script; equality of the bytes they each rebuild is the binding. The heaviest link
-validates in 1,679 ms against the 2,749 ms of the spend that relayed — so it
+validates in 1,834 ms against the 3,031 ms of the spend that relayed — so it
 travels without anyone's goodwill. What it gives up is atomicity: the claim
 becomes one about a chain, which a reader checks by walking it.
 

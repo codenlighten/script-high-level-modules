@@ -635,8 +635,8 @@ The spend took 128 blocks to get there, and the reason is worth more than the
 result. It reached WhatsOnChain's node and no miner; submitted to GorillaPool's
 ARC it came back `REJECTED: too-long-validation-time`. A node gives a
 peer-relayed transaction about a second to validate — `maxnonstdtxvalidationduration`,
-1000 ms by default — and this one's three inputs take 4.2 seconds in the
-JavaScript interpreter against 2.7 for the two-way pairing spend that relayed
+1000 ms by default — and this one's three inputs take 4.5 seconds in the
+JavaScript interpreter against 3.0 for the two-way pairing spend that relayed
 normally. The pool then submitted it to their own node directly and mined it.
 
 So validation time bounds the *transaction*, which is exactly the unit this
@@ -678,14 +678,15 @@ pairing:chain` builds both links, and hands tx₂ a carrier holding a different 
 
 | | lock | unlock | validates in |
 | --- | ---: | ---: | ---: |
-| tx₁, `pairing.chainMiller` | 344,840 | 351,963 | 1,351 ms |
-| tx₂, `pairing.chainExp` + the carrier | 476,067 | 480,352 | 1,679 ms |
-| the two-input spend that relayed | — | — | 2,749 ms |
-| the three-input spend relay refused | — | — | 4,219 ms |
+| tx₁, `pairing.chainMiller` | 344,840 | 351,963 | 1,229 ms |
+| tx₂, `pairing.chainExp` + the carrier | 476,067 | 480,352 | 1,834 ms |
+| the two-input spend that relayed | — | — | 3,031 ms |
+| the three-input spend relay refused | — | — | 4,539 ms |
 
-The heaviest link is **0.61× the spend that relayed** and 0.40× the one that did
+The heaviest link is **0.60× the spend that relayed** and 0.40× the one that did
 not, so nothing here depends on an operator taking it by hand. The milliseconds
-are this machine's interpreter in one idle run; what transfers is the ratio.
+are one idle run, recorded in `relay.json` with the machine that produced them;
+what transfers is the ratio.
 
 **It is on mainnet**, in three transactions:
 
@@ -727,18 +728,19 @@ the same interpreter, reporting each as a ratio against the two whose fate is
 known:
 
 ```
-slhdsa.spend                              1 input     83,438 B    191 ms   0.07×
-pairing.miller63                          1 input      7,151 B  1,197 ms   0.44×
-pairing.chainMiller ▸ pairing.chainExp    2 inputs   484,458 B  1,679 ms   0.61×
-pairing.publish ▸ pairing.consume         2 inputs   830,928 B  2,749 ms   1.00×  relayed, mined
-groth16.stage1 ▸ stage2 ▸ stage3          3 inputs 1,291,329 B  4,219 ms   1.54×  refused by relay
+slhdsa.spend                              1 input     83,438 B    214 ms   0.07×
+pairing.miller63                          1 input      7,151 B  1,186 ms   0.39×
+pairing.chainMiller, link 1               1 input    353,651 B  1,229 ms   0.41×
+pairing.chainMiller ▸ pairing.chainExp    2 inputs   484,458 B  1,834 ms   0.60×
+pairing.publish ▸ pairing.consume         2 inputs   830,928 B  3,031 ms   1.00×  relayed, mined
+groth16.stage1 ▸ stage2 ▸ stage3          3 inputs 1,291,329 B  4,539 ms   1.50×  refused by relay
 ```
 
 The absolute numbers belong to whatever machine runs it — a node's C++ is far
 quicker — so what transfers is the ratio and the rule it implies: keep a spend at
 or under the one that relayed. Note what the ranking says about *size*: the
 83 KB post-quantum spend is one of the cheapest things here, and a 7 KB Miller
-loop costs six times as much. Bytes are the fee; validation time is the
+loop costs more than five times as much. Bytes are the fee; validation time is the
 constraint, and they are not the same quantity.
 
 ### Why every stage carries the whole blob

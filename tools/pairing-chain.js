@@ -169,12 +169,28 @@ const rows = [
   ['tx₂, the exponentiation and the carrier', honest.tx.toBuffer().length, r2.ms]
 ]
 for (const [what, bytes, ms] of rows) console.log(`    ${what.padEnd(40)} ${n(bytes).padStart(9)} B  ${ms.toFixed(0).padStart(6)} ms`)
-console.log(`    ${'—'.padEnd(40)}`)
-console.log(`    ${'the two-input spend that relayed'.padEnd(40)} ${n(830928).padStart(9)} B  ${'2,749'.padStart(6)} ms   mainnet`)
-console.log(`    ${'the three-input spend relay refused'.padEnd(40)} ${n(1291329).padStart(9)} B  ${'4,219'.padStart(6)} ms   by hand`)
-const worst = Math.max(r1.ms, r2.ms)
-console.log(`\n    the heaviest link is ${worst.toFixed(0)} ms — ${(worst / 2749).toFixed(2)}× the spend that relayed,`)
-console.log(`    ${(worst / 4219).toFixed(2)}× the one that did not.`)
+
+// The two transactions whose fate is known are the only useful yardstick, and
+// their timings are a property of the machine rather than of this code. They
+// are READ from relay.json — recorded by tools/relay-budget.js, which measures
+// them — rather than transcribed here, because transcribing them is how this
+// repository came to state two different numbers for one measurement.
+const RELAY = (() => {
+  try { return JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'relay.json'), 'utf8')) } catch (e) { return null }
+})()
+if (!RELAY) {
+  console.log(`    ${'—'.padEnd(40)}`)
+  console.log('    no relay.json yet; run `npm run relay:write` for the comparison')
+} else {
+  const find = (k) => RELAY.spends.find((s) => s.key === k) || {}
+  console.log(`    ${'—'.padEnd(40)}`)
+  console.log(`    ${'the two-input spend that relayed'.padEnd(40)} ${n(find(RELAY.baseline.key).bytes || 0).padStart(9)} B  ${n(RELAY.baseline.ms).padStart(6)} ms   mainnet`)
+  console.log(`    ${'the three-input spend relay refused'.padEnd(40)} ${n(find(RELAY.refused.key).bytes || 0).padStart(9)} B  ${n(RELAY.refused.ms).padStart(6)} ms   by hand`)
+  const worst = Math.max(r1.ms, r2.ms)
+  console.log(`\n    the heaviest link is ${worst.toFixed(0)} ms — ${(worst / RELAY.baseline.ms).toFixed(2)}× the spend that relayed,`)
+  console.log(`    ${(worst / RELAY.refused.ms).toFixed(2)}× the one that did not.`)
+  console.log(`    (yardsticks from relay.json, ${RELAY.generated}, ${RELAY.machine.cpu})`)
+}
 
 // ── 4. what a reader has to check, because no script can ────────────────────
 console.log(`

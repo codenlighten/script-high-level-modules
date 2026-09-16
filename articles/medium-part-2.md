@@ -81,7 +81,7 @@ Five miners' blocks passed it over. A second block explorer never saw it at all.
 REJECTED: too-long-validation-time
 ```
 
-I asked the pool. The answer was specific and useful: their node gives any transaction arriving from a peer **at most one second** to validate. This one exceeded it under load. My own timing agreed with the shape of that: its three inputs take about 4.2 seconds in my (much slower) JavaScript interpreter, against 2.7 seconds for the pairing spend from Part I that relayed without trouble. Same interpreter, same machine, 1.5× the work.
+I asked the pool. The answer was specific and useful: their node gives any transaction arriving from a peer **at most one second** to validate. This one exceeded it under load. My own timing agreed with the shape of that: its three inputs take about 4.5 seconds in my (much slower) JavaScript interpreter, against 3.0 seconds for the pairing spend from Part I that relayed without trouble. Same interpreter, same machine, 1.5× the work.
 
 The pool then submitted the transaction to their own node directly and mined it. It's in **block 966,923**.
 
@@ -96,6 +96,34 @@ So the transaction is on chain — and the interesting part is *how*.
 The third one is different in kind. Script size is policy about a transaction's contents; validation time is a budget a node spends on work arriving from strangers. **A transaction can be consensus-valid, relayable nowhere, and mined anyway** by an operator willing to take it by hand. The spend is valid. The block containing it is valid. It simply could not travel.
 
 That's not a complaint about the limit — it's a sensible defence against cheap-to-send, expensive-to-check spam. It's a design constraint I hadn't priced, and now do: **a construction that doesn't depend on anyone's goodwill has to spread its stages across transactions rather than inputs**, so no single transaction asks for more than a second of anyone's time. That's the next build.
+
+## The next build, built
+
+It's built, and it's on chain.
+
+The mechanism is a **carrier coin** holding a *pair* of states — the previous one and the current one — which demands that whatever spends it produce a successor holding **its** current value as the new previous. Beside it sits one stage of the computation, demanding that the successor's current value be whatever that stage computed. Neither coin reads the other's script; an outpoint doesn't name one. They agree because they each rebuild the same output bytes, and the transaction has to hash to what both of them expect:
+
+```text
+carrier:  output = body ‖ myCur ‖ X       X witnessed, unconstrained
+stage:    output = body ‖ p     ‖ F(p)    p witnessed, unconstrained
+```
+
+Both hash the same output, so `p` must be `myCur` and `X` must be `F(p)`. With that, the pairing from Part I runs again, one stage per transaction:
+
+| | lock | unlock | a node spends |
+| --- | ---: | ---: | ---: |
+| tx₁, the Miller loop | 344,840 B | 351,963 B | 1,229 ms |
+| tx₂, the final exponentiation | 476,067 B | 480,352 B | 1,834 ms |
+
+The heaviest link is **0.60×** the Part I spend that relayed without trouble — well inside the budget that refused the transaction above. All three transactions were mined in **block 966,954**, the first block after they were broadcast, by the same pool whose relay check had turned down the Groth16 spend.
+
+Two honest footnotes. Minutes earlier, that pool also refused tx₁ — for paying two satoshis under its minimum fee, which was my arithmetic and not its policy. The useful part is what the episode says about the platform: a node's relay threshold, a miner's mining threshold, and consensus are three different thresholds, and only the last one is the rule.
+
+The second matters more. **This is Part I's pairing, not Part II's SNARK.** The machinery is identical and the verifier is the obvious next thing to chain, but what travelled here on its own merits is one pairing, not three.
+
+And it costs something real: **atomicity.** When the stages were three inputs of one transaction, each could check through `hashPrevouts` that it was being spent beside its siblings, and the transaction's validity *was* the whole claim. Spread across transactions, the carrier arrives from a transaction whose txid nothing could have known when the stage coins were written — so no stage can insist the carrier beside it is genuine. The claim becomes one about a *chain*, and somebody has to walk it: `npm run verify:chainwalk` rebuilds both stage coins from source, finds them in the funding transaction, follows the carrier from link to link, and compares the value the last one holds against the pairing computed locally.
+
+That's the trade. The single-transaction version binds everything at once and cannot be sent; this one travels, and asks the reader for the last step.
 
 ## And a bug in my own tests
 

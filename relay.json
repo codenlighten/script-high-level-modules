@@ -1,0 +1,127 @@
+{
+  "generated": "2026-09-16",
+  "machine": {
+    "cpu": "AMD Ryzen 5 PRO 5650U with Radeon Graphics",
+    "arch": "x64",
+    "node": "v22.23.2"
+  },
+  "note": "bsv.Script.Interpreter milliseconds, one idle run on the machine named above. A node's C++ is far quicker; what transfers is `relative`.",
+  "baseline": {
+    "key": "pairingSplit",
+    "name": "pairing.publish ▸ pairing.consume",
+    "ms": 3031,
+    "fate": "relayed and was mined"
+  },
+  "refused": {
+    "key": "groth16Split",
+    "name": "groth16.stage1 ▸ groth16.stage2 ▸ groth16.stage3",
+    "ms": 4539,
+    "fate": "refused by relay for validation time, mined by direct submission"
+  },
+  "spends": [
+    {
+      "key": "sha256",
+      "name": "sha256.block",
+      "inputs": 1,
+      "bytes": 256,
+      "ms": 181,
+      "relative": 0.06
+    },
+    {
+      "key": "slhdsa",
+      "name": "slhdsa.spend",
+      "inputs": 1,
+      "bytes": 83438,
+      "ms": 214,
+      "relative": 0.07
+    },
+    {
+      "key": "ecdsa",
+      "name": "ecdsa.verify",
+      "inputs": 1,
+      "bytes": 17291,
+      "ms": 233,
+      "relative": 0.08
+    },
+    {
+      "key": "schnorr",
+      "name": "schnorr.verify",
+      "inputs": 1,
+      "bytes": 17307,
+      "ms": 269,
+      "relative": 0.09
+    },
+    {
+      "key": "ecdsa",
+      "name": "ecdsa.verify",
+      "inputs": 1,
+      "bytes": 17291,
+      "ms": 326,
+      "relative": 0.11
+    },
+    {
+      "key": "powX",
+      "name": "fp12.powX",
+      "inputs": 1,
+      "bytes": 781,
+      "ms": 333,
+      "relative": 0.11
+    },
+    {
+      "key": "miller",
+      "name": "pairing.miller48",
+      "inputs": 1,
+      "bytes": 5682,
+      "ms": 967,
+      "relative": 0.32
+    },
+    {
+      "key": "millerFull",
+      "name": "pairing.miller63",
+      "inputs": 1,
+      "bytes": 7151,
+      "ms": 1186,
+      "relative": 0.39
+    },
+    {
+      "key": "pairingChain.link1",
+      "name": "pairing.chainMiller, link 1",
+      "inputs": 1,
+      "bytes": 353651,
+      "ms": 1229,
+      "relative": 0.41
+    },
+    {
+      "key": "finalExp",
+      "name": "pairing.finalExp",
+      "inputs": 1,
+      "bytes": 4310,
+      "ms": 1704,
+      "relative": 0.56
+    },
+    {
+      "key": "pairingChain",
+      "name": "pairing.chainMiller ▸ pairing.chainExp",
+      "inputs": 2,
+      "bytes": 484458,
+      "ms": 1834,
+      "relative": 0.6
+    },
+    {
+      "key": "pairingSplit",
+      "name": "pairing.publish ▸ pairing.consume",
+      "inputs": 2,
+      "bytes": 830928,
+      "ms": 3031,
+      "relative": 1
+    },
+    {
+      "key": "groth16Split",
+      "name": "groth16.stage1 ▸ groth16.stage2 ▸ groth16.stage3",
+      "inputs": 3,
+      "bytes": 1291329,
+      "ms": 4539,
+      "relative": 1.5
+    }
+  ]
+}

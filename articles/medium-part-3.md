@@ -82,11 +82,11 @@ So this time I measured before spending anything:
 
 | | interpreter time |
 | --- | ---: |
-| the post-quantum spend | **~174 ms** |
-| the pairing spend that relayed fine (Part I) | 2,793 ms |
-| the Groth16 spend that relay refused (Part II) | 3,924 ms |
+| the post-quantum spend | **~214 ms** |
+| the pairing spend that relayed fine (Part I) | 3,031 ms |
+| the Groth16 spend that relay refused (Part II) | 4,539 ms |
 
-Sixteen times cheaper than the transaction that relayed fine. Native SHA-256 over 100-byte inputs beats arbitrary-precision multiplication, and it shows.
+Fourteen times cheaper than the transaction that relayed fine. Native SHA-256 over 100-byte inputs beats arbitrary-precision multiplication, and it shows.
 
 It behaved accordingly: the transactions propagated normally, a mining pool's node validated and relayed them, and three blocks after broadcast both were mined — confirmed by two independent explorers. No favours required.
 

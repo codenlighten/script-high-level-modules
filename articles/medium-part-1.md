@@ -132,7 +132,7 @@ The same trick scales further. A Groth16 verifier is three pairings sharing one 
 
 That three-input transaction is on mainnet: [`cad6d2cc…4bb6`](https://whatsonchain.com/tx/cad6d2cca44fffb2f445009f392b668382d79d120b1c14db0fd4a8d192204bb6), 1,291,329 bytes, spending three coins created by [`025f20f1…c5f0`](https://whatsonchain.com/tx/025f20f1d4156aa354afef37b1ec67e5c461f11375bc739902845a3b985dc5f0).
 
-It got there the hard way, and that's the more useful story. Bitcoin nodes cap how long they'll spend validating any one transaction that arrives from a peer — about a second — to stop cheap-to-send, expensive-to-check spam. This transaction takes roughly 1.4× as long as the pairing spend that sailed through. So it was valid, and it simply couldn't travel: one node held it, no miner ever saw it, and it sat there for 128 blocks until a mining pool submitted it to their own node by hand and mined it.
+It got there the hard way, and that's the more useful story. Bitcoin nodes cap how long they'll spend validating any one transaction that arrives from a peer — about a second — to stop cheap-to-send, expensive-to-check spam. This transaction takes roughly 1.5× as long as the pairing spend that sailed through. So it was valid, and it simply couldn't travel: one node held it, no miner ever saw it, and it sat there for 128 blocks until a mining pool submitted it to their own node by hand and mined it.
 
 Size limits are per script. This one is per transaction, and it's a limit on *relay*, not on validity. The next version has to spread the stages across transactions instead of inputs, so that no single transaction asks for more than a second of anyone's time.
 

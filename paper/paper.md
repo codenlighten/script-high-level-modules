@@ -802,7 +802,7 @@ reason, **`too-long-validation-time`**. It stayed unmined for 128 blocks. The
 operator's explanation, when asked, was that their node gives a peer-relayed
 transaction at most a second to validate — `maxnonstdtxvalidationduration`, 1000
 ms by default — and this one exceeded it under load. Measured in the JavaScript
-interpreter, its three inputs take 4.2 seconds between them against 2.7 for the
+interpreter, its three inputs take 4.5 seconds between them against 3.0 for the
 two inputs of the §8.2 spend, which relayed and was mined: 1.5 times as long,
 with no input individually heavier than §8.2's. The pool then submitted it to
 their own node directly, and mined it in **block 966,923**.
@@ -896,14 +896,15 @@ each rebuild are the same bytes.
 
 | | lock | unlock | validates in |
 | --- | ---: | ---: | ---: |
-| tx₁, the Miller loop | 344,840 | 351,963 | 1,351 ms |
-| tx₂, the exponentiation and the carrier | 476,067 | 480,352 | 1,679 ms |
-| §8.2's two-input spend, which relayed | — | — | 2,749 ms |
-| §8.3's three-input spend, which did not | — | — | 4,219 ms |
+| tx₁, the Miller loop | 344,840 | 351,963 | 1,229 ms |
+| tx₂, the exponentiation and the carrier | 476,067 | 480,352 | 1,834 ms |
+| §8.2's two-input spend, which relayed | — | — | 3,031 ms |
+| §8.3's three-input spend, which did not | — | — | 4,539 ms |
 
-The heaviest link asks for 0.61 of what relayed and 0.40 of what did not. The
-milliseconds are this machine's JavaScript interpreter in one idle run and a
-node's C++ is far quicker; what transfers is the ratio. It is
+The heaviest link asks for 0.60 of what relayed and 0.40 of what did not. The
+milliseconds are one idle run on one machine, recorded in `relay.json` beside
+the processor that produced them; a node's C++ is far quicker, and what
+transfers is the ratio rather than the number. It is
 on mainnet: funding `2b7ec0a5…`, then `a8ae58b2…` and `0482eccb…`, all three
 mined in block 966,954 — by the pool whose relay check had refused §8.3's spend,
 and which minutes earlier refused this chain's first link for paying two satoshis
