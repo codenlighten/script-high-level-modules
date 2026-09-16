@@ -280,6 +280,29 @@
       "value": 8345,
       "spendFee": 8344,
       "at": "2026-09-15T18:24:36.105Z"
+    },
+    {
+      "target": "pairing.chainMiller ▸ pairing.chainExp",
+      "key": "pairingChain",
+      "claim": "a complete BLS12-381 pairing, one stage per transaction, chained through a carrier coin",
+      "lockBytes": 820907,
+      "deploy": "2b7ec0a583168c15a2783a7e7e5b54a074849746c8bea530211fbe60cdee9d0c",
+      "spend": "0482eccb26c1c677635b4a6c95a1bbf7fb13e28926cfa3c4d63430f1a68d244a",
+      "chain": [
+        {
+          "name": "pairing.chainMiller",
+          "txid": "a8ae58b2613bd7da2a41886cd529c03e46674e39a3df40615f41e7bc8542c05e",
+          "lockBytes": 344840,
+          "vout": 0
+        },
+        {
+          "name": "pairing.chainExp",
+          "txid": "0482eccb26c1c677635b4a6c95a1bbf7fb13e28926cfa3c4d63430f1a68d244a",
+          "lockBytes": 476067,
+          "vout": 1
+        }
+      ],
+      "at": "2026-09-16T03:26:28.515Z"
     }
   ]
 }
