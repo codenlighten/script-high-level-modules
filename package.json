@@ -10,6 +10,7 @@
     "fuzz": "node tools/fuzz.js",
     "malleability": "node tools/malleability-demo.js",
     "cost": "node tools/cost-report.js",
+    "anatomy": "node tools/script-anatomy.js",
     "catalog": "node tools/catalog.js",
     "verify:chain": "node tools/verify-chain.js",
     "mainnet:log": "node tools/verify-chain.js --write",
