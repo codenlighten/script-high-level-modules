@@ -620,23 +620,30 @@ The proof being verified is a real one: snarkjs generated it from a circuit
 asserting *"the holder was at least 21 years old as of 2026"*, and nothing in
 this repository produced it. The transaction is 1,291,329 bytes.
 
-**Its coins are on mainnet; its spend has not been mined.** Every locking script
-here is under the 500 KB limit and so is every unlocking script. `node bin/deploy-groth16.js` built the funding
+**This is on mainnet.** Every locking script here is under the 500 KB limit and so
+is every unlocking script. `node bin/deploy-groth16.js` built the funding
 transaction and the spend with the same code the tool uses, verified all three
 inputs against the real funding txid, and broadcast them — 253,934 satoshis of
 fees for the pair:
 
 ```
 funding  025f20f1d4156aa354afef37b1ec67e5c461f11375bc739902845a3b985dc5f0   mined, block 966,795
-spend    cad6d2cca44fffb2f445009f392b668382d79d120b1c14db0fd4a8d192204bb6   not mined
+spend    cad6d2cca44fffb2f445009f392b668382d79d120b1c14db0fd4a8d192204bb6   mined, block 966,923
 ```
 
-The spend reached WhatsOnChain's node and no miner. Submitted to GorillaPool's
-ARC it came back `REJECTED: too-long-validation-time`. Its three inputs take
-3.9 seconds to verify in the JavaScript interpreter against 2.8 for the two-way
-pairing spend that was mined — and nodes bound validation time per transaction,
-which is exactly the unit this construction packed three stages into. A version
-that respects it has to put the stages in separate transactions.
+The spend took 128 blocks to get there, and the reason is worth more than the
+result. It reached WhatsOnChain's node and no miner; submitted to GorillaPool's
+ARC it came back `REJECTED: too-long-validation-time`. A node gives a
+peer-relayed transaction about a second to validate — `maxnonstdtxvalidationduration`,
+1000 ms by default — and this one's three inputs take 3.9 seconds in the
+JavaScript interpreter against 2.8 for the two-way pairing spend that relayed
+normally. The pool then submitted it to their own node directly and mined it.
+
+So validation time bounds the *transaction*, which is exactly the unit this
+construction packed three stages into — and unlike the script-size policy it
+bounds RELAY rather than validity. The spend is valid and its block is valid; it
+simply could not travel. A version that does not depend on an operator's goodwill
+has to put the stages in separate transactions.
 
 ### Why every stage carries the whole blob
 

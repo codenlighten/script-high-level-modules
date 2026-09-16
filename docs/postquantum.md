@@ -89,15 +89,16 @@ goes unread.
 
 ## Validation time, measured first
 
-A three-input Groth16 spend was valid and miners refused it with
-`too-long-validation-time`. So before anything was funded this one was timed in
-the same interpreter on the same machine:
+A three-input Groth16 spend was valid and the relay path refused it with
+`too-long-validation-time` — it reached a block only when a pool took it by hand.
+So before anything was funded this one was timed in the same interpreter on the
+same machine:
 
 | | interpreter time |
 | --- | ---: |
 | `slhdsa.spend` | **about 174 ms** |
 | the two-input pairing spend that was mined | 2,793 ms |
-| the three-input Groth16 spend miners refused | 3,924 ms |
+| the three-input Groth16 spend that relay refused | 3,924 ms |
 
 The work is native SHA-256 over 100-byte inputs, concatenation and splitting —
 not arbitrary-precision multiplication — and it shows.
