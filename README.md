@@ -95,13 +95,24 @@ block.
 it byte for byte against what is in the output — so it goes red if the modules
 drift from what was deployed. See [mainnet.md](docs/mainnet.md).
 
+**That construction is on mainnet**, in three transactions mined together in
+block 966,954: funding
+[`2b7ec0a5`](https://whatsonchain.com/tx/2b7ec0a583168c15a2783a7e7e5b54a074849746c8bea530211fbe60cdee9d0c),
+[`a8ae58b2`](https://whatsonchain.com/tx/a8ae58b2613bd7da2a41886cd529c03e46674e39a3df40615f41e7bc8542c05e)
+for the Miller loop, and
+[`0482eccb`](https://whatsonchain.com/tx/0482eccb26c1c677635b4a6c95a1bbf7fb13e28926cfa3c4d63430f1a68d244a)
+for the final exponentiation. `npm run verify:chainwalk` walks it: both stage
+coins rebuilt from source and found in the funding transaction, each link
+spending the coin and the carrier it should, and the value the last carrier holds
+compared with the pairing computed here.
+
 `npm run pairing:chain` is the answer to that refusal rather than a description
 of it: the same pairing with **one stage per transaction**, chained through a
 small carrier coin that holds a pair of states and requires its successor to take
 its current value as the new previous. The stage beside it requires that
 successor's current value to be what it computed. Neither reads the other's
 script; equality of the bytes they each rebuild is the binding. The heaviest link
-validates in 1,644 ms against the 2,553 ms of the spend that relayed — so it
+validates in 1,679 ms against the 2,749 ms of the spend that relayed — so it
 travels without anyone's goodwill. What it gives up is atomicity: the claim
 becomes one about a chain, which a reader checks by walking it.
 

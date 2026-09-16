@@ -81,7 +81,7 @@ Five miners' blocks passed it over. A second block explorer never saw it at all.
 REJECTED: too-long-validation-time
 ```
 
-I asked the pool. The answer was specific and useful: their node gives any transaction arriving from a peer **at most one second** to validate. This one exceeded it under load. My own timing agreed with the shape of that: its three inputs take about 3.9 seconds in my (much slower) JavaScript interpreter, against 2.8 seconds for the pairing spend from Part I that relayed without trouble. Same interpreter, same machine, 1.4× the work.
+I asked the pool. The answer was specific and useful: their node gives any transaction arriving from a peer **at most one second** to validate. This one exceeded it under load. My own timing agreed with the shape of that: its three inputs take about 4.2 seconds in my (much slower) JavaScript interpreter, against 2.7 seconds for the pairing spend from Part I that relayed without trouble. Same interpreter, same machine, 1.5× the work.
 
 The pool then submitted the transaction to their own node directly and mined it. It's in **block 966,923**.
 

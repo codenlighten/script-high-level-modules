@@ -635,8 +635,8 @@ The spend took 128 blocks to get there, and the reason is worth more than the
 result. It reached WhatsOnChain's node and no miner; submitted to GorillaPool's
 ARC it came back `REJECTED: too-long-validation-time`. A node gives a
 peer-relayed transaction about a second to validate — `maxnonstdtxvalidationduration`,
-1000 ms by default — and this one's three inputs take 3.9 seconds in the
-JavaScript interpreter against 2.8 for the two-way pairing spend that relayed
+1000 ms by default — and this one's three inputs take 4.2 seconds in the
+JavaScript interpreter against 2.7 for the two-way pairing spend that relayed
 normally. The pool then submitted it to their own node directly and mined it.
 
 So validation time bounds the *transaction*, which is exactly the unit this
@@ -678,13 +678,35 @@ pairing:chain` builds both links, and hands tx₂ a carrier holding a different 
 
 | | lock | unlock | validates in |
 | --- | ---: | ---: | ---: |
-| tx₁, `pairing.chainMiller` | 344,840 | 351,963 | 1,211 ms |
-| tx₂, `pairing.chainExp` + the carrier | 476,067 | 480,352 | 1,644 ms |
-| the two-input spend that relayed | — | — | 2,553 ms |
-| the three-input spend relay refused | — | — | 3,993 ms |
+| tx₁, `pairing.chainMiller` | 344,840 | 351,963 | 1,351 ms |
+| tx₂, `pairing.chainExp` + the carrier | 476,067 | 480,352 | 1,679 ms |
+| the two-input spend that relayed | — | — | 2,749 ms |
+| the three-input spend relay refused | — | — | 4,219 ms |
 
-The heaviest link is **0.64× the spend that relayed** and 0.41× the one that did
-not, so nothing here depends on an operator taking it by hand.
+The heaviest link is **0.61× the spend that relayed** and 0.40× the one that did
+not, so nothing here depends on an operator taking it by hand. The milliseconds
+are this machine's interpreter in one idle run; what transfers is the ratio.
+
+**It is on mainnet**, in three transactions:
+
+```
+funding  2b7ec0a583168c15a2783a7e7e5b54a074849746c8bea530211fbe60cdee9d0c
+tx₁      a8ae58b2613bd7da2a41886cd529c03e46674e39a3df40615f41e7bc8542c05e
+tx₂      0482eccb26c1c677635b4a6c95a1bbf7fb13e28926cfa3c4d63430f1a68d244a
+```
+
+All three were mined together in **block 966,954**, the first block after they
+were broadcast — by GorillaPool, whose relay check had refused tx₁ minutes
+earlier for paying two satoshis under its size-derived minimum. That was a real
+bug in the deployment script, fixed since: the stage coin has to hold its
+transaction's fee *plus* the satoshi the carrier carries away, and it was funded
+with the fee *less* it. What the episode says about policy is worth keeping: a
+node's relay threshold and a miner's mining threshold are not the same
+threshold, and neither is consensus.
+
+The part that mattered worked. Each link relayed on its own merits, and the
+484 KB exponentiation link was accepted by the same pool that had refused the
+1.29 MB single-transaction Groth16 spend for its validation time.
 
 **What it gives up.** In one transaction, every stage could check through
 `hashPrevouts` that the spend consumed exactly its siblings — all outputs of one
@@ -705,10 +727,11 @@ the same interpreter, reporting each as a ratio against the two whose fate is
 known:
 
 ```
-slhdsa.spend                              1 input     83,438 B    196 ms   0.08×
-pairing.miller63                          1 input      7,151 B  1,142 ms   0.45×
-pairing.publish ▸ pairing.consume         2 inputs   830,928 B  2,553 ms   1.00×  relayed, mined
-groth16.stage1 ▸ stage2 ▸ stage3          3 inputs 1,291,329 B  3,993 ms   1.56×  refused by relay
+slhdsa.spend                              1 input     83,438 B    191 ms   0.07×
+pairing.miller63                          1 input      7,151 B  1,197 ms   0.44×
+pairing.chainMiller ▸ pairing.chainExp    2 inputs   484,458 B  1,679 ms   0.61×
+pairing.publish ▸ pairing.consume         2 inputs   830,928 B  2,749 ms   1.00×  relayed, mined
+groth16.stage1 ▸ stage2 ▸ stage3          3 inputs 1,291,329 B  4,219 ms   1.54×  refused by relay
 ```
 
 The absolute numbers belong to whatever machine runs it — a node's C++ is far

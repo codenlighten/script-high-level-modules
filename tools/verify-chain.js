@@ -37,6 +37,11 @@ function writeLog (entries) {
     `| spend | [\`${e.spend}\`](https://whatsonchain.com/tx/${e.spend}) |`,
     ...(e.supersededBy ? [`| since corrected | ${e.supersededBy} |`] : []),
     ...(e.steps ? e.steps.map((st) => `| step ${st.from} → ${st.to} | [\`${st.txid}\`](https://whatsonchain.com/tx/${st.txid}) |`) : []),
+    // A CHAINED deployment is spent by one transaction per stage, and `spend`
+    // names only the last of them. Without this the middle links are absent
+    // from the log — for the chained pairing that meant tx₁, the Miller loop,
+    // appeared nowhere in the document a reader is meant to walk it from.
+    ...(e.chain ? e.chain.map((c) => `| ${c.name} | [\`${c.txid}\`](https://whatsonchain.com/tx/${c.txid}) |`) : []),
     ''
   ].join('\n'))
 
@@ -103,7 +108,20 @@ async function main () {
       // A deployment is usually ONE coin at output 0. The pairing split is two,
       // spent together, so its record carries an `inputs` list saying which
       // output holds which script and each is checked where it actually is.
-      if (e.inputs) {
+      if (e.chain) {
+        // A CHAINED deployment: the funding transaction carries one stage coin
+        // per output, and each stage is spent by its OWN transaction, passing
+        // state to the next through a carrier. What this checks is the shape —
+        // the coins are where they are recorded, and each link spends the one it
+        // should. That the carrier passed the right value along is a question
+        // about the whole chain, and tools/verify-chainwalk.js is where it is
+        // asked.
+        for (const part of e.chain) {
+          const hex = dep.outputs[part.vout].script.toHex()
+          rows.push([`output ${part.vout} is ${part.name}`, hex.length / 2 === part.lockBytes,
+            `${hex.length / 2} B on chain, ${part.lockBytes} B recorded`])
+        }
+      } else if (e.inputs) {
         for (const part of e.inputs) {
           const hex = dep.outputs[part.vout].script.toHex()
           rows.push([`output ${part.vout} is ${part.name}`, hex.length / 2 === part.lockBytes,
@@ -141,7 +159,20 @@ async function main () {
       const spendMeta = await woc.tx(e.spend)
       // A sequence's last spend consumes the step before it, not the deployment.
       const consumes = e.steps ? e.steps[e.steps.length - 2] && e.steps[e.steps.length - 2].txid : e.deploy
-      if (e.inputs) {
+      if (e.chain) {
+        // Each link is its own transaction: it spends its stage coin, and the
+        // carrier its predecessor made. Only the first is checkable from here —
+        // the carrier's provenance is what verify-chainwalk.js follows.
+        for (const [k, part] of e.chain.entries()) {
+          const link = new bsv.Transaction(await woc.rawTx(part.txid))
+          const spends = link.inputs.some((v) => v.prevTxId.toString('hex') === e.deploy && v.outputIndex === part.vout)
+          const meta = await woc.tx(part.txid)
+          rows.push([`link ${k + 1} spends ${part.name}`, spends,
+            `${(link.toBuffer().length).toLocaleString()} B, ${meta.confirmations || 0} conf`])
+        }
+        rows.push(['the last link carries the result', spend.outputs.length === 1,
+          `${spend.outputs.length} output, the carrier`])
+      } else if (e.inputs) {
         // Every coin has to be consumed, and by the SAME transaction — which is
         // the whole claim: two scripts bound to each other by one spend.
         for (const part of e.inputs) {

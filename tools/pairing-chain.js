@@ -170,11 +170,11 @@ const rows = [
 ]
 for (const [what, bytes, ms] of rows) console.log(`    ${what.padEnd(40)} ${n(bytes).padStart(9)} B  ${ms.toFixed(0).padStart(6)} ms`)
 console.log(`    ${'—'.padEnd(40)}`)
-console.log(`    ${'the two-input spend that relayed'.padEnd(40)} ${n(830928).padStart(9)} B  ${'2,553'.padStart(6)} ms   mainnet`)
-console.log(`    ${'the three-input spend relay refused'.padEnd(40)} ${n(1291329).padStart(9)} B  ${'3,993'.padStart(6)} ms   by hand`)
+console.log(`    ${'the two-input spend that relayed'.padEnd(40)} ${n(830928).padStart(9)} B  ${'2,749'.padStart(6)} ms   mainnet`)
+console.log(`    ${'the three-input spend relay refused'.padEnd(40)} ${n(1291329).padStart(9)} B  ${'4,219'.padStart(6)} ms   by hand`)
 const worst = Math.max(r1.ms, r2.ms)
-console.log(`\n    the heaviest link is ${worst.toFixed(0)} ms — ${(worst / 2553).toFixed(2)}× the spend that relayed,`)
-console.log(`    ${(worst / 3993).toFixed(2)}× the one that did not.`)
+console.log(`\n    the heaviest link is ${worst.toFixed(0)} ms — ${(worst / 2749).toFixed(2)}× the spend that relayed,`)
+console.log(`    ${(worst / 4219).toFixed(2)}× the one that did not.`)
 
 // ── 4. what a reader has to check, because no script can ────────────────────
 console.log(`

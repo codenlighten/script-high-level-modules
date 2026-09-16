@@ -219,6 +219,18 @@ an SLH-DSA-SHA2-128s (FIPS 205) post-quantum signature over the spending transac
 | deploy | [`44db75c3235ea1aa18e42284657f29cd700cdc8e9f6cfff687da042b124b7de6`](https://whatsonchain.com/tx/44db75c3235ea1aa18e42284657f29cd700cdc8e9f6cfff687da042b124b7de6) |
 | spend | [`a2fd9e753507835558e28dd0b4764cee45df33ed1b64a5db94ea2ace1482fd86`](https://whatsonchain.com/tx/a2fd9e753507835558e28dd0b4764cee45df33ed1b64a5db94ea2ace1482fd86) |
 
+### pairing.chainMiller ▸ pairing.chainExp
+
+a complete BLS12-381 pairing, one stage per transaction, chained through a carrier coin
+
+| | |
+| --- | --- |
+| locking script | 820,907 bytes |
+| deploy | [`2b7ec0a583168c15a2783a7e7e5b54a074849746c8bea530211fbe60cdee9d0c`](https://whatsonchain.com/tx/2b7ec0a583168c15a2783a7e7e5b54a074849746c8bea530211fbe60cdee9d0c) |
+| spend | [`0482eccb26c1c677635b4a6c95a1bbf7fb13e28926cfa3c4d63430f1a68d244a`](https://whatsonchain.com/tx/0482eccb26c1c677635b4a6c95a1bbf7fb13e28926cfa3c4d63430f1a68d244a) |
+| pairing.chainMiller | [`a8ae58b2613bd7da2a41886cd529c03e46674e39a3df40615f41e7bc8542c05e`](https://whatsonchain.com/tx/a8ae58b2613bd7da2a41886cd529c03e46674e39a3df40615f41e7bc8542c05e) |
+| pairing.chainExp | [`0482eccb26c1c677635b4a6c95a1bbf7fb13e28926cfa3c4d63430f1a68d244a`](https://whatsonchain.com/tx/0482eccb26c1c677635b4a6c95a1bbf7fb13e28926cfa3c4d63430f1a68d244a) |
+
 ## What this does and does not show
 
 It shows that these scripts are **relayable and spendable on mainnet today**: the

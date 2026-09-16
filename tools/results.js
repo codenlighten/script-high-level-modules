@@ -231,7 +231,15 @@ const deployments = ledgerEntries.map((d) => ({
   lockBytes: d.lockBytes || d.lock_bytes || null,
   deploy: d.deploy || d.txid || null,
   spend: d.spend || null,
-  parts: d.inputs ? d.inputs.map((p) => ({ name: p.name, lockBytes: p.lockBytes, vout: p.vout })) : null
+  // A deployment of several coins records them in `inputs` when one spend
+  // consumes them all, and in `chain` when each is spent by its own
+  // transaction. Reading only `inputs` left the chained pairing with a null
+  // here, so the paper quoted its two stage sizes from nothing this file
+  // measured — which is the exact failure the rest of this tool exists to
+  // prevent.
+  parts: (d.inputs || d.chain)
+    ? (d.inputs || d.chain).map((p) => ({ name: p.name, lockBytes: p.lockBytes, vout: p.vout, ...(p.txid ? { txid: p.txid } : {}) }))
+    : null
 }))
 
 // What is on chain AND is still what the implementation does.

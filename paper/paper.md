@@ -580,7 +580,7 @@ See **Table 5** and **Table 7**.
 
 The complete Miller loop was deployed as a 333,676-byte locking script and
 spent. One `f ↦ f^|x|` ladder was deployed as 99,631 bytes and spent. Each deployed script is rebuilt from source and compared byte for byte against
-the chain; **18 of 18 reconstruct exactly**, a count generated from the ledger
+the chain; **19 of 19 reconstruct exactly**, a count generated from the ledger
 rather than written down. The two-way split of §8.2 is rebuilt coin by coin;
 before this revision its record was checked against the chain for size only,
 which the count above did not say.
@@ -802,8 +802,8 @@ reason, **`too-long-validation-time`**. It stayed unmined for 128 blocks. The
 operator's explanation, when asked, was that their node gives a peer-relayed
 transaction at most a second to validate — `maxnonstdtxvalidationduration`, 1000
 ms by default — and this one exceeded it under load. Measured in the JavaScript
-interpreter, its three inputs take 3.9 seconds between them against 2.8 for the
-two inputs of the §8.2 spend, which relayed and was mined: 1.4 times as long,
+interpreter, its three inputs take 4.2 seconds between them against 2.7 for the
+two inputs of the §8.2 spend, which relayed and was mined: 1.5 times as long,
 with no input individually heavier than §8.2's. The pool then submitted it to
 their own node directly, and mined it in **block 966,923**.
 
@@ -872,6 +872,54 @@ cryptography and no answer in isolation; it is answered by where the field sits
 relative to a hash function's block boundaries, which is exactly the kind of
 target-specific fact §9.1 argues should be delegated to a search rather than
 decided in advance.
+
+## 8.4 One stage per transaction, because relay is the binding constraint
+
+§8.3's spend could not travel, and the remedy follows from what refused it.
+Validation time bounds the TRANSACTION, so the unit of work has to become the
+unit of relay: one stage per transaction, with the state passed along a chain of
+small coins rather than between the inputs of one.
+
+The carrier coin holds a PAIR of states, `prev` and `cur`, and requires its
+successor to be the same script with **its own cur as the successor's prev**,
+leaving that successor's cur unconstrained. The stage coin beside it requires the
+successor's cur to be what it computed from the prev it consumed:
+
+```
+carrier:  output = body ‖ myCur ‖ X       X witnessed, free
+stage:    output = body ‖ p     ‖ F(p)    p witnessed, free
+```
+
+Both hash the same output, so p = myCur and X = F(p). Neither reads the other's
+script — an outpoint does not name one — and they agree because the bytes they
+each rebuild are the same bytes.
+
+| | lock | unlock | validates in |
+| --- | ---: | ---: | ---: |
+| tx₁, the Miller loop | 344,840 | 351,963 | 1,351 ms |
+| tx₂, the exponentiation and the carrier | 476,067 | 480,352 | 1,679 ms |
+| §8.2's two-input spend, which relayed | — | — | 2,749 ms |
+| §8.3's three-input spend, which did not | — | — | 4,219 ms |
+
+The heaviest link asks for 0.61 of what relayed and 0.40 of what did not. The
+milliseconds are this machine's JavaScript interpreter in one idle run and a
+node's C++ is far quicker; what transfers is the ratio. It is
+on mainnet: funding `2b7ec0a5…`, then `a8ae58b2…` and `0482eccb…`, all three
+mined in block 966,954 — by the pool whose relay check had refused §8.3's spend,
+and which minutes earlier refused this chain's first link for paying two satoshis
+under its size-derived minimum. That was our arithmetic error, since fixed; what
+it records about the platform is that a node's relay threshold, a miner's mining
+threshold and consensus are three different things.
+
+**What it gives up is atomicity.** In §8.3 every stage checked through
+hashPrevouts that the spend consumed exactly its siblings, and the transaction's
+validity was the whole statement. Here the carrier arrives from the previous
+transaction, whose txid nothing could know when the stage coins were written, so
+no stage can insist the carrier beside it is genuine. The claim becomes one about
+a chain, and a reader completes it by walking one: the funding transaction's
+outputs carry the stage scripts, and each link spends the coin and the carrier it
+should. `npm run verify:chainwalk` performs exactly that walk against the chain,
+and compares the value the last carrier holds with the pairing computed here.
 
 **Headroom.** Stage 3 unlocks in 481,527 bytes — 18,473 under the policy, again
 in the unlocking script rather than the locking one. A four-way split would

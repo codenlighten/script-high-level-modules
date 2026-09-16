@@ -218,6 +218,10 @@ ${G8.deployed
 // of anything. Short figures are therefore checked in the phrase they appear
 // in, and anything below four digits needs one.
 const G = r.pairing.onchain.grothVerifierInOneTransaction
+// The chained pairing puts one stage in each TRANSACTION rather than each
+// input, so its two stage sizes are in `parts` of the deployment row, and the
+// row is the one the ledger reconstructs against the chain.
+const CH = r.deployments.find((d) => /chainMiller/.test(d.name))
 const PROSE = {
   'one pairing, bytes': n(r.pairing.e.bytes),
   'final exponentiation, bytes': n(r.pairing.finalExp.bytes),
@@ -254,6 +258,11 @@ const PROSE = {
   'the triple grind': n(G.grindTries),
   'split stage 1, unlock': n(G.unlockBytes[0]),
   'split stage 1, subgroup checks': n(G.subgroupBytes[0]),
+  // §8.4, one stage per transaction. Both figures are what the funding
+  // transaction's outputs actually carry, checked byte for byte by
+  // tools/verify-chainwalk.js.
+  'chain tx₁, lock': n(CH.parts[0].lockBytes),
+  'chain tx₂, lock': n(CH.parts[1].lockBytes),
   // §7.6, subgroup membership
   'subgroup checks in the verifier': n(r.pairing.groth16.subgroupCheckBytes),
   'the verifier without them': n(r.pairing.groth16.withoutSubgroupChecks),
