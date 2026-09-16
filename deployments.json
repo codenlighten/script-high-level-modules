@@ -332,6 +332,30 @@
         }
       ],
       "at": "2026-09-16T09:32:41.136Z"
+    },
+    {
+      "target": "pairing.chainMiller ▸ pairing.chainExp, minimized by scriptmin",
+      "key": "pairingChainScriptmin",
+      "scriptmin": "2a45495bb913b3462f71be071cec8e7b79e8fdd4",
+      "claim": "a complete BLS12-381 pairing, one stage per transaction, chained through a carrier coin",
+      "lockBytes": 504058,
+      "deploy": "7948b2a31e07484ba764e2c69fd9e923e10e5ab406f3abea9a8767e04d117902",
+      "spend": "016ce0cc88a3bf4764f8f3d7108129d8229742bd1048241ca6fe71642c4e2d2d",
+      "chain": [
+        {
+          "name": "pairing.chainMiller",
+          "txid": "282bf49356d28c986b685081e45ed29d92c16ccdcccb642c446ce0a392594307",
+          "lockBytes": 206795,
+          "vout": 0
+        },
+        {
+          "name": "pairing.chainExp",
+          "txid": "016ce0cc88a3bf4764f8f3d7108129d8229742bd1048241ca6fe71642c4e2d2d",
+          "lockBytes": 297263,
+          "vout": 1
+        }
+      ],
+      "at": "2026-09-16T14:58:34.021Z"
     }
   ]
 }

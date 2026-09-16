@@ -244,6 +244,18 @@ a Groth16 proof of age verified across three transactions, each state split out 
 | groth16.chain2 | [`f93163d28d65358c572d24460adf8ecbac6d36bdd55b4363abd2ad1fd82b747e`](https://whatsonchain.com/tx/f93163d28d65358c572d24460adf8ecbac6d36bdd55b4363abd2ad1fd82b747e) |
 | groth16.chain3 | [`3b68669ce3bdf2e1a7dd4a12e449c0b51a4d8a7f137b5eca9c3b64726c859ee7`](https://whatsonchain.com/tx/3b68669ce3bdf2e1a7dd4a12e449c0b51a4d8a7f137b5eca9c3b64726c859ee7) |
 
+### pairing.chainMiller ▸ pairing.chainExp, minimized by scriptmin
+
+a complete BLS12-381 pairing, one stage per transaction, chained through a carrier coin
+
+| | |
+| --- | --- |
+| locking script | 504,058 bytes |
+| deploy | [`7948b2a31e07484ba764e2c69fd9e923e10e5ab406f3abea9a8767e04d117902`](https://whatsonchain.com/tx/7948b2a31e07484ba764e2c69fd9e923e10e5ab406f3abea9a8767e04d117902) |
+| spend | [`016ce0cc88a3bf4764f8f3d7108129d8229742bd1048241ca6fe71642c4e2d2d`](https://whatsonchain.com/tx/016ce0cc88a3bf4764f8f3d7108129d8229742bd1048241ca6fe71642c4e2d2d) |
+| pairing.chainMiller | [`282bf49356d28c986b685081e45ed29d92c16ccdcccb642c446ce0a392594307`](https://whatsonchain.com/tx/282bf49356d28c986b685081e45ed29d92c16ccdcccb642c446ce0a392594307) |
+| pairing.chainExp | [`016ce0cc88a3bf4764f8f3d7108129d8229742bd1048241ca6fe71642c4e2d2d`](https://whatsonchain.com/tx/016ce0cc88a3bf4764f8f3d7108129d8229742bd1048241ca6fe71642c4e2d2d) |
+
 ## What this does and does not show
 
 It shows that these scripts are **relayable and spendable on mainnet today**: the

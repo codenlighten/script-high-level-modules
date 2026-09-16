@@ -102,7 +102,7 @@ async function walk (entry) {
   say(tx2.outputs[0].script.toBuffer().subarray(-W).equals(eBytes),
     'and that value is the pairing this repository computes', 'twelve Fp12 coefficients')
 
-  console.log(`\n    mined in block ${meta.blockheight}, ${meta.confirmations} confirmation(s)`)
+  console.log(`\n    mined in block ${meta.blockheight || '(unconfirmed)'}, ${meta.confirmations || 0} confirmation(s)`)
   if (findings) {
     console.log(`\n  ${findings} check(s) did not hold — the chain does not say what it claims to.\n`)
     return findings
