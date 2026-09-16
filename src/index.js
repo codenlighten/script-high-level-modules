@@ -30,6 +30,7 @@ const pairingMod = require('./modules/pairing')
 const groth16 = require('./modules/groth16')
 const groth16split = require('./modules/groth16split')
 const slhdsaMod = require('./modules/slhdsa')
+const carryMod = require('./modules/carry')
 
 const { defineModule, apply, instantiate } = require('./module')
 const { Asm } = require('./asm')
@@ -141,6 +142,12 @@ const factories = {
   // shared output commitment — neither script contains the other's code.
   'pairing.publish': pairingMod.publish,
   'pairing.consume': pairingMod.consume,
+  // The same pairing with one stage per TRANSACTION, chained through a carrier
+  // coin — because validation time bounds the transaction, not the script.
+  'pairing.chainMiller': pairingMod.chainMiller,
+  'pairing.chainExp': pairingMod.chainExp,
+  'tx.carry': carryMod.carry,
+  'tx.commitCarry': carryMod.commitCarry,
   'groth16.verify': groth16.verifier,
   // The same verifier cut into three, one stage per input of one transaction.
   // The whole verifier is 1.24 MB against a 500 KB policy and its Miller loop
@@ -179,7 +186,7 @@ function catalog () {
 
 module.exports = {
   int, bytes, u32, sha256, rsa, hmac, totp, ec, ecdsa, schnorr: schnorrMod, merkle, tx: txmod, state: stateMod,
-  fp2, fp6, fp12, g2: g2mod, points: pointsMod, pairing: pairingMod, groth16, groth16split, slhdsa: slhdsaMod, bls12381: require('./bls12381'),
+  fp2, fp6, fp12, g2: g2mod, points: pointsMod, pairing: pairingMod, groth16, groth16split, slhdsa: slhdsaMod, carry: carryMod, bls12381: require('./bls12381'),
   modules, factories, catalog, describe,
   defineModule, apply, instantiate, predicate, compose, recipes, Asm,
   evaluate, evaluateSpend, policyFlags,

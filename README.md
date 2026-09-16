@@ -95,6 +95,16 @@ block.
 it byte for byte against what is in the output — so it goes red if the modules
 drift from what was deployed. See [mainnet.md](docs/mainnet.md).
 
+`npm run pairing:chain` is the answer to that refusal rather than a description
+of it: the same pairing with **one stage per transaction**, chained through a
+small carrier coin that holds a pair of states and requires its successor to take
+its current value as the new previous. The stage beside it requires that
+successor's current value to be what it computed. Neither reads the other's
+script; equality of the bytes they each rebuild is the binding. The heaviest link
+validates in 1,644 ms against the 2,553 ms of the spend that relayed — so it
+travels without anyone's goodwill. What it gives up is atomicity: the claim
+becomes one about a chain, which a reader checks by walking it.
+
 `npm run relay` asks the other question, the one this repository learned the
 expensive way: **will a node pass it along?** Nodes bound how long they will spend
 validating a transaction that arrives from a peer, so it times every spend here

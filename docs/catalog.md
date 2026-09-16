@@ -82,6 +82,10 @@
 | `pairing.verify(…)` | *built per key or width* | | | |
 | `pairing.publish(…)` | *built per key or width* | | | |
 | `pairing.consume(…)` | *built per key or width* | | | |
+| `pairing.chainMiller(…)` | *built per key or width* | | | |
+| `pairing.chainExp(…)` | *built per key or width* | | | |
+| `tx.carry(…)` | *built per key or width* | | | |
+| `tx.commitCarry(…)` | *built per key or width* | | | |
 | `groth16.verify(…)` | *built per key or width* | | | |
 | `groth16.split(…)` | *built per key or width* | | | |
 | `slhdsa.verify(…)` | *built per key or width* | | | |

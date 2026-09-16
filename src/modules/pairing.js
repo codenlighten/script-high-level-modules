@@ -816,4 +816,145 @@ function consume (expected, opts = {}) {
   })
 }
 
-module.exports = { miller, finalExp, product, full, verify, publish, consume, serialiseF12, STATE_BYTES, COEFF_BYTES, schedule, replay, replay1, readPairs, writePairs, pre, spread, unspread, FULL, BITS }
+// ── THE SAME PAIRING, ONE STAGE PER TRANSACTION ─────────────────────────────
+//
+// publish/consume put both stages in one transaction, bound by a shared data
+// output. That relayed — and the three-stage Groth16 version of it did not, for
+// its validation time. So here the two stages are two TRANSACTIONS, chained
+// through a carrier coin (src/modules/carry.js):
+//
+//     tx₁   pairing.chainMiller   → carrier(∅, f)
+//     tx₂   pairing.chainExp + carrier(∅, f) → carrier(f, e(P, Q))
+//
+// Each transaction validates one stage, so each asks a node for about half of
+// what the two-input spend asked, and a fifth of what the refused one did.
+//
+// The stages never read the carrier. Each rebuilds the carrier output it expects
+// and compares hashes, which is what pins the f one stage published to the f the
+// next consumed — see carry.js for why that is enough, and for what it leaves to
+// a reader of the chain.
+
+/** Stage one as its own transaction: run the loop, pay the carrier. */
+function chainMiller (opts = {}) {
+  const carry = require('./carry')
+  const loop = miller(FULL)
+  const loopIn = loop.inputs.map((i) => i.name)
+  const commit = carry.commitCarry(STATE_BYTES, opts.carrier || {})
+
+  return defineModule({
+    name: 'pairing.chainMiller',
+    doc: 'run the Miller loop and pay a carrier coin holding its twelve outputs',
+    inputs: [...loop.inputs, { name: 'preimage', kind: 'bytes', witness: true }],
+    outputs: [],
+    contextual: true,
+    maxWitnessAttacks: opts.maxWitnessAttacks || 2,
+    witnessFor: (ctx) => {
+      const { tx, lockingScript, satoshis, spend = {}, inputIndex = 0 } = ctx
+      const P = { x: spend.Px, y: spend.Py }
+      const Q = { x: [spend.Qx0, spend.Qx1], y: [spend.Qy0, spend.Qy1] }
+      const { f, witnesses } = replay([{ P, Q }], FULL, P381)
+      const out = {}
+      witnesses.forEach(([a, b], k) => { out[`w${k}a`] = a; out[`w${k}b`] = b })
+      const data = serialiseF12(spread(bls.X < 0n ? bls.f12conj(f) : f, 'f'), 'f')
+      const w = commit.witnessFor({ tx, lockingScript, satoshis, inputIndex, spend: { prev: Buffer.alloc(STATE_BYTES), cur: data } })
+      return { ...out, preimage: w.preimage }
+    },
+    hint: () => ({}),
+    model: () => ({}),
+    attacks: (honest, params, name) => (name === 'preimage'
+      ? txmod.preimageAttacks(honest, params, name)
+      : defaultAttacks(honest[name], { n: P381 })),
+    requires: loop.requires,
+    prologue: (asm, { n = P381 }) => pushModulus(asm, n),
+    emit: (asm, params) => {
+      const n = params.n === undefined ? P381 : params.n
+      const p = { n: modulusName(n), nn: params.nn === undefined ? numericModulus({ n }, 'pairing.chainMiller') : params.nn }
+      apply(asm, loop, p, loopIn, twelve('f'))
+      twelve('f').forEach((name, i) => {
+        asm.roll(name); asm.num2bin(COEFF_BYTES, `_b${i}`)
+        if (i > 0) asm.cat('_blob')
+      })
+      asm.rename('cur', 'bytes', STATE_BYTES)
+      asm.data(Buffer.alloc(STATE_BYTES), 'prev')
+      asm.roll('cur')
+      apply(asm, commit, {}, ['preimage', 'prev', 'cur'], [])
+      if (typeof n !== 'string') asm.discard('_pn')
+    },
+    notes: [
+      'the first link has no predecessor, so the carrier it pays holds an empty prev',
+      'one stage, one transaction: what a node is asked to validate is a Miller loop and nothing else'
+    ],
+    cases: opts.cases || []
+  })
+}
+
+/** Stage two as its own transaction: consume the carrier's f, finish the pairing. */
+function chainExp (expected, opts = {}) {
+  const carry = require('./carry')
+  const commit = carry.commitCarry(STATE_BYTES, opts.carrier || {})
+  const want = spread(expected, 'r')
+  const expWit = finalExp.inputs.filter((i) => i.witness).map((i) => i.name)
+  const result = serialiseF12(want, 'r')
+
+  return defineModule({
+    name: 'pairing.chainExp',
+    doc: 'consume a carrier holding a Miller output and require its final exponentiation to be a fixed value',
+    inputs: [
+      { name: 'preimage', kind: 'bytes', witness: true },
+      { name: 'data', kind: 'bytes', width: STATE_BYTES, witness: true },
+      ...expWit.map((name) => ({ name, witness: true }))
+    ],
+    outputs: [],
+    contextual: true,
+    maxWitnessAttacks: opts.maxWitnessAttacks || 2,
+    witnessFor: (ctx) => {
+      const { tx, lockingScript, satoshis, spend = {}, inputIndex = 0 } = ctx
+      const f = spend.f
+      const data = serialiseF12(spread(f, 'f'), 'f')
+      const w = commit.witnessFor({ tx, lockingScript, satoshis, inputIndex, spend: { prev: data, cur: result } })
+      return { preimage: w.preimage, data, ...finalExp.hint(spread(f, 'f'), { n: P381, nn: P381 }) }
+    },
+    hint: () => ({}),
+    model: () => ({}),
+    attacks: (honest, params, name) => {
+      if (name === 'preimage') return txmod.preimageAttacks(honest, params, name)
+      if (name === 'data') {
+        const b = Buffer.from(honest[name]); b[0] ^= 0x01
+        return [{ label: 'a Miller output the carrier was not holding', value: b }]
+      }
+      return defaultAttacks(honest[name], { n: P381 })
+    },
+    prologue: (asm, { n = P381 }) => pushModulus(asm, n),
+    emit: (asm, params) => {
+      const n = params.n === undefined ? P381 : params.n
+      const p = { n: modulusName(n), nn: params.nn === undefined ? numericModulus({ n }, 'pairing.chainExp') : params.nn }
+      // The carrier's cur becomes this link's prev, so `data` has to survive the
+      // splitting: the COPY is taken apart into twelve numbers, and the original
+      // stays whole for the commitment at the end.
+      asm.roll('data'); asm.rename('_prev')
+      asm.pick('_prev', '_split')
+      const names = twelve('f')
+      for (let i = 0; i < names.length - 1; i++) {
+        asm.splitAt(COEFF_BYTES, names[i], '_rest')
+        asm.op('OP_SWAP', 2, [{ name: '_rest2', kind: 'bytes' }, { name: names[i], kind: 'bytes' }])
+        asm.bin2num(names[i])
+        asm.op('OP_SWAP', 2, [{ name: names[i], kind: 'num' }, { name: '_rest', kind: 'bytes' }])
+      }
+      asm.bin2num(names[names.length - 1])
+      apply(asm, finalExp, p, [...names, ...expWit], twelve('r'))
+      for (const name of twelve('r')) {
+        asm.roll(name); asm.num(want[name], '_want'); asm.numEqualVerify()
+      }
+      asm.data(result, 'cur')
+      apply(asm, commit, {}, ['preimage', '_prev', 'cur'], [])
+      if (typeof n !== 'string') asm.discard('_pn')
+    },
+    notes: [
+      'the carrier beside it holds f as its cur, and pays a successor whose prev is that f — which is what makes this link\'s data the previous link\'s output',
+      'the value it pays forward is the pairing, so the last carrier is a receipt anyone can read'
+    ],
+    cases: opts.cases || []
+  })
+}
+
+module.exports = { miller, finalExp, product, full, verify, publish, consume, chainMiller, chainExp, serialiseF12, STATE_BYTES, COEFF_BYTES, schedule, replay, replay1, readPairs, writePairs, pre, spread, unspread, FULL, BITS }

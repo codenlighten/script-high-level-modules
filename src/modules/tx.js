@@ -782,4 +782,6 @@ function payingWitness ({ tx, lockingScript, satoshis, spend = {} }, W, fee) {
 }
 
 module.exports = {
-  commitData, commitPrefix, dataOutput, preimageAttacks, locktime, hashOutputs, requireOutputs, transition, transitionPaying, recreateWitness, payingWitness, leBytes, right, left, grindValue, emitAuthenticate, SIGHASH_ALL_FORKID, FINAL, PushTx }
+  commitData, commitPrefix, dataOutput, preimageAttacks, locktime, hashOutputs, requireOutputs, transition, transitionPaying, recreateWitness, payingWitness, leBytes, right, left, grindValue,
+  emitAuthenticate, emitScriptCode, emitSplitState, emitValueIn, emitCommitted, siblingCheck, le4,
+  SIGHASH_ALL_FORKID, FINAL, PushTx }

@@ -645,6 +645,60 @@ bounds RELAY rather than validity. The spend is valid and its block is valid; it
 simply could not travel. A version that does not depend on an operator's goodwill
 has to put the stages in separate transactions.
 
+## One stage per transaction
+
+The fix follows from what the limit bounds. Validation time bounds the
+*transaction*, so the unit of work has to become the unit of relay: one stage
+per transaction, with the state passed along a chain of small coins.
+
+```
+funding   two stage coins, and nothing else
+tx₁       the Miller loop                      → carrier(∅, f)
+tx₂       the final exponentiation
+          + carrier(∅, f)                      → carrier(f, e(P, Q))
+```
+
+**The carrier is a pair, and that is the whole trick.** Each carrier coin holds
+two fields, `prev` and `cur`, after a top-level OP_RETURN — the shape
+`tx.transition` already uses and that is already on chain. It requires its
+successor to be the same script with **its own cur as the successor's prev**, and
+a `cur` it does not constrain. The stage coin beside it requires the successor to
+be the same script with `prev` the state it consumed and `cur` the state it
+computed:
+
+```
+carrier:  output = body ‖ myCur ‖ X       X witnessed, free
+stage:    output = body ‖ p     ‖ F(p)    p witnessed, free
+```
+
+Both hash the same output, so p = myCur and X = F(p). Neither reads the other's
+script; equality of the bytes they each rebuild is what binds them. `npm run
+pairing:chain` builds both links, and hands tx₂ a carrier holding a different f
+— which is refused, by the carrier's insistence rather than by the arithmetic.
+
+| | lock | unlock | validates in |
+| --- | ---: | ---: | ---: |
+| tx₁, `pairing.chainMiller` | 344,840 | 351,963 | 1,211 ms |
+| tx₂, `pairing.chainExp` + the carrier | 476,067 | 480,352 | 1,644 ms |
+| the two-input spend that relayed | — | — | 2,553 ms |
+| the three-input spend relay refused | — | — | 3,993 ms |
+
+The heaviest link is **0.64× the spend that relayed** and 0.41× the one that did
+not, so nothing here depends on an operator taking it by hand.
+
+**What it gives up.** In one transaction, every stage could check through
+`hashPrevouts` that the spend consumed exactly its siblings — all outputs of one
+funding transaction, at fixed indices. Here the carrier comes from the *previous*
+transaction, whose txid nothing could know when the stage coins were written, so
+no stage can insist the carrier beside it is genuine. A spender may take a stage
+coin with a state of their choosing and produce a carrier nobody should believe.
+
+So the claim becomes one about a chain, which a reader establishes by walking it:
+the funding transaction's outputs carry the stage scripts, tx₁ spends output 0
+and pays the carrier its script demands, tx₂ spends output 1 and tx₁'s carrier.
+Three checks across three transactions, against one that ran atomically — the
+price of being able to send it at all.
+
 It is measurable in advance, which it was not before this happened.
 `npm run relay` fetches every spend this repository has on chain and times it in
 the same interpreter, reporting each as a ratio against the two whose fate is
