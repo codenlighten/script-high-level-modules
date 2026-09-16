@@ -25,7 +25,7 @@ const bsv = require('@smartledger/bsv')
 const woc = require('../src/woc')
 const onchain = require('../src/onchain')
 const { Asm } = require('../src/asm')
-const { minimize, scriptminVersion } = require('../src/minimize')
+const { minimize, packageFor, installHint } = require('../src/minimize')
 const bls = require('../src/bls12381')
 const pairing = require('../src/modules/pairing')
 const carry = require('../src/modules/carry')
@@ -37,12 +37,12 @@ const n = (x) => x.toLocaleString('en-US')
 const pts = { Px: bls.G1.x, Py: bls.G1.y, Qx0: bls.G2.x[0], Qx1: bls.G2.x[1], Qy0: bls.G2.y[0], Qy1: bls.G2.y[1] }
 
 // A deployment minimized by scriptmin is rebuilt the same way it was built.
-function coin (m, minimized) {
+function coin (m, minimized, version) {
   const asm = new Asm()
   asm.given(m.inputs.map((i) => ({ name: i.name, kind: i.kind || 'num', width: i.width })))
   m.emit(asm, params)
   asm.num(1, 'ok')
-  return minimize(asm.script(), { label: m.name, force: minimized })
+  return minimize(asm.script(), { label: m.name, force: minimized, version })
 }
 
 let findings = 0
@@ -53,19 +53,19 @@ const say = (ok, what, detail = '') => {
 
 async function walk (entry) {
   const minimized = !!entry.scriptmin
-  if (minimized) {
-    const installed = scriptminVersion()
-    say(installed === entry.scriptmin, 'the installed scriptmin is the one that built these stages',
-      `${String(entry.scriptmin).slice(0, 12)}${installed === entry.scriptmin ? '' : ' (installed: ' + String(installed).slice(0, 12) + ')'}`)
+  if (minimized && !packageFor(entry.scriptmin)) {
+    say(false, 'the scriptmin that built these stages is installed', `${String(entry.scriptmin).slice(0, 12)}: ${installHint(entry.scriptmin)}`)
+    return
   }
+  if (minimized) say(true, 'rebuilt with the scriptmin that built these stages', String(entry.scriptmin).slice(0, 12))
 
   // What the code says the coins and the answer should be, computed here.
   const rawF = pairing.replay([{ P: bls.G1, Q: bls.G2 }], pairing.FULL, bls.P).f
   const f = bls.X < 0n ? bls.f12conj(rawF) : rawF
   const fBytes = pairing.serialiseF12(pairing.spread(f, 'f'), 'f')
   const eBytes = pairing.serialiseF12(pairing.spread(bls.pairing(bls.G1, bls.G2), 'r'), 'r')
-  const lockMiller = coin(pairing.chainMiller({ cases: [{ name: 'x', inputs: pts, spend: pts, params }] }), minimized)
-  const lockExp = coin(pairing.chainExp(bls.pairing(bls.G1, bls.G2), { cases: [{ name: 'x', spend: { f }, params }] }), minimized)
+  const lockMiller = coin(pairing.chainMiller({ cases: [{ name: 'x', inputs: pts, spend: pts, params }] }), minimized, entry.scriptmin)
+  const lockExp = coin(pairing.chainExp(bls.pairing(bls.G1, bls.G2), { cases: [{ name: 'x', spend: { f }, params }] }), minimized, entry.scriptmin)
 
   const fund = new bsv.Transaction(await woc.rawTx(entry.deploy))
   const tx1 = new bsv.Transaction(await woc.rawTx(entry.chain[0].txid))

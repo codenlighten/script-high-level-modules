@@ -55,6 +55,7 @@
     "@noble/post-quantum": "^0.7.1"
   },
   "optionalDependencies": {
-    "scriptmin": "github:codenlighten/scriptmin"
+    "scriptmin": "github:codenlighten/scriptmin#6efc957f84aefdff20fe7ec95b2d863dae7477ab",
+    "scriptmin-2a45495": "github:codenlighten/scriptmin#2a45495bb913b3462f71be071cec8e7b79e8fdd4"
   }
 }
