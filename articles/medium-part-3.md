@@ -76,7 +76,7 @@ An implementation of a cryptographic standard that has only ever been tested aga
 
 ## The lesson from Part II, applied
 
-Part II ended with a transaction that was valid, couldn't propagate, and only reached a block because a mining pool accepted it by hand. Its sin was validation time: nodes give a peer-relayed transaction roughly **one second** to validate, and it wanted more.
+Part II ended with a transaction that was valid, couldn't propagate, and only reached a block because a mining pool accepted it by hand. Its sin was validation time: nodes give a peer-relayed transaction roughly **one second** to validate, and it wanted more. (That verifier has since been rebuilt as three chained transactions and mined in block 966,988, every link relaying on its own — but the lesson below is the one that produced the rebuild.)
 
 So this time I measured before spending anything:
 
@@ -111,7 +111,7 @@ Bitcoin didn't need to understand the protocol. It only had to agree on SHA-256.
 
 ---
 
-*Series: [Part I](#) — a complete BLS12-381 pairing on mainnet. [Part II](#) — a zero-knowledge proof of age, and the limit that nearly kept it off chain.*
+*Series: [Part I](#) — a complete BLS12-381 pairing on mainnet. [Part II](#) — a zero-knowledge proof of age, the limit that nearly kept it off chain, and the chain of transactions that got it there without anyone's permission.*
 
 | | deploy | spend |
 | --- | --- | --- |
