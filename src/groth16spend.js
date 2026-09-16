@@ -31,6 +31,7 @@ const bsv = require('@smartledger/bsv')
 const crypto = require('crypto')
 const H = require('@smartledger/bsv/lib/covenant/helpers')
 const { Asm } = require('./asm')
+const { minimize } = require('./minimize')
 const { policyFlags } = require('./run')
 const { pushNum, pushData } = require('./num')
 const txmod = require('./modules/tx')
@@ -44,7 +45,7 @@ function coin (m) {
   asm.given(m.inputs.map((i) => ({ name: i.name, kind: i.kind || 'num', width: i.width })))
   m.emit(asm, {})
   asm.num(1, 'ok')
-  return asm.script()
+  return minimize(asm.script(), { label: m.name })
 }
 const lockingScripts = (v) => [coin(v.stage1), coin(v.stage2), coin(v.stage3)]
 

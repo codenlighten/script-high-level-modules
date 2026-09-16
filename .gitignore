@@ -8,3 +8,6 @@ package-lock.json
 
 # A spend refused after its coins were funded, kept for a retry.
 .pending-spend-*.hex
+
+# scriptmin results for SCRIPTMIN=1 builds (src/minimize.js).
+.scriptmin-cache/

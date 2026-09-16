@@ -51,6 +51,7 @@
 
 const bsv = require('@smartledger/bsv')
 const { Asm } = require('../src/asm')
+const { minimize } = require('../src/minimize')
 const { policyFlags } = require('../src/run')
 const bls = require('../src/bls12381')
 const pairing = require('../src/modules/pairing')
@@ -78,7 +79,7 @@ function coin (m) {
   asm.given(m.inputs.map((i) => ({ name: i.name, kind: i.kind || 'num', width: i.width })))
   m.emit(asm, params)
   asm.num(1, 'ok')
-  return asm.script()
+  return minimize(asm.script(), { label: m.name })
 }
 const lockA = coin(publish)
 const lockB = coin(consume)
