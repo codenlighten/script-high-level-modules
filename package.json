@@ -28,6 +28,7 @@
     "slhdsa": "node tools/slhdsa-crosscheck.js",
     "slhdsa:script": "node tools/slhdsa-script.js",
     "relay": "node tools/relay-budget.js",
+    "relay:scriptmin": "node tools/relay-scriptmin.js",
     "relay:write": "node tools/relay-budget.js --write",
     "attack:siblings": "node tools/attack-siblings.js",
     "pairing": "node tools/pairing-cost.js",

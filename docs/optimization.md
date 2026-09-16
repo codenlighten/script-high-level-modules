@@ -434,6 +434,14 @@ the 500,000-byte policy to 196,489 under it, and the single-transaction pairing
 split from 830,928 bytes to 514,108. Validation time falls with size here
 because much of what disappears is executed stack traffic, not dead bytes.
 
+That raises the question the chain was built to avoid: could the
+single-transaction Groth16 split relay again? `npm run relay:scriptmin` times it
+against the two on-chain yardsticks. On a heavily loaded machine (load average
+above 25) two runs put the minimized split at 0.93× and 1.13× the pairing spend
+that relayed, against 1.44–1.51× for the split as deployed, which relay refused.
+So it is at the line rather than clearly under it, and needs an idle re-run
+before anyone spends a satoshi on the answer.
+
 ## What was tried and rejected
 
 **Reversing bytes arithmetically.** `bytes.reverse` is 4 bytes per byte
