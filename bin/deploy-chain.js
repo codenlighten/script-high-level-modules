@@ -27,6 +27,7 @@ const onchain = require('../src/onchain')
 const woc = require('../src/woc')
 const { policyFlags } = require('../src/run')
 const { Asm } = require('../src/asm')
+const { minimize } = require('../src/minimize')
 const { pushNum, pushData } = require('../src/num')
 const H = require('@smartledger/bsv/lib/covenant/helpers')
 const bls = require('../src/bls12381')
@@ -57,7 +58,7 @@ function coin (m) {
   asm.given(m.inputs.map((i) => ({ name: i.name, kind: i.kind || 'num', width: i.width })))
   m.emit(asm, params)
   asm.num(1, 'ok')
-  return asm.script()
+  return minimize(asm.script(), { label: m.name })
 }
 const unlockFor = (m, values) => {
   const u = new bsv.Script()

@@ -386,6 +386,54 @@ That refusal is a test: `npm test` fails if it stops happening.
 Agreement is always agreement ON A DOMAIN, and every contest names the one its
 vectors came from. "Cheaper" without "and equivalent, here" is not a finding.
 
+## 18. Then let a minimizer rebuild the stack traffic
+
+Everything above is decided while emitting, one module at a time. What no
+module can see is the script it ends up inside: the value it parks on the
+altstack that the next module fetches straight back, the swap into a calling
+convention that the next module swaps out of, the modulus every module picks
+from wherever the stack has left it.
+
+[scriptmin](https://github.com/codenlighten/scriptmin) works on the emitted
+bytes instead. It lifts a whole script to its dataflow and re-emits the stack
+choreography: moves at last use, hot values rolled up once, repeated
+expressions kept rather than recomputed, balanced altstack round trips dropped,
+short sequences replaced by the cheapest equivalent. Every result carries a
+proof that the new script fails on exactly the stacks the old one failed on and
+leaves exactly the same stack. `src/minimize.js` refuses a result without that
+proof.
+
+It is opt-in, because the chain walkers compare rebuilt stage scripts with
+what is on mainnet byte for byte:
+
+```
+SCRIPTMIN=1 node tools/groth16-chain.js
+SCRIPTMIN=1 node tools/pairing-chain.js
+SCRIPTMIN=1 node bin/deploy-groth16-chain.js     # build, verify and price
+```
+
+Only stage scripts go through it. The carrier reads its own script code and
+every stage embeds the carrier's body, so the carrier is left exactly as
+emitted. A stage's OP_PUSH_TX preimage contains its locking script, which is
+fine: every tool grinds its preimages against whatever script it deploys.
+
+Measured with the tools' own honest runs and attacks, all of which behave as
+before (every honest link accepted, every forged state, forged `cur`, wrong
+statement and forged witness refused by the same script with the same error):
+
+| | lock before | lock after | validation before | after |
+| --- | ---: | ---: | ---: | ---: |
+| groth16.chain1 — A, C ∈ G1, rounds 1–31 | 401,185 | 240,371 | 1,844 ms | 1,325 ms |
+| groth16.chain2 — rounds 32–63, B ∈ G2 | 368,525 | 216,214 | 1,665 ms | 1,132 ms |
+| groth16.chain3 — final exponentiation | 477,044 | 298,248 | 2,015 ms | 1,398 ms |
+| pairing.chainMiller | 344,840 | 206,795 | 1,437 ms | 1,086 ms |
+| pairing.chainExp | 476,067 | 297,263 | 2,015 ms | 1,565 ms |
+
+The largest unlocking script in the Groth16 chain goes from 17,693 bytes under
+the 500,000-byte policy to 196,489 under it, and the single-transaction pairing
+split from 830,928 bytes to 514,108. Validation time falls with size here
+because much of what disappears is executed stack traffic, not dead bytes.
+
 ## What was tried and rejected
 
 **Reversing bytes arithmetically.** `bytes.reverse` is 4 bytes per byte

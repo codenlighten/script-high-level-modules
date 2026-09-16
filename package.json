@@ -52,5 +52,8 @@
   "devDependencies": {
     "@noble/curves": "^2.4.0",
     "@noble/post-quantum": "^0.7.1"
+  },
+  "optionalDependencies": {
+    "scriptmin": "github:codenlighten/scriptmin"
   }
 }
