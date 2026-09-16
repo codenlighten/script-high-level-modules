@@ -119,7 +119,18 @@ The heaviest link is **0.60×** the Part I spend that relayed without trouble �
 
 Two honest footnotes. Minutes earlier, that pool also refused tx₁ — for paying two satoshis under its minimum fee, which was my arithmetic and not its policy. The useful part is what the episode says about the platform: a node's relay threshold, a miner's mining threshold, and consensus are three different thresholds, and only the last one is the rule.
 
-The second matters more. **What is on chain is Part I's pairing, not this article's SNARK.** The verifier chains the same way and I have built it: three stages, one per transaction, every link accepted by the interpreter, the heaviest asking 0.58× of the spend that relayed without trouble. Links 2 and 3 don't even take the previous state as witnesses any more — they split it out of the carrier beside them, so the 44 field elements a spender used to hand each stage collapse into one field the chain pins. But it is verified on my machine, not mined, and those are different claims. The pairing is the one that travelled.
+The second matters more: **the verifier chains too, and it is now on chain as well.** Three stages, one per transaction, the heaviest asking 0.58× of the spend that relayed without trouble. Links 2 and 3 don't even take the previous state as witnesses any more — they split it out of the carrier beside them, so the 44 field elements a spender used to hand each stage collapse into one field the chain pins.
+
+```text
+funding  1c0b9af1…c9ea
+tx₁      15c6e1ab…9a14     rounds 1–31, A and C in G1
+tx₂      f93163d2…747e     rounds 32–63, B in G2
+tx₃      3b68669c…9ee7     the final exponentiation
+```
+
+All four were mined in **block 966,988**, the block after they were broadcast, and every one of them relayed normally. That is the whole difference: the transaction at the top of this section needed a pool to accept it by hand, and this one needed nobody's permission at all.
+
+The cost was 255,644 satoshis, against 253,934 for the version that couldn't travel. Splitting the work across transactions was essentially free. What it buys is that no single transaction asks a stranger's node for more than about half of what one that already relayed asked for.
 
 And it costs something real: **atomicity.** When the stages were three inputs of one transaction, each could check through `hashPrevouts` that it was being spent beside its siblings, and the transaction's validity *was* the whole claim. Spread across transactions, the carrier arrives from a transaction whose txid nothing could have known when the stage coins were written — so no stage can insist the carrier beside it is genuine. The claim becomes one about a *chain*, and somebody has to walk it: `npm run verify:chainwalk` rebuilds both stage coins from source, finds them in the funding transaction, follows the carrier from link to link, and compares the value the last one holds against the pairing computed locally.
 

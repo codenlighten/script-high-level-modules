@@ -21,6 +21,7 @@
     "pairing:split": "node tools/pairing-split.js",
     "pairing:chain": "node tools/pairing-chain.js",
     "verify:chainwalk": "node tools/verify-chainwalk.js",
+    "verify:groth16chainwalk": "node tools/verify-groth16-chainwalk.js",
     "deploy:chain": "node bin/deploy-chain.js",
     "subgroup": "node tools/subgroup-derive.js",
     "slhdsa": "node tools/slhdsa-crosscheck.js",

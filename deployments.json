@@ -303,6 +303,35 @@
         }
       ],
       "at": "2026-09-16T03:26:28.515Z"
+    },
+    {
+      "target": "groth16.chain1 ▸ chain2 ▸ chain3",
+      "key": "groth16Chain",
+      "claim": "a Groth16 proof of age verified across three transactions, each state split out of the carrier beside it",
+      "lockBytes": 1246754,
+      "deploy": "1c0b9af1f1b39d40c3d296060a86e8847303cd5709dbd78f917ab65a2f35c9ea",
+      "spend": "3b68669ce3bdf2e1a7dd4a12e449c0b51a4d8a7f137b5eca9c3b64726c859ee7",
+      "chain": [
+        {
+          "name": "groth16.chain1",
+          "txid": "15c6e1ab9762b69a6f1ba05934f862cfe240a1e1f7050e75738e3354ad419a14",
+          "lockBytes": 401185,
+          "vout": 0
+        },
+        {
+          "name": "groth16.chain2",
+          "txid": "f93163d28d65358c572d24460adf8ecbac6d36bdd55b4363abd2ad1fd82b747e",
+          "lockBytes": 368525,
+          "vout": 1
+        },
+        {
+          "name": "groth16.chain3",
+          "txid": "3b68669ce3bdf2e1a7dd4a12e449c0b51a4d8a7f137b5eca9c3b64726c859ee7",
+          "lockBytes": 477044,
+          "vout": 2
+        }
+      ],
+      "at": "2026-09-16T09:32:41.136Z"
     }
   ]
 }

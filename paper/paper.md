@@ -580,7 +580,7 @@ See **Table 5** and **Table 7**.
 
 The complete Miller loop was deployed as a 333,676-byte locking script and
 spent. One `f ↦ f^|x|` ladder was deployed as 99,631 bytes and spent. Each deployed script is rebuilt from source and compared byte for byte against
-the chain; **19 of 19 reconstruct exactly**, a count generated from the ledger
+the chain; **20 of 20 reconstruct exactly**, a count generated from the ledger
 rather than written down. The two-way split of §8.2 is rebuilt coin by coin;
 before this revision its record was checked against the chain for size only,
 which the count above did not say.
@@ -989,9 +989,21 @@ script, and the carrier's txid did not exist when the stage coins were written.
 The tool builds that splice and reports the acceptance, rather than describing
 the caveat in prose and hoping nobody tries it.
 
-`npm run groth16:chain` is the whole of the above. It is not deployed: the
-construction is verified against the interpreter here, and what is on chain is
-§8.4's pairing.
+`npm run groth16:chain` is the whole of the above.
+
+**It is on mainnet.** Funding `1c0b9af1`, then `15c6e1ab`, `f93163d2`
+and `3b68669c` — all four mined in block 966,988, the first block after
+they were broadcast. Every link relayed normally: no direct submission, no
+operator taking anything by hand, which is the entire difference from §8.3. The
+deployment cost 255,644 satoshis against §8.3's 253,934, so the chain is within
+one per cent of the transaction that could not travel.
+
+`npm run verify:groth16chainwalk` is the reader's side of it, and it is not
+a formality: it rebuilds all three stage scripts from source and finds them byte
+for byte in the funding transaction's outputs, follows each link to the coin and
+the carrier it should spend, and compares the state the last carrier holds with
+e(α, β) computed here. Thirteen checks, because the chain cannot make them for
+itself.
 
 ## 9. An inverted cost model
 

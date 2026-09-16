@@ -831,7 +831,24 @@ carrier accepts. A carrier from another run, with a stage consistent with it, is
 accepted, because it is a valid link of that run's chain and nothing in a script
 can tell.
 
-This one is not deployed. What is on chain is the pairing above.
+**It is on mainnet**, in four transactions:
+
+```
+funding  1c0b9af1f1b39d40c3d296060a86e8847303cd5709dbd78f917ab65a2f35c9ea
+tx₁      15c6e1ab9762b69a6f1ba05934f862cfe240a1e1f7050e75738e3354ad419a14
+tx₂      f93163d28d65358c572d24460adf8ecbac6d36bdd55b4363abd2ad1fd82b747e
+tx₃      3b68669ce3bdf2e1a7dd4a12e449c0b51a4d8a7f137b5eca9c3b64726c859ee7
+```
+
+All four were mined in **block 966,988**, the first block after they were
+broadcast, and every link relayed on its own merits — which is the whole point,
+because the single-transaction version of this verifier was refused for its
+validation time and reached a block only because a pool took it by hand.
+
+`npm run verify:groth16chainwalk` walks it: the three stage scripts rebuilt
+from source and found in the funding transaction, each link spending the coin and
+the carrier it should, and the last carrier's state compared with e(α, β)
+computed here.
 
 ## The honest caveat
 

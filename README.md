@@ -121,8 +121,15 @@ first place — the whole Groth16 verifier, three stages, one per transaction.
 Every link is accepted by the interpreter and the heaviest asks 0.58× of the
 spend that relayed. Links 2 and 3 do not witness the previous state: they split
 it out of the carrier beside them, so the 32 and 44 spender-chosen field elements
-of the single-transaction version become one field the carrier pins. It is
-verified here, not deployed.
+of the single-transaction version become one field the carrier pins.
+
+**It is on mainnet** — funding [`1c0b9af1`](https://whatsonchain.com/tx/1c0b9af1f1b39d40c3d296060a86e8847303cd5709dbd78f917ab65a2f35c9ea), then
+[`15c6e1ab`](https://whatsonchain.com/tx/15c6e1ab9762b69a6f1ba05934f862cfe240a1e1f7050e75738e3354ad419a14), [`f93163d2`](https://whatsonchain.com/tx/f93163d28d65358c572d24460adf8ecbac6d36bdd55b4363abd2ad1fd82b747e) and
+[`3b68669c`](https://whatsonchain.com/tx/3b68669ce3bdf2e1a7dd4a12e449c0b51a4d8a7f137b5eca9c3b64726c859ee7), all four mined in block 966,988. Every link
+relayed normally, where the single-transaction version of the same verifier had
+to be handed to a pool. `npm run verify:groth16chainwalk` walks the chain:
+the stage scripts rebuilt from source, each link spending the coin and carrier it
+should, and the last carrier's value compared with e(α, β) computed here.
 
 `npm run relay` asks the other question, the one this repository learned the
 expensive way: **will a node pass it along?** Nodes bound how long they will spend
