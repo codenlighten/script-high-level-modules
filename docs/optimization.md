@@ -419,29 +419,44 @@ fine: every tool grinds its preimages against whatever script it deploys.
 
 Measured with the tools' own honest runs and attacks, all of which behave as
 before (every honest link accepted, every forged state, forged `cur`, wrong
-statement and forged witness refused by the same script with the same error):
+statement and forged witness refused by the same script with the same error).
+Sizes are exact; they depend only on the scriptmin commit.
 
-| | lock before | lock after | validation before | after |
-| --- | ---: | ---: | ---: | ---: |
-| groth16.chain1 — A, C ∈ G1, rounds 1–31 | 401,185 | 240,371 | 1,844 ms | 1,325 ms |
-| groth16.chain2 — rounds 32–63, B ∈ G2 | 368,525 | 216,214 | 1,665 ms | 1,132 ms |
-| groth16.chain3 — final exponentiation | 477,044 | 298,248 | 2,015 ms | 1,398 ms |
-| pairing.chainMiller | 344,840 | 206,795 | 1,437 ms | 1,086 ms |
-| pairing.chainExp | 476,067 | 297,263 | 2,015 ms | 1,565 ms |
+| locking script | as emitted | scriptmin `2a45495` | scriptmin `6efc957` |
+| --- | ---: | ---: | ---: |
+| groth16.chain1 — A, C ∈ G1, rounds 1–31 | 401,185 | 240,371 | 234,054 |
+| groth16.chain2 — rounds 32–63, B ∈ G2 | 368,525 | 216,214 | 210,647 |
+| groth16.chain3 — final exponentiation | 477,044 | 298,248 | 286,491 |
+| pairing.chainMiller | 344,840 | 206,795 | 200,678 |
+| pairing.chainExp | 476,067 | 297,263 | 286,816 |
 
-The largest unlocking script in the Groth16 chain goes from 17,693 bytes under
-the 500,000-byte policy to 196,489 under it, and the single-transaction pairing
-split from 830,928 bytes to 514,108. Validation time falls with size here
-because much of what disappears is executed stack traffic, not dead bytes.
+`6efc957` adds a beam search over the scheduler's choices; most of what it finds
+is the modulus, rolled up just before an operation whose result it then sits
+under, so the reduction after it fetches p with a one-byte `OP_OVER`.
+
+With `6efc957`, on an idle machine, the heaviest link of the Groth16 chain
+validates in 0.38× the time of the pairing spend that relayed, and the heaviest
+link of the pairing chain in 0.41×; the largest unlocking script in the Groth16
+chain is 208,246 bytes under the 500,000-byte policy, against 17,693 as emitted.
+Validation time falls with size because much of what disappears is executed
+stack traffic, not dead bytes.
+
+**Which scriptmin.** A minimized script is reproducible only with the optimizer
+that built it. `scriptmin` in `optionalDependencies` is pinned to a commit and
+builds everything new; a deployment records the commit it was built with; and a
+commit an existing deployment still needs is installed beside it under an alias,
+`scriptmin-2a45495` for the pairing chain on mainnet. The walkers rebuild each
+deployment with its own commit, and say so when it is not installed.
 
 That raises the question the chain was built to avoid: could the
 single-transaction Groth16 split relay again? `npm run relay:scriptmin` times it
-against the two on-chain yardsticks. On an idle machine two runs put the
-minimized split at 1.10× and 1.20× the pairing spend that relayed, against
-1.48–1.49× for the split as it was deployed, which relay refused. (Earlier runs
-on a heavily loaded machine said 0.93× and 1.13×; the idle runs replace them.)
-So minimizing takes the one-transaction verifier most of the way back but not
-under the spend known to relay, and the answer stays the chain.
+against the two on-chain yardsticks. On an idle machine, two runs with
+`6efc957` put the minimized split at 1.06× and 1.12× the pairing spend that
+relayed (`2a45495`: 1.10× and 1.20×), against 1.48–1.57× for the split as it
+was deployed, which relay refused. (Runs on a heavily loaded machine said 0.93×
+and 1.13×; the idle runs replace them.) So minimizing takes the one-transaction
+verifier most of the way back but not under the spend known to relay, and the
+answer stays the chain.
 
 ## What was tried and rejected
 

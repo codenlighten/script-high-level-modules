@@ -25,7 +25,7 @@ const bsv = require('@smartledger/bsv')
 const woc = require('../src/woc')
 const onchain = require('../src/onchain')
 const { Asm } = require('../src/asm')
-const { minimize, scriptminVersion } = require('../src/minimize')
+const { minimize, packageFor, installHint } = require('../src/minimize')
 const chain = require('../src/modules/groth16chain')
 const split = require('../src/modules/groth16split')
 const carry = require('../src/modules/carry')
@@ -36,12 +36,12 @@ const W = chain.STATE_BYTES
 const { S2_NAMES } = split
 
 // A deployment minimized by scriptmin is rebuilt the same way it was built.
-function coin (m, minimized) {
+function coin (m, minimized, version) {
   const asm = new Asm()
   asm.given(m.inputs.map((i) => ({ name: i.name, kind: i.kind || 'num', width: i.width })))
   m.emit(asm, {})
   asm.num(1, 'ok')
-  return minimize(asm.script(), { label: m.name, force: minimized })
+  return minimize(asm.script(), { label: m.name, force: minimized, version })
 }
 
 let findings = 0
@@ -52,18 +52,18 @@ const say = (ok, what, detail = '') => {
 
 async function walk (entry) {
   const minimized = !!entry.scriptmin
-  if (minimized) {
-    const installed = scriptminVersion()
-    say(installed === entry.scriptmin, 'the installed scriptmin is the one that built these stages',
-      `${String(entry.scriptmin).slice(0, 12)}${installed === entry.scriptmin ? '' : ' (installed: ' + String(installed).slice(0, 12) + ')'}`)
+  if (minimized && !packageFor(entry.scriptmin)) {
+    say(false, 'the scriptmin that built these stages is installed', `${String(entry.scriptmin).slice(0, 12)}: ${installHint(entry.scriptmin)}`)
+    return
   }
+  if (minimized) say(true, 'rebuilt with the scriptmin that built these stages', String(entry.scriptmin).slice(0, 12))
 
   // What this repository says the coins and the answer should be, computed here.
   const v = chain.chained(age.vk, age.statement, { proof: age.proof })
   const st = v.stateFor(age.proof)
   const blob1 = chain.pack(chain.LINK1_NAMES, st.values)
   const blob2 = chain.padState(chain.pack(S2_NAMES, st.values))
-  const locks = [coin(v.link1, minimized), coin(v.link2, minimized), coin(v.link3, minimized)]
+  const locks = [coin(v.link1, minimized, entry.scriptmin), coin(v.link2, minimized, entry.scriptmin), coin(v.link3, minimized, entry.scriptmin)]
 
   const fund = new bsv.Transaction(await woc.rawTx(entry.deploy))
   const txs = []
