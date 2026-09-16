@@ -1,6 +1,6 @@
 {
   "generated": "2026-09-16",
-  "commit": "7f698fda34b67631abd0bbe0b9811848c1b56cdb",
+  "commit": "2d364355497ff81a569bf75432e17d5569f3c99f",
   "curve": {
     "name": "BLS12-381",
     "p": "0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab",
@@ -609,6 +609,27 @@
           "lockBytes": 477044,
           "vout": 2,
           "txid": "3b68669ce3bdf2e1a7dd4a12e449c0b51a4d8a7f137b5eca9c3b64726c859ee7"
+        }
+      ]
+    },
+    {
+      "name": "pairing.chainMiller ▸ pairing.chainExp, minimized by scriptmin",
+      "claim": "a complete BLS12-381 pairing, one stage per transaction, chained through a carrier coin",
+      "lockBytes": 504058,
+      "deploy": "7948b2a31e07484ba764e2c69fd9e923e10e5ab406f3abea9a8767e04d117902",
+      "spend": "016ce0cc88a3bf4764f8f3d7108129d8229742bd1048241ca6fe71642c4e2d2d",
+      "parts": [
+        {
+          "name": "pairing.chainMiller",
+          "lockBytes": 206795,
+          "vout": 0,
+          "txid": "282bf49356d28c986b685081e45ed29d92c16ccdcccb642c446ce0a392594307"
+        },
+        {
+          "name": "pairing.chainExp",
+          "lockBytes": 297263,
+          "vout": 1,
+          "txid": "016ce0cc88a3bf4764f8f3d7108129d8229742bd1048241ca6fe71642c4e2d2d"
         }
       ]
     }
