@@ -247,3 +247,38 @@ console.log(`
   to the script rather than through a named Asm method; if it is large, this
   tool is measuring less than it claims to.
 `)
+
+// WHAT THE FIRST INVESTIGATION FOUND, so the next one starts further along.
+//
+// 82% of a pairing is stack traffic, and the single largest slot in it is the
+// MODULUS: 27,008 of the Miller loop's 132,144 accesses are pick('p'), costing
+// 88,716 bytes — 25.9% of the script. Its median depth is 98 and its maximum
+// 182, so nearly every one of those pays a two- or three-byte index.
+//
+// The obvious remedy does not survive contact with the code:
+//
+//   · int.js already caches the modulus WITHIN a module — pushModulus() exists
+//     for exactly that, and its comment says so. The two picks in modsub are
+//     not redundant; each is consumed by the operation after it.
+//
+//   · Parking it on the alt-stack is not free. fp2, fp6 and fp12 already use
+//     the alt-stack as their spill space, around almost every operation, so a
+//     modulus left there sits underneath whatever the tower parked on top.
+//
+//   · A shallow copy WOULD survive: the stack height between consecutive p
+//     accesses moves by a median of 1 slot, and not at all 38.8% of the time.
+//     But only 12 of 27,008 accesses are within 16 today, because p sits at the
+//     bottom of a ~100-slot working set that never shrinks. Keeping a copy near
+//     the top means giving the tower a convention for where the modulus lives,
+//     maintained across park/unpark — a change to fp2/fp6/fp12's calling
+//     discipline, not a peephole.
+//
+// The measured ceiling for bringing every deep access within 16 is 42,322 bytes
+// on the Miller loop, 12.4%, of which the modulus is 34,700. That is worth
+// having and it is not worth risking byte-identity with 20 mainnet deployments
+// to get in a hurry: the same 10% is available from one more transaction split,
+// which costs nothing but a boundary.
+//
+// The larger number is the one to attack next: 132,144 accesses, of which the
+// modulus is only a fifth. An access can be made cheaper by moving values; it
+// can only be REMOVED by emitting differently.
