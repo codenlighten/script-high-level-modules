@@ -31,6 +31,24 @@ const CACHE = path.join(__dirname, '..', '.scriptmin-cache')
 
 const enabled = () => process.env.SCRIPTMIN === '1'
 
+/**
+ * Which scriptmin built the bytes: the commit npm installed it from. A minimized
+ * script is only reproducible with the same optimizer, so deployments record
+ * this and the chain walkers check it.
+ */
+function scriptminVersion () {
+  try {
+    const lock = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'node_modules', '.package-lock.json'), 'utf8'))
+    const resolved = lock.packages['node_modules/scriptmin'].resolved
+    return resolved.includes('#') ? resolved.split('#').pop() : resolved
+  } catch (e) {
+    try { return require('scriptmin/package.json').version } catch (e2) { return null }
+  }
+}
+
+/** Fields for a deployment record: which scriptmin built it, if any. */
+const provenance = () => (enabled() ? { scriptmin: scriptminVersion() } : {})
+
 function load () {
   try {
     return require('scriptmin')
@@ -43,12 +61,17 @@ function codeSeparators (sm, buf) {
   return sm.parse(buf).filter((op) => op.code === OP_CODESEPARATOR).length
 }
 
-/** The minimized script, or the script unchanged when SCRIPTMIN is not set. */
-function minimize (script, { label = 'script' } = {}) {
-  if (!enabled()) return script
+/**
+ * The minimized script, or the script unchanged when SCRIPTMIN is not set.
+ * `force` minimizes regardless, for rebuilding a deployment that was minimized.
+ */
+function minimize (script, { label = 'script', force = false } = {}) {
+  if (!force && !enabled()) return script
   const sm = load()
   const input = script.toBuffer()
-  const key = crypto.createHash('sha256').update(input).digest('hex')
+  // Keyed by optimizer as well as input, so a newer scriptmin never serves bytes
+  // an older one produced.
+  const key = crypto.createHash('sha256').update(String(scriptminVersion())).update(input).digest('hex')
   const cached = path.join(CACHE, key + '.hex')
   if (fs.existsSync(cached)) return bsv.Script.fromBuffer(Buffer.from(fs.readFileSync(cached, 'utf8').trim(), 'hex'))
 
@@ -68,4 +91,4 @@ function minimize (script, { label = 'script' } = {}) {
   return bsv.Script.fromBuffer(out)
 }
 
-module.exports = { minimize, enabled }
+module.exports = { minimize, enabled, scriptminVersion, provenance }

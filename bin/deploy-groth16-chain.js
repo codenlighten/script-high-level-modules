@@ -39,7 +39,7 @@ const onchain = require('../src/onchain')
 const woc = require('../src/woc')
 const { policyFlags } = require('../src/run')
 const { Asm } = require('../src/asm')
-const { minimize } = require('../src/minimize')
+const { minimize, enabled, provenance } = require('../src/minimize')
 const { pushNum, pushData } = require('../src/num')
 const chain = require('../src/modules/groth16chain')
 const split = require('../src/modules/groth16split')
@@ -245,8 +245,11 @@ async function main () {
   console.log(`    tx₃       ${id3}`)
 
   onchain.record({
-    target: 'groth16.chain1 ▸ chain2 ▸ chain3',
-    key: 'groth16Chain',
+    target: 'groth16.chain1 ▸ chain2 ▸ chain3' + (enabled() ? ', minimized by scriptmin' : ''),
+    // A minimized deployment is a different set of scripts: its own key, and
+    // the scriptmin commit that built it, so the walker can rebuild it.
+    key: enabled() ? 'groth16ChainScriptmin' : 'groth16Chain',
+    ...provenance(),
     claim: 'a Groth16 proof of age verified across three transactions, each state split out of the carrier beside it',
     lockBytes: locks.reduce((s, l) => s + l.toBuffer().length, 0),
     deploy: fundId,

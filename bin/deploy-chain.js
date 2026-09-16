@@ -27,7 +27,7 @@ const onchain = require('../src/onchain')
 const woc = require('../src/woc')
 const { policyFlags } = require('../src/run')
 const { Asm } = require('../src/asm')
-const { minimize } = require('../src/minimize')
+const { minimize, enabled, provenance } = require('../src/minimize')
 const { pushNum, pushData } = require('../src/num')
 const H = require('@smartledger/bsv/lib/covenant/helpers')
 const bls = require('../src/bls12381')
@@ -208,8 +208,11 @@ async function main () {
   console.log(`    tx₂       ${id2}`)
 
   onchain.record({
-    target: 'pairing.chainMiller ▸ pairing.chainExp',
-    key: 'pairingChain',
+    target: 'pairing.chainMiller ▸ pairing.chainExp' + (enabled() ? ', minimized by scriptmin' : ''),
+    // A minimized deployment is a different set of scripts: its own key, and
+    // the scriptmin commit that built it, so the walker can rebuild it.
+    key: enabled() ? 'pairingChainScriptmin' : 'pairingChain',
+    ...provenance(),
     claim: 'a complete BLS12-381 pairing, one stage per transaction, chained through a carrier coin',
     lockBytes: lockMiller.toBuffer().length + lockExp.toBuffer().length,
     deploy: fundId,
