@@ -244,4 +244,6 @@ A missing opcode doesn't mean the computation is impossible. It's a cost, and co
 | Groth16 proof of age, three inputs | [`025f20f1…c5f0`](https://whatsonchain.com/tx/025f20f1d4156aa354afef37b1ec67e5c461f11375bc739902845a3b985dc5f0) | [`cad6d2cc…4bb6`](https://whatsonchain.com/tx/cad6d2cca44fffb2f445009f392b668382d79d120b1c14db0fd4a8d192204bb6) |
 | Complete pairing | [`92bb3f0e…667c`](https://whatsonchain.com/tx/92bb3f0e790ace19f1afec51141f87a3d6a911f10e82e765dba5368a6765667c) | [`fd0f553e…b9e2`](https://whatsonchain.com/tx/fd0f553ee9a96b2cb48a4a9712824580910cd6056fc42f93f49eae83da2fb9e2) |
 
-**Next, Part II:** a coin that only moves for someone over 21 — and the limit that almost kept it off the chain.
+**Part II:** a coin that only moves for someone over 21 — a zero-knowledge proof of age verified on mainnet, and the limit that almost kept it off the chain.
+
+**Part III:** Bitcoin Script verifies a post-quantum signature — SLH-DSA, the NIST standard, with no elliptic-curve key needed to spend.

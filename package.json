@@ -22,6 +22,7 @@
     "subgroup": "node tools/subgroup-derive.js",
     "slhdsa": "node tools/slhdsa-crosscheck.js",
     "slhdsa:script": "node tools/slhdsa-script.js",
+    "relay": "node tools/relay-budget.js",
     "attack:siblings": "node tools/attack-siblings.js",
     "pairing": "node tools/pairing-cost.js",
     "pairing:prove": "node tools/pairing-prove.js",

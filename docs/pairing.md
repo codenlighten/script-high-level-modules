@@ -645,6 +645,25 @@ bounds RELAY rather than validity. The spend is valid and its block is valid; it
 simply could not travel. A version that does not depend on an operator's goodwill
 has to put the stages in separate transactions.
 
+It is measurable in advance, which it was not before this happened.
+`npm run relay` fetches every spend this repository has on chain and times it in
+the same interpreter, reporting each as a ratio against the two whose fate is
+known:
+
+```
+slhdsa.spend                              1 input     83,438 B    196 ms   0.08×
+pairing.miller63                          1 input      7,151 B  1,142 ms   0.45×
+pairing.publish ▸ pairing.consume         2 inputs   830,928 B  2,553 ms   1.00×  relayed, mined
+groth16.stage1 ▸ stage2 ▸ stage3          3 inputs 1,291,329 B  3,993 ms   1.56×  refused by relay
+```
+
+The absolute numbers belong to whatever machine runs it — a node's C++ is far
+quicker — so what transfers is the ratio and the rule it implies: keep a spend at
+or under the one that relayed. Note what the ranking says about *size*: the
+83 KB post-quantum spend is one of the cheapest things here, and a 7 KB Miller
+loop costs six times as much. Bytes are the fee; validation time is the
+constraint, and they are not the same quantity.
+
 ### Why every stage carries the whole blob
 
 Each stage computes its own transition and **witnesses** everything else. A

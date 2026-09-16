@@ -95,6 +95,15 @@ block.
 it byte for byte against what is in the output — so it goes red if the modules
 drift from what was deployed. See [mainnet.md](docs/mainnet.md).
 
+`npm run relay` asks the other question, the one this repository learned the
+expensive way: **will a node pass it along?** Nodes bound how long they will spend
+validating a transaction that arrives from a peer, so it times every spend here
+against the two whose fate is known — the pairing split that relayed and was
+mined, and the Groth16 split that was refused for its validation time and reached
+a block only by direct submission. Size is the fee; validation time is the
+constraint, and they are not the same quantity: the 83 KB post-quantum spend
+checks in a fraction of the time a 7 KB Miller loop does.
+
 An earlier `ecdsa.verify` and `rsa.verify` are also on chain and superseded — the
 log records the script **as deployed** and says separately whether the code still
 builds it, because a module that has since been corrected must build something
