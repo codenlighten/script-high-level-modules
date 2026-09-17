@@ -36,6 +36,12 @@ const carry = require('../src/modules/carry')
 const txmod = require('../src/modules/tx')
 
 const BROADCAST = process.argv.includes('--broadcast')
+// A deployment has to be rebuildable from what its ledger entry records, and
+// nothing records RELAX yet: the walkers could not reproduce a relaxed stage.
+if (BROADCAST && process.env.RELAX === '1') {
+  console.error('\n  RELAX=1 deployments are not recorded in a form the chain walkers can rebuild yet — dry-run only\n')
+  process.exit(1)
+}
 const n = (x) => x.toLocaleString('en-US')
 const P = bls.P
 const params = { n: P, nn: P }
