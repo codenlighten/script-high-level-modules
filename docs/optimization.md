@@ -459,16 +459,22 @@ verifier most of the way back but not under the spend known to relay, and the
 answer stays the chain.
 
 
-Those ratios flatter the minimized split, and by more than the idle re-runs
-corrected. In `bsv.Script.Interpreter` each OP_PUSH_TX signature check costs time
-in proportion to the size of the script it signs (about 320–470 ms per check
-over a 200–470 KB script in @smartledger/bsv 9.10.1, almost all of it
-re-serializing the script), while a node hashes those bytes in well under a
-millisecond. Smaller scripts shrink that term, the arithmetic does not. Timing
-everything except the signature checks, the minimized split is 1.28–1.29× the
-spend that relayed and the deployed split 1.39–1.57×. The work a node actually
-does is still well over the line; what would move it is less arithmetic, not
-less stack traffic.
+Those ratios flattered the minimized split. Before @smartledger/bsv 9.11.0, each
+OP_PUSH_TX signature check in `bsv.Script.Interpreter` cost time in proportion
+to the size of the script it signs (320–470 ms per check over a 200–470 KB
+script, almost all of it re-serializing the script), while a node hashes those
+bytes in well under a millisecond. Smaller scripts shrank that term; the
+arithmetic did not. 9.11.0 makes the same check take about 12 ms, and with it
+the three spends' signature checks together take about 30 ms of a two-second
+run. Measured that way, twice on 9.11.0, the minimized split is 1.25–1.26× the
+spend that relayed, and 1.26–1.27× counting only the work outside signature
+checks; the deployed split is 1.51–1.56×. The work a node actually does is still
+well over the line, and what would move it is less arithmetic, not less stack
+traffic.
+
+The absolute yardsticks in `relay.json` (3,031 and 4,539 ms) were recorded with
+the slower library. Their ratio, about 1.5×, still holds; figures that divide a
+new timing by them do not, until the file is re-recorded.
 
 ## What was tried and rejected
 
