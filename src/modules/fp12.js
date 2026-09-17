@@ -622,6 +622,43 @@ function emitCompSqr (asm, p, c) {
  * spender supplies and fp2.inv checks. Both equations are scaled by two so
  * nothing is halved. Returns the twelve names in `twelve()` order.
  */
+/**
+ * emitCompSqr with its reductions re-decided (RELAX=1, src/relaxed.js).
+ *
+ * The block is compiled by calling emitCompSqr itself on a scratch Asm, so
+ * what is relaxed is exactly what would otherwise be emitted; relax() checks
+ * the two agree, and fp12.powXc's model — f^|x| by general exponentiation —
+ * checks the whole ladder built from them.
+ */
+function emitCompSqrRelaxed (asm, p, c) {
+  const { Asm } = require('../asm')
+  const F = require('../facts')
+  const { relaxBlock } = require('../relaxed')
+  const nn = p.nn
+  const ins = c.flatMap(two)
+  const scratch = new Asm()
+  const names = c.map((_, i) => '_c' + i)
+  scratch.given(names.flatMap(two).map((name) => ({ name, kind: 'num', facts: F.range(0n, nn) })))
+  scratch.num(nn, PN)
+  const out = emitCompSqr(scratch, { n: PN, nn }, names).flatMap(two)
+  for (const name of out) scratch.roll(name)
+  scratch.roll(PN)
+  scratch.drop()
+  if (scratch.stack.length !== out.length) {
+    throw new Error(`fp12: compressed squaring left ${scratch.stack.length - out.length} value(s) besides its outputs`)
+  }
+  const result = c.map(() => fresh())
+  relaxBlock(asm, {
+    key: 'fp12.compSqr',
+    script: scratch.script().toBuffer(),
+    inputs: ins,
+    outputs: result.flatMap(two),
+    nn,
+    modulus: modulusName(p.n)
+  })
+  return result
+}
+
 function emitDecompress (asm, p, c, wit) {
   const [c1r, c1s, c2r, c2s] = c
   const norm = (r, sp) => op(asm, fp2.sub, p, [op(asm, fp2.sqr, p, [dup(asm, r)]),
@@ -714,12 +751,13 @@ const powXc = defineModule({
     const recover = () => emitDecompress(asm, p, c, [`d${k}i0`, `d${k}i1`])
 
     let c = compressed('a').map((name) => dup(asm, name))    // the leading bit
+    const { enabled: relaxing, choose } = require('../relaxed')
     for (let i = 1; i < bits.length; i++) {
-      c = emitCompSqr(asm, p, c)
+      c = relaxing() ? emitCompSqrRelaxed(asm, p, c) : emitCompSqr(asm, p, c)
       if (bits[i] !== '1') continue
       const full = recover(); k++
       const copy = twelve('a').map((name) => { const t = fresh(); asm.pick(name, t); return t })
-      apply(asm, mul, p, [...full, ...copy], twelve('_m'))
+      apply(asm, choose(mul), p, [...full, ...copy], twelve('_m'))
       c = compressed('_m')
       // the two coefficients compression drops are live values and have to go
       for (const pair of droppedBy('_m')) { asm.discard(pair + '0'); asm.discard(pair + '1') }
