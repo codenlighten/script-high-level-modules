@@ -50,6 +50,12 @@ const bls = require('../src/bls12381')
 const age = require('../test/vectors/groth16-age')
 
 const BROADCAST = process.argv.includes('--broadcast')
+// A deployment has to be rebuildable from what its ledger entry records, and
+// nothing records RELAX yet: the walkers could not reproduce a relaxed stage.
+if (BROADCAST && process.env.RELAX === '1') {
+  console.error('\n  RELAX=1 deployments are not recorded in a form the chain walkers can rebuild yet — dry-run only\n')
+  process.exit(1)
+}
 const n = (x) => x.toLocaleString('en-US')
 const { S2_NAMES, PROOF_NAMES } = split
 const W = chain.STATE_BYTES
