@@ -458,7 +458,29 @@ and 1.13×; the idle runs replace them.) So minimizing takes the one-transaction
 verifier most of the way back but not under the spend known to relay, and the
 answer stays the chain.
 
+
+Those ratios flatter the minimized split, and by more than the idle re-runs
+corrected. In `bsv.Script.Interpreter` each OP_PUSH_TX signature check costs time
+in proportion to the size of the script it signs (about 320–470 ms per check
+over a 200–470 KB script in @smartledger/bsv 9.10.1, almost all of it
+re-serializing the script), while a node hashes those bytes in well under a
+millisecond. Smaller scripts shrink that term, the arithmetic does not. Timing
+everything except the signature checks, the minimized split is 1.28–1.29× the
+spend that relayed and the deployed split 1.39–1.57×. The work a node actually
+does is still well over the line; what would move it is less arithmetic, not
+less stack traffic.
+
 ## What was tried and rejected
+
+**Removing reductions that do nothing.** On a real proof a third of the
+minimized split's `OP_MOD`s (24,549 of 71,125) receive a value already in
+[0, p). Removing them would save about 60 KB and a third of the reductions a
+node executes. An interval analysis over the dataflow, seeded with every
+`OP_WITHIN` bound the modules emit, proves 57 of them. Nearly all the rest
+reduce the result of a subtraction, which intervals must assume can be negative:
+knowing that it is not needs the correlation between the operands, which
+intervals discard. A removal that holds on the proofs tried is not a removal
+that holds, so none were made.
 
 **Reversing bytes arithmetically.** `bytes.reverse` is 4 bytes per byte
 reversed — a split, a swap, a concatenation. Reconstructing the value from
