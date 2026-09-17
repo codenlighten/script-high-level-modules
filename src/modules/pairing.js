@@ -4,6 +4,7 @@ const { defineModule, apply } = require('../module')
 const fp2 = require('./fp2')
 const fp6 = require('./fp6')
 const fp12 = require('./fp12')
+const { choose } = require('../relaxed')
 const g2mod = require('./g2')
 const txmod = require('./tx')
 const bls = require('../bls12381')
@@ -265,7 +266,7 @@ function miller (rounds = FULL, opts = {}) {
         // contributes two lines and still only one square, and squaring again
         // before the chord gives f² where f was wanted — a wrong answer that
         // costs 2,375 extra bytes to arrive at.
-        if (step.first) apply(asm, fp12.sqr, p, twelve('f'), twelve('f'))
+        if (step.first) apply(asm, choose(fp12.sqr), p, twelve('f'), twelve('f'))
         const q = at(step.pair)
         const T = [`${q}Tx0`, `${q}Tx1`, `${q}Ty0`, `${q}Ty1`]
         // Px is a base-field scalar, not an Fp2 pair, so it is picked directly.
@@ -277,7 +278,7 @@ function miller (rounds = FULL, opts = {}) {
         apply(asm, step.kind === 'double' ? g2mod.stepDouble : g2mod.stepAdd, p,
           [...args, `w${k}a`, `w${k}b`],
           [...T, 'L10', 'L11', 'L20', 'L21'])
-        apply(asm, fp12.mulLine, p,
+        apply(asm, choose(fp12.mulLine), p,
           [...twelve('f'), ...two(dup(asm, `${q}H`, `_h${k}`)), 'L10', 'L11', 'L20', 'L21'],
           twelve('f'))
       })
@@ -390,8 +391,8 @@ function powY (asm, p, base, j) {
 function smallPow (asm, p, x, a) {
   const mag = a < 0n ? -a : a
   let acc = x
-  if (mag === 2n) acc = call12(asm, fp12.cycSqr, p, [acc])
-  else if (mag === 3n) acc = call12(asm, fp12.mul, p, [call12(asm, fp12.cycSqr, p, [copy12(asm, acc)]), acc])
+  if (mag === 2n) acc = call12(asm, choose(fp12.cycSqr), p, [acc])
+  else if (mag === 3n) acc = call12(asm, choose(fp12.mul), p, [call12(asm, choose(fp12.cycSqr), p, [copy12(asm, acc)]), acc])
   else if (mag !== 1n) throw new Error(`pairing.finalExp: a digit of ${a} is not one of the small ones this was built for`)
   return a < 0n ? call12(asm, fp12.conj, p, [acc]) : acc
 }
@@ -442,10 +443,10 @@ const finalExp = defineModule({
     // easy part: conj(f)·f⁻¹, then φ²(·)·(·)
     const fc = call12(asm, fp12.conj, p, [copy12(asm, 'f')])
     const fi = call12(asm, fp12.inv, p, ['f'], undefined, twelve('inv'))
-    let r = call12(asm, fp12.mul, p, [fc, fi])
+    let r = call12(asm, choose(fp12.mul), p, [fc, fi])
     let rf = call12(asm, fp12.frob, p, [copy12(asm, r)])
     rf = call12(asm, fp12.frob, p, [rf])
-    r = call12(asm, fp12.mul, p, [rf, r])
+    r = call12(asm, choose(fp12.mul), p, [rf, r])
 
     // the shared ladders r^(y^j)
     const pow = [r]
@@ -457,7 +458,7 @@ const finalExp = defineModule({
       let v = copy12(asm, pow[t.j])
       for (let k = 0; k < t.i; k++) v = call12(asm, fp12.frob, p, [v])
       v = smallPow(asm, p, v, t.a)
-      acc = acc === null ? v : call12(asm, fp12.mul, p, [acc, v])
+      acc = acc === null ? v : call12(asm, choose(fp12.mul), p, [acc, v])
     }
 
     for (const base of pow) for (const x of F12SUF) asm.discard(base + x)

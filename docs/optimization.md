@@ -476,6 +476,59 @@ The absolute yardsticks in `relay.json` (3,031 and 4,539 ms) were recorded with
 the slower library. Their ratio, about 1.5×, still holds; figures that divide a
 new timing by them do not, until the file is re-recorded.
 
+## 19. Re-decide the reductions a module boundary forced
+
+Every Fp2 module returns canonical coefficients, and it has to: that is its
+contract with whoever calls it. The price is that a composition of them reduces
+after nearly every addition. Counted over the three Groth16 stages, 97% of the
+72,689 `OP_MOD`s belong to fp2.add, fp2.sub, fp2.mul, fp2.mulXi and fp2.sqr,
+and inside fp12.sqr or fp12.mulLine almost none of them are needed: the next
+thing done with the value is more ring arithmetic, and only the twelve outputs
+must be canonical. It is §1 again, one level up, where no single module can
+apply it.
+
+`RELAX=1` applies it (`src/relaxed.js`):
+
+- **What is relaxed.** `relaxed(m)` wraps a module and `relaxBlock` a block of
+  emitted code. They cover `fp12.sqr`, `fp12.mulLine`, `fp12.mul`,
+  `fp12.cycSqr`, and the compressed squaring inside `fp12.powXc`. `fp12.frob`
+  is not relaxed: it multiplies by 381-bit constants and comes out twice as
+  large.
+- **How.** Each is emitted exactly as it would be, into a scratch `Asm`, and
+  handed to scriptmin's `relax()`. That lifts the script to its arithmetic
+  circuit, refusing anything that is not `OP_ADD`/`OP_SUB`/`OP_MUL`/`OP_MOD` by
+  p. It drops every reduction, recompiles with reductions only where a value
+  would pass 768 bits or must be canonical, and takes p from its stack slot.
+- **Why dropping reductions is safe.** Ring operations preserve congruence, so
+  the outputs equal the emitted code's whenever that code's outputs are
+  canonical. That is exactly what the module promises.
+- **Checks.** relax checks the two scripts agree on canonical inputs. The
+  wrapper keeps `m`'s contract, model and cases, so the kit proves
+  `fp12.sqr.relaxed` as it proves `fp12.sqr`. `fp12.powXc`, whose model is the
+  literal f^|x|, checks the ladder built from relaxed compressed squarings.
+
+| | as emitted | `RELAX=1` |
+| --- | ---: | ---: |
+| pairing.miller63 | 333,031 | 182,790 |
+| pairing.finalExp | 473,562 | 264,373 |
+| groth16.chain1 + chain2 + chain3, then scriptmin | 1,246,754 | 601,002 |
+| pairing.chainMiller + chainExp, then scriptmin | 820,907 | 391,124 |
+
+The Groth16 chain's scriptmin-only figure is 731,192, and the pairing chain's
+504,058 (on mainnet). Every honest link is accepted and every attack refused as
+before. `npm test` is unchanged with `RELAX` unset, and `pairing-prove`,
+`audit-soundness`, `attack-siblings` and `pairing-split` pass with it.
+
+**Validation time falls less than the reduction count.** The one-transaction
+Groth16 split with `RELAX=1 SCRIPTMIN=1` is 641 KB and 1.12–1.14× the spend
+that relayed, against 1.25× with scriptmin alone. The `OP_MOD`s are down from
+71,125 to 23,285, but the arithmetic that remains is on larger numbers. In
+`bsv.Script.Interpreter` an `OP_ADD` of a 768-bit value costs almost what an
+`OP_MUL` does, because every numeric opcode decodes and re-encodes its operands
+in proportion to their size, and `OP_ADD` and `OP_SUB` are now nearly half the
+time. So fewer reductions buy bytes readily and time only partly, and the one
+transaction is still over the line.
+
 ## What was tried and rejected
 
 **Removing reductions that do nothing.** On a real proof a third of the
